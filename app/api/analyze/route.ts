@@ -2,20 +2,23 @@ import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
-// Get API key from environment variables (.env.local or .env)
-const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-
-if (!googleApiKey) {
-  throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please add it to your .env.local file.');
+// Helper function to get and validate API key at runtime
+function getGoogleGenAI() {
+  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
+  
+  if (!googleApiKey) {
+    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
+  }
+  
+  return new GoogleGenAI({ 
+    apiKey: googleApiKey 
+  });
 }
 
-const ai = new GoogleGenAI({ 
-  apiKey: googleApiKey 
-});
-
 export async function POST(request: NextRequest) {
-
   try {
+    // Initialize AI client at runtime
+    const ai = getGoogleGenAI();
     const body = await request.json();
     const { url, type } = body;
 

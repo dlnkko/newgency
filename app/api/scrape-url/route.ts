@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import firecrawl from '@/lib/firecrawl';
+import getFirecrawlInstance from '@/lib/firecrawl';
 
 export async function POST(request: NextRequest) {
   try {
+    // Initialize Firecrawl client at runtime
+    const firecrawl = getFirecrawlInstance();
+    
     const body = await request.json();
     const { url } = body;
 

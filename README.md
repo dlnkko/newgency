@@ -4,14 +4,14 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ### Environment Variables Setup
 
-Before running the development server, you need to set up your environment variables:
+#### Local Development
 
-1. Copy the example environment file:
+1. Create a `.env.local` file in the root directory:
    ```bash
-   cp env.example .env
+   touch .env.local
    ```
 
-2. Edit the `.env` file and add your API keys:
+2. Add your API keys to `.env.local`:
    ```env
    # Google Gemini API Key
    # Get your API key from: https://aistudio.google.com/apikey
@@ -19,12 +19,27 @@ Before running the development server, you need to set up your environment varia
 
    # Firecrawl API Key
    # Get your API key from: https://firecrawl.dev
+   # Note: The API key should start with 'fc-' prefix
    FIRECRAWL_API_KEY=fc-your_firecrawl_api_key_here
    ```
 
 3. Replace the placeholder values with your actual API keys.
 
-**Important:** The `.env` file is already in `.gitignore` and will not be committed to version control.
+**Important:** The `.env.local` file is already in `.gitignore` and will not be committed to version control.
+
+#### Vercel Deployment
+
+When deploying to Vercel, you need to add the environment variables in the Vercel dashboard:
+
+1. Go to your project settings in Vercel
+2. Navigate to **Settings** → **Environment Variables**
+3. Add the following variables:
+   - `GOOGLE_GENAI_API_KEY` = your Google Gemini API key
+   - `FIRECRAWL_API_KEY` = your Firecrawl API key (with `fc-` prefix)
+
+4. After adding the variables, redeploy your application.
+
+**Note:** No quotes are needed when adding environment variables in Vercel. Just paste the API key value directly.
 
 ### Running the Development Server
 
