@@ -2,11 +2,11 @@ import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
-// Get API key from environment variables
+// Get API key from environment variables (.env.local or .env)
 const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
 
 if (!googleApiKey) {
-  throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please add it to your .env file.');
+  throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please add it to your .env.local file.');
 }
 
 const ai = new GoogleGenAI({ 
