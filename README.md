@@ -2,6 +2,32 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Environment Variables Setup
+
+Before running the development server, you need to set up your environment variables:
+
+1. Copy the example environment file:
+   ```bash
+   cp env.example .env
+   ```
+
+2. Edit the `.env` file and add your API keys:
+   ```env
+   # Google Gemini API Key
+   # Get your API key from: https://aistudio.google.com/apikey
+   GOOGLE_GENAI_API_KEY=your_google_genai_api_key_here
+
+   # Firecrawl API Key
+   # Get your API key from: https://firecrawl.dev
+   FIRECRAWL_API_KEY=fc-your_firecrawl_api_key_here
+   ```
+
+3. Replace the placeholder values with your actual API keys.
+
+**Important:** The `.env` file is already in `.gitignore` and will not be committed to version control.
+
+### Running the Development Server
+
 First, run the development server:
 
 ```bash

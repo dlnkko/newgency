@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: 'AIzaSyCT8IBlR4FjOYp8t8EV-raQ_a0dxg0gtzA' });
+// Get API key from environment variables
+const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
+
+if (!googleApiKey) {
+  throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please add it to your .env file.');
+}
+
+const ai = new GoogleGenAI({ 
+  apiKey: googleApiKey 
+});
 
 export async function POST(request: NextRequest) {
   try {
