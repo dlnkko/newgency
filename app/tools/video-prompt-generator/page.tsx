@@ -418,7 +418,7 @@ export default function VideoPromptGenerator() {
                           disabled={scene.isEnhancing}
                           className={`group relative rounded-lg border-2 transition-all duration-200 ${
                             isDefault
-                              ? `px-4 py-3 text-sm font-bold ${isSelected ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_15px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30' : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90 hover:shadow-[0_0_8px_rgba(250,204,21,0.1)]'}`
+                              ? `col-span-2 sm:col-span-1 px-4 sm:px-4 py-3 sm:py-3 text-xs sm:text-sm font-bold ${isSelected ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_15px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30' : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90 hover:shadow-[0_0_8px_rgba(250,204,21,0.1)]'}`
                               : `px-3 py-2 text-xs font-semibold ${isSelected ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_15px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30' : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90 hover:shadow-[0_0_8px_rgba(250,204,21,0.1)]'}`
                           } disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
@@ -453,7 +453,7 @@ export default function VideoPromptGenerator() {
                   <textarea
                     value={scene.action}
                     onChange={(e) => updateScene(scene.id, 'action', e.target.value)}
-                    placeholder="Describe the action happening in this scene... (You can select multiple camera compositions - the AI will intelligently decide when to use each one based on your description. Text will be automatically generated when selecting composition or lighting, and will be enhanced with AI when generating the prompt for hyperrealistic UGC video)"
+                    placeholder="Describe the action happening in this scene..."
                     rows={4}
                     disabled={scene.isEnhancing}
                     className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
