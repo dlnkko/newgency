@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import getFirecrawlInstance from '@/lib/firecrawl';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit('scrapeUrl', request);
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          details: rateLimitResult.error,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit?.toString() || '',
+            'X-RateLimit-Remaining': rateLimitResult.remaining?.toString() || '0',
+            'X-RateLimit-Reset': rateLimitResult.reset?.toString() || '',
+            'Retry-After': rateLimitResult.reset?.toString() || '3600',
+          },
+        }
+      );
+    }
+
     // Initialize Firecrawl client at runtime
     const firecrawl = getFirecrawlInstance();
     
@@ -108,6 +132,20 @@ export async function POST(request: NextRequest) {
       });
     } else {
       console.log('No branding data found in response');
+    }
+
+    // Calculate Firecrawl costs (server-side only, not sent to frontend)
+    // Firecrawl pricing: ~$0.02-0.05 per scrape depending on plan and formats
+    // Using conservative estimate of $0.03 per scrape with summary and branding formats
+    const firecrawlCostPerScrape = 0.03;
+    try {
+      console.log('\n=== FIRECRAWL SCRAPING COST ===');
+      console.log(`URL scraped: ${url}`);
+      console.log(`Formats used: summary, branding`);
+      console.log(`Estimated cost: $${firecrawlCostPerScrape.toFixed(4)}`);
+      console.log('Note: Actual costs may vary based on Firecrawl plan and page complexity');
+    } catch (costError) {
+      console.error('Error logging Firecrawl cost:', costError);
     }
 
     return NextResponse.json({

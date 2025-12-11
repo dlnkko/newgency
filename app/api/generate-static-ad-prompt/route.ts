@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // Helper function to get and validate API key at runtime
 function getGoogleGenAI() {
@@ -16,6 +17,29 @@ function getGoogleGenAI() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit('generateStaticAd', request);
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          details: rateLimitResult.error,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit?.toString() || '',
+            'X-RateLimit-Remaining': rateLimitResult.remaining?.toString() || '0',
+            'X-RateLimit-Reset': rateLimitResult.reset?.toString() || '',
+            'Retry-After': rateLimitResult.reset?.toString() || '3600',
+          },
+        }
+      );
+    }
+
     // Initialize AI client at runtime
     const ai = getGoogleGenAI();
     
@@ -593,11 +617,6 @@ ${scrapedBranding ? '- Integrate product brand colors and typography where appro
         step1: step1Usage,
         step2: step2Usage,
         total: totalUsage.total
-      },
-      cost: {
-        step1: step1Cost,
-        step2: step2Cost,
-        total: totalCost.total
       }
     });
 

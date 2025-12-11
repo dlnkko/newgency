@@ -28,10 +28,10 @@ const COMPOSITION_OPTIONS = {
 
 const LIGHTING_OPTIONS = {
   hyperrealistic: [
-    'Natural Mobile Light',
-    'Home Interior',
-    'Golden Hour',
-    'Dramatic Focus'
+    'Night Outside',
+    'Day Outside',
+    'Artificial Light Inside',
+    'Natural Light Inside'
   ]
 };
 
@@ -45,10 +45,10 @@ const DEFAULT_COMPOSITION_TEXTS: Record<string, string> = {
 
 // Default texts for each lighting - Optimized for hyperrealistic UGC
 const DEFAULT_LIGHTING_TEXTS: Record<string, string> = {
-  'Natural Mobile Light': 'Soft natural window light, bright and airy atmosphere, minimal shadows, mobile recording aesthetic indoors, diffuse and realistic lighting',
-  'Home Interior': 'Home ambient light, warm and cozy lighting, authentic domestic environment, no professional artifices, real home video aesthetic',
-  'Golden Hour': 'Golden sunset light, warm amber tones, soft glowing highlights, magical golden hour atmosphere, outdoor mobile recording',
-  'Dramatic Focus': 'Dramatic focus on product with soft background, contrasted but natural lighting, mobile aesthetic with depth, highlights details without losing UGC authenticity'
+  'Night Outside': 'Authentic nighttime outdoor lighting, streetlights and car headlights visible in background, natural moonlight casting soft shadows, realistic mobile phone recording at night, slight grain and lower exposure typical of nighttime smartphone footage, warm artificial lights from buildings or streetlamps, authentic night atmosphere as if someone is genuinely recording outside at night with their phone',
+  'Day Outside': 'Natural daylight outdoor lighting, bright and clear sunlight, realistic shadows cast by natural light, authentic mobile phone recording during daytime, natural color temperature, genuine outdoor ambient lighting, slight overexposure in bright areas typical of phone cameras, authentic day atmosphere as if someone is genuinely recording outside during the day with their phone',
+  'Artificial Light Inside': 'Indoor artificial lighting, warm or cool LED/incandescent lights, realistic indoor ambient light, authentic mobile phone recording indoors with artificial light sources, natural shadows from indoor lights, slight color cast from artificial light sources, genuine indoor lighting atmosphere as if someone is genuinely recording inside with artificial lights using their phone',
+  'Natural Light Inside': 'Natural window light streaming indoors, soft diffused daylight through windows, realistic indoor natural lighting, authentic mobile phone recording indoors with natural light, natural shadows from window light, bright and airy atmosphere, genuine indoor natural lighting as if someone is genuinely recording inside near a window with their phone'
 };
 
 type Step = 'sceneCount' | `scene${number}` | 'generate';
@@ -63,6 +63,7 @@ export default function VideoPromptGenerator() {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
+  const [copied, setCopied] = useState<boolean>(false);
 
   const handleSceneCountChange = (count: number) => {
     setSceneCount(count);
@@ -605,11 +606,15 @@ export default function VideoPromptGenerator() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(generatedPrompt);
+                  setCopied(true);
+                  setTimeout(() => {
+                    setCopied(false);
+                  }, 3000);
                 }}
                 className="flex items-center gap-2 rounded-xl border-2 border-amber-500/50 bg-amber-500/10 px-5 py-2.5 text-sm font-semibold text-amber-300 transition-all hover:border-amber-500/70 hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(250,204,21,0.2)]"
               >
                 <span>📋</span>
-                <span>Copy</span>
+                <span>{copied ? 'Copied!' : 'Copy'}</span>
               </button>
             </div>
             <pre className="whitespace-pre-wrap rounded-xl border-2 border-zinc-800/50 bg-zinc-950/70 p-6 text-sm leading-relaxed text-zinc-200 font-mono">

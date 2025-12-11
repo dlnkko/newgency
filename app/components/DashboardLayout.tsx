@@ -29,6 +29,13 @@ const tools = [
     path: '/tools/static-ad-prompt-generator',
     description: 'Generate static ad prompts from reference',
     active: true
+  },
+  {
+    id: 'product-video-generator',
+    name: 'Product Video Generator',
+    path: '/tools/product-video-generator',
+    description: 'Generate professional product video prompts',
+    active: true
   }
 ];
 

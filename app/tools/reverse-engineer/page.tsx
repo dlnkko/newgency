@@ -116,9 +116,34 @@ function formatGeminiText(text: string): string {
 export default function ReverseEngineer() {
   const [url, setUrl] = useState('');
   const [selectedType, setSelectedType] = useState<AnalysisType>(null);
+  const [productService, setProductService] = useState('');
+  const [productImage, setProductImage] = useState<File | null>(null);
+  const [productImagePreview, setProductImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProductImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProductImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleAnalyze = async () => {
     if (!url || !selectedType) {
@@ -131,6 +156,12 @@ export default function ReverseEngineer() {
     setResult(null);
 
     try {
+      // Convert product image to base64 if provided
+      let productImageBase64 = null;
+      if (productImage) {
+        productImageBase64 = await fileToBase64(productImage);
+      }
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -139,6 +170,8 @@ export default function ReverseEngineer() {
         body: JSON.stringify({
           url,
           type: selectedType,
+          productService: selectedType === 'production' ? productService.trim() : undefined,
+          productImage: selectedType === 'production' ? productImageBase64 : undefined,
         }),
       });
 
@@ -243,6 +276,77 @@ export default function ReverseEngineer() {
           </div>
         </div>
 
+        {/* Product/Service Input - Only shown when Production is selected */}
+        {selectedType === 'production' && (
+          <div className="mb-8 space-y-4">
+            <div>
+              <label
+                htmlFor="productService"
+                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
+              >
+                Your Product/Service
+              </label>
+              <input
+                id="productService"
+                type="text"
+                value={productService}
+                onChange={(e) => setProductService(e.target.value)}
+                placeholder="e.g., Premium coffee subscription, Fitness app, Luxury skincare product"
+                className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black"
+              />
+            </div>
+            
+            <div>
+              <label
+                htmlFor="productImage"
+                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
+              >
+                Product/Service Image (Optional)
+              </label>
+              <div className="flex items-center gap-4">
+                <label className="flex-1 cursor-pointer">
+                  <div className="rounded-xl border-2 border-dashed border-zinc-700/70 bg-zinc-950/50 p-6 text-center hover:border-amber-500/40 transition-colors">
+                    {productImagePreview ? (
+                      <img
+                        src={productImagePreview}
+                        alt="Product preview"
+                        className="max-h-32 mx-auto rounded-lg"
+                      />
+                    ) : (
+                      <div className="text-zinc-500">
+                        <svg
+                          className="mx-auto h-10 w-10 mb-2"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                        <p className="text-xs">Click to upload product image</p>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    id="productImage"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProductImageUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                Upload an image of your product/service to make the adapted prompt more accurate and faithful to your product.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Analyze Button */}
         <button
           onClick={handleAnalyze}
@@ -294,7 +398,7 @@ export default function ReverseEngineer() {
         {/* Results */}
         {result && (
           <div className="mt-6 space-y-6">
-            {/* Gemini Analysis */}
+            {/* Original Production Prompt */}
             {result.geminiAnalysis && (
               <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(250,204,21,0.22)]">
                 <div className="mb-3 flex items-center gap-2">
@@ -312,7 +416,7 @@ export default function ReverseEngineer() {
                     />
                   </svg>
                   <h3 className="text-xl font-semibold text-zinc-50">
-                    AI breakdown (Gemini)
+                    {result.type === 'production' ? 'Original Production Prompt' : 'AI breakdown (Gemini)'}
                   </h3>
                 </div>
                 <div className="prose prose-sm max-w-none text-zinc-200/90">
@@ -323,10 +427,64 @@ export default function ReverseEngineer() {
                       wordWrap: 'break-word',
                     }}
                     dangerouslySetInnerHTML={{
-                      __html: formatGeminiText(result.geminiAnalysis.text),
+                      __html: result.type === 'production' 
+                        ? `<p class="mb-3 leading-relaxed">${result.geminiAnalysis.text.replace(/\n/g, '<br />')}</p>`
+                        : formatGeminiText(result.geminiAnalysis.text),
                     }}
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Adapted Prompt for User's Product/Service */}
+            {result.adaptedPrompt && (
+              <div className="rounded-2xl border border-emerald-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(16,185,129,0.22)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <svg
+                    className="h-5 w-5 text-emerald-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    />
+                  </svg>
+                  <h3 className="text-xl font-semibold text-zinc-50">
+                    Adapted Prompt for Your Product/Service
+                  </h3>
+                </div>
+                <div className="mb-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 px-4 py-2">
+                  <p className="text-xs font-medium text-emerald-300">
+                    Product/Service: <span className="text-emerald-200">{productService}</span>
+                  </p>
+                </div>
+                <div className="prose prose-sm max-w-none text-zinc-200/90">
+                  <div
+                    className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-emerald-100/5"
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word',
+                    }}
+                  >
+                    <p className="mb-3 leading-relaxed">{result.adaptedPrompt}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(result.adaptedPrompt);
+                    setCopied(true);
+                    setTimeout(() => {
+                      setCopied(false);
+                    }, 3000);
+                  }}
+                  className="mt-4 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                >
+                  {copied ? 'Copied!' : 'Copy Adapted Prompt'}
+                </button>
               </div>
             )}
           </div>

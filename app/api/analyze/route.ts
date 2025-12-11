@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // Helper function to get and validate API key at runtime
 function getGoogleGenAI() {
@@ -17,10 +18,33 @@ function getGoogleGenAI() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit('analyze', request);
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          details: rateLimitResult.error,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit?.toString() || '',
+            'X-RateLimit-Remaining': rateLimitResult.remaining?.toString() || '0',
+            'X-RateLimit-Reset': rateLimitResult.reset?.toString() || '',
+            'Retry-After': rateLimitResult.reset?.toString() || '3600',
+          },
+        }
+      );
+    }
+
     // Initialize AI client at runtime
     const ai = getGoogleGenAI();
     const body = await request.json();
-    const { url, type } = body;
+    const { url, type, productService, productImage } = body;
 
     if (!url || !type) {
       return NextResponse.json(
@@ -131,78 +155,74 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Descargar el video directamente a memoria (sin guardar en disco)
-    console.log('Descargando video desde:', cleanVideoUrl);
-    let videoBuffer: Buffer;
-    try {
-      const videoResponse = await axios.get(cleanVideoUrl, {
-        responseType: 'arraybuffer',
-        timeout: 60000, // 60 segundos de timeout
-        maxRedirects: 5
-      });
-      
-      videoBuffer = Buffer.from(videoResponse.data);
-      console.log('Video descargado en memoria:', videoBuffer.length, 'bytes');
-      
-      if (videoBuffer.length === 0) {
-        return NextResponse.json(
-          { 
-            error: 'El video descargado está vacío',
-            details: 'El video no tiene contenido'
-          },
-          { status: 500 }
-        );
-      }
-    } catch (downloadError: any) {
-      console.error('Error al descargar el video:', downloadError);
-      return NextResponse.json(
-        { 
-          error: 'Error al descargar el video',
-          details: downloadError.message || 'No se pudo descargar el video desde la URL proporcionada'
-        },
-        { status: 500 }
-      );
-    }
-
-    // Subir el video a Gemini Files directamente desde el buffer en memoria
-    console.log('Subiendo video a Gemini Files desde memoria...');
+    // Stream el video directamente desde la URL a Gemini Files (sin cargar todo en memoria)
+    // Esto es más eficiente para producción, especialmente con videos grandes
+    console.log('Streaming video desde URL a Gemini Files:', cleanVideoUrl);
     let myfile;
     try {
-      // Convertir Buffer a Uint8Array para compatibilidad con Blob
-      const videoUint8Array = new Uint8Array(videoBuffer);
-      const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
+      // Descargar el video como stream (más eficiente para producción)
+      const videoResponse = await axios.get(cleanVideoUrl, {
+        responseType: 'stream',
+        timeout: 120000, // 120 segundos para videos más largos
+        maxRedirects: 5,
+        maxContentLength: Infinity, // Sin límite de tamaño
+        maxBodyLength: Infinity
+      });
       
+      // Convertir el stream de axios a un stream compatible con Gemini
+      const { Readable } = await import('stream');
+      const videoStream = videoResponse.data as NodeJS.ReadableStream;
+      
+      // Subir directamente el stream a Gemini Files
+      // Esto evita cargar todo el video en memoria, ideal para producción
       myfile = await ai.files.upload({
-        file: videoBlob,
+        file: videoStream as any,
         config: { mimeType: 'video/mp4' }
       });
-      console.log('Video subido a Gemini:', myfile.uri);
-      console.log('Estado inicial del archivo:', myfile.state);
       
-      // Liberar la memoria del buffer después de subirlo
-      videoBuffer = null as any;
-    } catch (uploadError: any) {
-      console.error('Error al subir video a Gemini:', uploadError);
-      // Si falla con Blob, intentar con el Buffer como stream usando Readable
+      console.log('Video streamed y subido a Gemini:', myfile.uri);
+      console.log('Estado inicial del archivo:', myfile.state);
+    } catch (streamError: any) {
+      console.error('Error al hacer streaming del video:', streamError);
+      console.log('Intentando fallback: descarga en memoria (para videos pequeños)...');
+      
+      // Fallback: si el streaming falla, intentar con descarga en memoria (para videos pequeños)
       try {
-        const { Readable } = await import('stream');
-        const videoStream = Readable.from(videoBuffer);
+        const videoResponse = await axios.get(cleanVideoUrl, {
+          responseType: 'arraybuffer',
+          timeout: 60000,
+          maxRedirects: 5
+        });
+        
+        const videoBuffer = Buffer.from(videoResponse.data);
+        console.log('Video descargado en memoria (fallback):', videoBuffer.length, 'bytes');
+        
+        if (videoBuffer.length === 0) {
+          return NextResponse.json(
+            { 
+              error: 'El video descargado está vacío',
+              details: 'El video no tiene contenido'
+            },
+            { status: 500 }
+          );
+        }
+        
+        // Subir desde buffer como fallback
+        const videoUint8Array = new Uint8Array(videoBuffer);
+        const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
         
         myfile = await ai.files.upload({
-          file: videoStream as any,
+          file: videoBlob,
           config: { mimeType: 'video/mp4' }
         });
-        console.log('Video subido a Gemini (usando stream):', myfile.uri);
-        console.log('Estado inicial del archivo:', myfile.state);
-        videoBuffer = null as any;
-      } catch (streamError: any) {
-        console.error('Error al subir video con stream:', streamError);
-        // Liberar memoria en caso de error
-        videoBuffer = null as any;
+        
+        console.log('Video subido a Gemini (fallback desde buffer):', myfile.uri);
+      } catch (fallbackError: any) {
+        console.error('Error en fallback:', fallbackError);
         return NextResponse.json(
           { 
-            error: 'Error al subir el video a Gemini',
-            details: uploadError.message || streamError.message || 'No se pudo subir el video para análisis'
+            error: 'Error al procesar el video',
+            details: streamError.message || fallbackError.message || 'No se pudo descargar o subir el video. El video puede ser muy grande o la URL no es accesible.'
           },
           { status: 500 }
         );
@@ -275,7 +295,7 @@ export async function POST(request: NextRequest) {
         analysisPrompt = 'You are an expert narrative designer. Analyze this Facebook/Instagram ad through a storytelling lens. Provide a concise but powerful analysis covering: 1) **Narrative Structure** - story framework (Hero\'s Journey, Before/After, Problem/Solution, Testimonial, Day-in-life), three-act structure with timestamps (setup/confrontation/resolution), inciting incident, 2) **Character** - protagonist type (customer, founder, hero), relatability triggers, transformation arc, antagonist/obstacle, 3) **Conflict & Stakes** - core tension, emotional stakes, urgency, peak dramatic moment, 4) **Story Beats** - major beats with timestamps, rhythm/tempo, plot points, information reveal strategy, 5) **Voice** - narrative voice (1st/2nd/3rd person, VO style), dialogue authenticity, memorable phrases, text overlay contribution, 6) **Visual Storytelling** - symbolic imagery, color grading shifts, camera angles, visual motifs, transitions, 7) **Themes** - underlying message (empowerment, transformation, belonging), universal truths, cultural context, 8) **Emotional Arc** - emotional journey (hope/struggle/breakthrough vs fear/discovery/relief), cathartic moments, vulnerability usage, 9) **Authenticity** - polished vs raw balance, genuine vs manufactured markers, production quality role, 10) **Story-to-CTA** - narrative-to-CTA bridge, earned vs forced CTA, organic product integration, 11) **Replication Blueprint** - shot list with narrative purpose, essential beats, timing per act, visual metaphors to maintain, voice/tone requirements, dialogue structure, non-negotiable vs adaptable elements. Be concise, use timestamps, explain WHY each choice works. Format with clear sections and bold headers.';
         break;
       case 'production':
-        analysisPrompt = 'You are an expert AI video generator prompter, analyze the visual aspects of this video and provide a detailed prompt to get the exact same video, make sure to include the actions, the lighting, the hyper-realism, the scenes, cuts, everything that comes into place include it and the output must be only the detailed prompt optimzed for ai video generation in one paragraph.';
+        analysisPrompt = 'You are an expert AI video generator prompter, analyze the visual aspects of this video and provide a detailed prompt to get the exact same video, make sure to include the actions, the lighting, the hyper-realism, the scenes, cuts, everything that comes into place include it. **IMPORTANT: If there is any text overlay in the video, you MUST specify exactly what text appears in the overlay (quote the exact words/phrases). Include this in your prompt so the user can modify it if needed.** The output must be only the detailed prompt optimized for AI video generation in one paragraph.';
         break;
       default:
         analysisPrompt = 'Analiza este video de anuncio publicitario en detalle.';
@@ -318,20 +338,47 @@ export async function POST(request: NextRequest) {
 
     // Obtener el texto de la respuesta
     let analysisText = 'No se pudo obtener el análisis';
+    let analysisError = null;
     try {
       // La respuesta de Gemini tiene la estructura: result.candidates[0].content.parts[0].text
       if (result.candidates && result.candidates[0]?.content?.parts) {
-        analysisText = result.candidates[0].content.parts
+        const textParts = result.candidates[0].content.parts
           .map((part: any) => part.text || '')
           .join('');
+        if (textParts && textParts.trim().length > 0) {
+          analysisText = textParts;
+        } else {
+          analysisError = 'Response has empty text parts';
+          console.error('Response has empty text parts. Full result:', JSON.stringify(result, null, 2));
+        }
       } else if ((result as any).text) {
-        analysisText = (result as any).text;
+        const text = (result as any).text;
+        if (text && text.trim().length > 0) {
+          analysisText = text;
+        } else {
+          analysisError = 'Response text is empty';
+          console.error('Response text is empty. Full result:', JSON.stringify(result, null, 2));
+        }
       } else {
+        analysisError = 'Unexpected response structure';
         console.error('Estructura inesperada de la respuesta de Gemini:', JSON.stringify(result, null, 2));
       }
     } catch (err) {
+      analysisError = err instanceof Error ? err.message : 'Unknown error';
       console.error('Error al extraer texto de la respuesta:', err);
       console.error('Estructura de result:', JSON.stringify(result, null, 2));
+    }
+    
+    // If analysis failed, return error early
+    if (!analysisText || analysisText === 'No se pudo obtener el análisis' || analysisText.trim().length === 0) {
+      return NextResponse.json(
+        {
+          error: 'Failed to generate production prompt',
+          details: analysisError || 'Could not extract analysis text from Gemini response',
+          geminiResponse: process.env.NODE_ENV === 'development' ? result : undefined
+        },
+        { status: 500 }
+      );
     }
     
     // Extraer información de uso y calcular costo
@@ -378,6 +425,176 @@ export async function POST(request: NextRequest) {
       console.error('Error extracting usage information:', err);
     }
     
+    // If production type and productService is provided, generate adapted prompt
+    // BUT only if we successfully got the original analysis
+    let adaptedPrompt = null;
+    const hasValidAnalysis = analysisText && 
+                             analysisText !== 'No se pudo obtener el análisis' && 
+                             analysisText.trim().length > 0;
+    
+    if (type === 'production' && productService && productService.trim() && hasValidAnalysis) {
+      console.log('Generating adapted prompt for product/service:', productService);
+      console.log('Original prompt length:', analysisText.length);
+      console.log('Has product image:', !!productImage);
+      
+      try {
+        // Upload product image if provided
+        let productImageFile = null;
+        if (productImage) {
+          try {
+            console.log('Uploading product image to Gemini Files...');
+            const productBuffer = Buffer.from(productImage.split(',')[1], 'base64');
+            const productMime = productImage.split(';')[0].split(':')[1] || 'image/png';
+            
+            const productUint8Array = new Uint8Array(productBuffer);
+            const productBlob = new Blob([productUint8Array], { type: productMime });
+            productImageFile = await ai.files.upload({
+              file: productBlob,
+              config: { mimeType: productMime }
+            });
+            console.log('Product image uploaded:', productImageFile.uri);
+            
+            // Wait for file to be ACTIVE
+            const maxWaitTime = 60000;
+            const checkInterval = 2000;
+            const startTime = Date.now();
+            
+            const waitForFile = async (file: any, fileName: string) => {
+              if (file.state === 'ACTIVE') return file;
+              
+              while (file.state !== 'ACTIVE') {
+                if (Date.now() - startTime > maxWaitTime) {
+                  throw new Error(`Timeout waiting for ${fileName} to be ready`);
+                }
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+                
+                try {
+                  const fileInfo = await ai.files.get({ name: fileName });
+                  file = fileInfo;
+                } catch (err) {
+                  console.error(`Error checking file status for ${fileName}:`, err);
+                }
+              }
+              return file;
+            };
+            
+            const productFileName = productImageFile.name || productImageFile.uri?.split('/').pop() || '';
+            if (productFileName) {
+              productImageFile = await waitForFile(productImageFile, productFileName);
+            }
+            
+            if (!productImageFile.uri) {
+              console.warn('Product image file missing URI, continuing without image');
+              productImageFile = null;
+            }
+          } catch (imageError: any) {
+            console.error('Error uploading product image:', imageError);
+            console.warn('Continuing with text-only adaptation');
+            productImageFile = null;
+          }
+        }
+        
+        const adaptationPrompt = `You are an expert AI video generator prompt engineer. You have been given:
+
+1. A detailed production prompt that was reverse-engineered from a successful ad video
+2. A user's product/service: "${productService}"
+${productImageFile ? '3. An image of the user\'s product/service (analyze this image carefully to understand the exact product appearance, colors, materials, textures, and characteristics)' : ''}
+
+**Original Production Prompt:**
+${analysisText}
+
+**Your Task:**
+Transform the original production prompt into an equally detailed video prompt, but now adapted for the user's product/service: "${productService}".
+${productImageFile ? 'Use the provided product image as a reference to ensure the adapted prompt accurately describes the product\'s appearance, colors, materials, textures, and visual characteristics. The prompt must be faithful to what is shown in the image.' : ''}
+
+**Critical Requirements:**
+- Maintain the EXACT same level of detail as the original prompt
+- Keep ALL the production elements (lighting, camera movements, cuts, scenes, hyper-realism, etc.)
+- Transform ALL actions, product references, and visual elements to be relevant to "${productService}"
+${productImageFile ? '- Accurately describe the product from the image: exact colors, materials, textures, shape, size, branding, and visual details' : ''}
+- If the original prompt shows a product being used, show "${productService}" being used in the same way
+- If the original prompt has specific actions, adapt those actions to make sense with "${productService}"
+- Maintain the same visual style, pacing, and cinematography
+- Keep all technical details (lighting, camera angles, cuts, transitions, etc.) exactly the same
+- Only change what needs to change to make it relevant to "${productService}"
+- The output must be a single, detailed paragraph optimized for AI video generation
+- **IMPORTANT: If the original prompt includes text overlay, adapt the text overlay to be relevant to "${productService}" while maintaining the same style and placement**
+
+**Output:**
+Provide ONLY the adapted production prompt as a single continuous paragraph, without line breaks, without additional explanations or formatting.`;
+
+        const adaptationParts: any[] = [
+          {
+            text: adaptationPrompt
+          }
+        ];
+        
+        // Add product image if available
+        if (productImageFile && productImageFile.uri) {
+          adaptationParts.unshift({
+            fileData: {
+              fileUri: productImageFile.uri,
+              mimeType: productImageFile.mimeType
+            }
+          });
+        }
+
+        const adaptationResult = await ai.models.generateContent({
+          model: 'gemini-3-pro-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: adaptationParts
+            }
+          ]
+        });
+
+        let adaptationText = '';
+        if (adaptationResult.candidates && adaptationResult.candidates[0]?.content?.parts) {
+          adaptationText = adaptationResult.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('');
+        } else if ((adaptationResult as any).text) {
+          adaptationText = (adaptationResult as any).text;
+        }
+
+        if (adaptationText) {
+          adaptedPrompt = adaptationText.trim();
+          console.log('Adapted prompt generated successfully');
+          
+          // Calculate costs for adaptation (server-side only)
+          try {
+            const adaptationUsageMetadata = (adaptationResult as any).usageMetadata;
+            if (adaptationUsageMetadata) {
+              const adaptPromptTokens = adaptationUsageMetadata.promptTokenCount || 0;
+              const adaptCandidatesTokens = adaptationUsageMetadata.candidatesTokenCount || 0;
+              const adaptTotalTokens = adaptationUsageMetadata.totalTokenCount || (adaptPromptTokens + adaptCandidatesTokens);
+
+              const inputCostPerMillion = 2.0;
+              const outputCostPerMillion = 12.0;
+
+              const adaptInputCost = (adaptPromptTokens / 1_000_000) * inputCostPerMillion;
+              const adaptOutputCost = (adaptCandidatesTokens / 1_000_000) * outputCostPerMillion;
+              const adaptTotalCost = adaptInputCost + adaptOutputCost;
+
+              console.log('\n=== ADAPTED PROMPT GENERATION COST ===');
+              console.log(`Input tokens: ${adaptPromptTokens.toLocaleString()}, Cost: $${adaptInputCost.toFixed(6)}`);
+              console.log(`Output tokens: ${adaptCandidatesTokens.toLocaleString()}, Cost: $${adaptOutputCost.toFixed(6)}`);
+              console.log(`Total tokens: ${adaptTotalTokens.toLocaleString()}, Total cost: $${adaptTotalCost.toFixed(6)}`);
+            }
+          } catch (adaptCostError) {
+            console.error('Error calculating adaptation costs:', adaptCostError);
+          }
+        }
+      } catch (adaptationError: any) {
+        console.error('Error generating adapted prompt:', adaptationError);
+        // Don't fail the whole request if adaptation fails, just log it
+      }
+    } else if (type === 'production' && productService && productService.trim() && !hasValidAnalysis) {
+      console.warn('Cannot generate adapted prompt: original analysis was not obtained successfully');
+      console.warn('Analysis text:', analysisText);
+    }
+    
     console.log('Análisis completado');
 
     return NextResponse.json({
@@ -389,8 +606,8 @@ export async function POST(request: NextRequest) {
         text: analysisText,
         fileUri: myfile.uri
       },
-      usage: usageInfo,
-      cost: costInfo
+      adaptedPrompt: adaptedPrompt || null,
+      usage: usageInfo
     });
 
   } catch (error: any) {

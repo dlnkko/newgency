@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // Helper function to get and validate API key at runtime
 function getGoogleGenAI() {
@@ -16,6 +17,29 @@ function getGoogleGenAI() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit('enhancePrompt', request);
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          details: rateLimitResult.error,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit?.toString() || '',
+            'X-RateLimit-Remaining': rateLimitResult.remaining?.toString() || '0',
+            'X-RateLimit-Reset': rateLimitResult.reset?.toString() || '',
+            'Retry-After': rateLimitResult.reset?.toString() || '3600',
+          },
+        }
+      );
+    }
+
     // Initialize AI client at runtime
     const ai = getGoogleGenAI();
     
@@ -117,14 +141,35 @@ Since "UGC Close-up" composition is selected, you MUST focus the shot on the pro
       : `\n\n**UGC SCENE COMPOSITION (NO CLOSE-UP):**
 Since "UGC Close-up" is NOT selected, you MUST show the product and person together in the scene as a whole, maintaining a natural wide-to-medium shot that captures the complete scene context. DO NOT focus exclusively on the product or person in close-up. Instead, show them integrated naturally within the environment, maintaining the full scene context. The shot should feel like a natural, casual mobile recording that captures the entire scene organically, as if recorded from the iPhone of the AI avatar. Keep everything visible together in the frame, respecting the natural composition of the scene while maintaining 100% UGC hyperrealism.`;
 
+    // Lighting-specific instructions for hyperrealistic UGC
+    const lightingInstructions = lighting
+      ? (() => {
+          const lightingLower = lighting.toLowerCase();
+          if (lightingLower.includes('night outside')) {
+            return `\n\n**LIGHTING: NIGHT OUTSIDE (HYPERREALISTIC UGC):**
+The lighting MUST be authentic nighttime outdoor lighting as if someone is genuinely recording outside at night with their phone. Include: streetlights and car headlights visible in background, natural moonlight casting soft shadows, realistic mobile phone recording at night with slight grain and lower exposure typical of nighttime smartphone footage, warm artificial lights from buildings or streetlamps, authentic night atmosphere. The video should look exactly like real nighttime footage recorded on a phone - not professional lighting, but genuine mobile phone night recording with all its characteristic qualities (grain, lower exposure, artificial light sources visible, etc.).`;
+          } else if (lightingLower.includes('day outside')) {
+            return `\n\n**LIGHTING: DAY OUTSIDE (HYPERREALISTIC UGC):**
+The lighting MUST be authentic daytime outdoor lighting as if someone is genuinely recording outside during the day with their phone. Include: bright and clear natural sunlight, realistic shadows cast by natural light, authentic mobile phone recording during daytime with natural color temperature, genuine outdoor ambient lighting, slight overexposure in bright areas typical of phone cameras. The video should look exactly like real daytime footage recorded on a phone - not professional lighting, but genuine mobile phone day recording with all its characteristic qualities (natural shadows, bright sunlight, slight overexposure in highlights, etc.).`;
+          } else if (lightingLower.includes('artificial light inside')) {
+            return `\n\n**LIGHTING: ARTIFICIAL LIGHT INSIDE (HYPERREALISTIC UGC):**
+The lighting MUST be authentic indoor artificial lighting as if someone is genuinely recording inside with artificial lights using their phone. Include: warm or cool LED/incandescent lights, realistic indoor ambient light, authentic mobile phone recording indoors with artificial light sources, natural shadows from indoor lights, slight color cast from artificial light sources. The video should look exactly like real indoor footage recorded on a phone with artificial lighting - not professional lighting, but genuine mobile phone indoor recording with all its characteristic qualities (warm/cool color casts, indoor shadows, artificial light sources visible, etc.).`;
+          } else if (lightingLower.includes('natural light inside')) {
+            return `\n\n**LIGHTING: NATURAL LIGHT INSIDE (HYPERREALISTIC UGC):**
+The lighting MUST be authentic indoor natural lighting as if someone is genuinely recording inside near a window with their phone. Include: natural window light streaming indoors, soft diffused daylight through windows, realistic indoor natural lighting, authentic mobile phone recording indoors with natural light, natural shadows from window light, bright and airy atmosphere. The video should look exactly like real indoor footage recorded on a phone near a window - not professional lighting, but genuine mobile phone indoor recording with natural window light and all its characteristic qualities (soft diffused light, window shadows, bright and airy feel, etc.).`;
+          }
+          return '';
+        })()
+      : '';
+
     const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
 
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${ugcCloseUpInstructions}
+${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${ugcCloseUpInstructions}${lightingInstructions}
 
-The final output must be strictly a single, continuous paragraph, without line breaks, interweaving the action, product focus, technical composition, and visual aesthetics to create a cohesive and powerful instruction. The prompt's focus must ensure the video looks **100% authentic**, as if it were recorded by a real person on their phone (iPhone/Android), emphasizing the **spontaneity, natural handheld camera movements (slight shake, imperfect zoom, quick pan), subtle mobile grain, and genuine ambient lighting without professional artifices**. The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content.
+The final output must be strictly a single, continuous paragraph, without line breaks, interweaving the action, product focus, technical composition, and visual aesthetics to create a cohesive and powerful instruction. The prompt's focus must ensure the video looks **100% authentic**, as if it were recorded by a real person on their phone (iPhone/Android), emphasizing the **spontaneity, natural handheld camera movements (slight shake, imperfect zoom, quick pan), subtle mobile grain, and genuine ambient lighting without professional artifices**. The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content. **IMPORTANT: If the action or scene description suggests there should be text overlay (on-screen text, captions, subtitles, or any text appearing in the video), you MUST explicitly specify what text should appear in the overlay. Quote the exact words/phrases that should be displayed so the user can easily modify them if needed.**
 
 [ACTION TEXT TO ENHANCE]: ${actionText}
 
@@ -233,8 +278,7 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
       enhancedText: enhancedText,
       compositions: compositionArray,
       lighting,
-      usage: usageInfo,
-      cost: costInfo
+      usage: usageInfo
     });
 
   } catch (error: any) {
