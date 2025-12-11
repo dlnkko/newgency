@@ -36,6 +36,13 @@ const tools = [
     path: '/tools/product-video-generator',
     description: 'Generate professional product video prompts',
     active: true
+  },
+  {
+    id: 'viral-script-generator',
+    name: 'Viral Script Generator',
+    path: '/tools/viral-script-generator',
+    description: 'Create viral UGC marketing scripts',
+    active: true
   }
 ];
 
