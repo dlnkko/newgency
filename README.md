@@ -22,6 +22,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    # Note: The API key should start with 'fc-' prefix
    FIRECRAWL_API_KEY=fc-your_firecrawl_api_key_here
 
+   # ScrapeCreators API Key
+   # Get your API key from: https://scrapecreators.com
+   # Used for extracting transcripts from Instagram Reels and TikTok videos
+   SCRAPECREATORS_API_KEY=your_scrapecreators_api_key_here
+
    # Upstash Redis (OPCIONAL - Recomendado solo para producción seria)
    # Si NO lo configuras: el rate limiting funciona pero se resetea en cada deploy
    # Si SÍ lo configuras: rate limiting persistente que sobrevive a reinicios
@@ -43,6 +48,7 @@ When deploying to Vercel, you need to add the environment variables in the Verce
 3. Add the following variables:
    - `GOOGLE_GENAI_API_KEY` = your Google Gemini API key
    - `FIRECRAWL_API_KEY` = your Firecrawl API key (with `fc-` prefix)
+   - `SCRAPECREATORS_API_KEY` = your ScrapeCreators API key (for Instagram Reel and TikTok transcript extraction)
    - `UPSTASH_REDIS_REST_URL` = your Upstash Redis URL (OPCIONAL - solo si quieres rate limiting persistente)
    - `UPSTASH_REDIS_REST_TOKEN` = your Upstash Redis token (OPCIONAL - solo si quieres rate limiting persistente)
    

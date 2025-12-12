@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
+import axios from 'axios';
 
 // Helper function to get and validate API key at runtime
 function getGoogleGenAI() {
@@ -13,6 +14,16 @@ function getGoogleGenAI() {
   return new GoogleGenAI({ 
     apiKey: googleApiKey 
   });
+}
+
+function getScrapeCreatorsApiKey() {
+  const apiKey = process.env.SCRAPECREATORS_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('SCRAPECREATORS_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
+  }
+  
+  return apiKey;
 }
 
 export async function POST(request: NextRequest) {
@@ -42,146 +53,197 @@ export async function POST(request: NextRequest) {
 
     // Initialize AI client at runtime
     const ai = getGoogleGenAI();
+    const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
     
     const body = await request.json();
-    const { videoPrompt, duration } = body;
+    const { videoUrl, productDescription } = body;
 
-    if (!videoPrompt || !videoPrompt.trim()) {
+    if (!videoUrl || !videoUrl.trim()) {
       return NextResponse.json(
-        { error: 'Video prompt is required' },
+        { error: 'Video URL is required' },
         { status: 400 }
       );
     }
 
-    // Use gemini-3-pro-preview model
-    const model = ai.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+    if (!productDescription || !productDescription.trim()) {
+      return NextResponse.json(
+        { error: 'Product description is required' },
+        { status: 400 }
+      );
+    }
 
-    // Calculate effective duration (if duration is 1, treat as flexible)
-    const effectiveDuration = duration === 1 ? null : duration;
-    const durationContext = effectiveDuration 
-      ? `The script must be optimized for a ${effectiveDuration}-second video. Keep it concise and impactful.`
-      : 'The script length should be optimized automatically for maximum engagement.';
+    // Detect platform and extract transcript
+    const isInstagram = videoUrl.includes('instagram.com/reel') || videoUrl.includes('instagram.com/p/');
+    const isTikTok = videoUrl.includes('tiktok.com');
 
-    const prompt = `You are an expert viral script writer specializing in UGC (User-Generated Content) marketing for products. Your scripts are designed to make viewers stop scrolling and want to buy the product.
+    if (!isInstagram && !isTikTok) {
+      return NextResponse.json(
+        { error: 'Invalid URL. Please provide an Instagram Reel or TikTok URL.' },
+        { status: 400 }
+      );
+    }
 
-**Context:**
-- Video Description: "${videoPrompt}"
-- ${durationContext}
+    let transcript = '';
+    
+    try {
+      if (isInstagram) {
+        // Instagram Reel transcript
+        const response = await axios.get(
+          `https://api.scrapecreators.com/v2/instagram/media/transcript?url=${encodeURIComponent(videoUrl)}`,
+          {
+            headers: { 'x-api-key': scrapeCreatorsApiKey }
+          }
+        );
+        
+        const data = response.data;
+        if (data.transcripts && Array.isArray(data.transcripts) && data.transcripts.length > 0) {
+          transcript = data.transcripts[0].text || '';
+        } else if (data.text) {
+          // Fallback to direct text property if transcripts array doesn't exist
+          transcript = data.text;
+        } else {
+          return NextResponse.json(
+            { error: 'Could not extract transcript from Instagram Reel. The video may not have captions.' },
+            { status: 400 }
+          );
+        }
+      } else if (isTikTok) {
+        // TikTok transcript
+        const response = await axios.get(
+          `https://api.scrapecreators.com/v1/tiktok/video/transcript?url=${encodeURIComponent(videoUrl)}`,
+          {
+            headers: { 'x-api-key': scrapeCreatorsApiKey }
+          }
+        );
+        
+        const data = response.data;
+        if (data.transcript) {
+          // TikTok transcript might be an array or object, join it if it's an array
+          if (Array.isArray(data.transcript)) {
+            transcript = data.transcript.map((item: any) => {
+              if (typeof item === 'string') return item;
+              if (item.text) return item.text;
+              return '';
+            }).join(' ').trim();
+          } else if (typeof data.transcript === 'string') {
+            transcript = data.transcript;
+          } else if (data.transcript.text) {
+            transcript = data.transcript.text;
+          } else {
+            return NextResponse.json(
+              { error: 'Could not extract transcript from TikTok video. The video may not have captions.' },
+              { status: 400 }
+            );
+          }
+        } else {
+          return NextResponse.json(
+            { error: 'Could not extract transcript from TikTok video. The video may not have captions.' },
+            { status: 400 }
+          );
+        }
+      }
+    } catch (scrapeError: any) {
+      console.error('Error scraping transcript:', scrapeError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to extract transcript from video',
+          details: scrapeError.response?.data?.message || scrapeError.message || 'Could not access video transcript'
+        },
+        { status: 500 }
+      );
+    }
 
-**Your Task:**
-Analyze the video description and create a viral UGC marketing script structured in 4 critical sections. The script must be designed to convert viewers into buyers.
+    if (!transcript || !transcript.trim()) {
+      return NextResponse.json(
+        { error: 'Empty transcript received. The video may not have captions.' },
+        { status: 400 }
+      );
+    }
 
-**Script Structure:**
+    console.log('Transcript extracted, length:', transcript.length);
 
-1. **HOOK** (The Scroll Stopper):
-   - This is THE MOST IMPORTANT part - it's what makes users stop scrolling
-   - Must be a bold statement, a provocative question, or an impossible premise
-   - Should trigger strong emotion (curiosity, shock, desire, urgency)
-   - Must be attention-grabbing and impossible to ignore
-   - Examples: "I spent $500 on skincare and THIS $20 product changed everything", "What if I told you this $15 product replaced my entire morning routine?", "This product does something IMPOSSIBLE"
-   - Keep it punchy, direct, and emotionally charged
-   - Should immediately make the viewer think "I need to see this"
+    // Transform transcript using Gemini 3
+    const transformationPrompt = `You are an expert creative writer specializing in viral marketing scripts. Your task is to creatively transform a viral video transcript into a new, improved script for the user's product while maintaining the essence, energy, and storytelling magic of the original.
 
-2. **PROMISE** (The High-Stakes Commitment):
-   - Works hand-in-hand with the hook
-   - Creates a high-stakes promise or challenge that keeps viewers watching
-   - Can include time limits, challenges, or difficult-to-achieve claims
-   - Should create anticipation and curiosity
-   - Examples: "I'm going to show you the results in 7 days", "I challenge you to find a better product under $30", "This will either work or I'll return it - watch what happens"
-   - Should make viewers think "I need to see if this is real" or "I need to see if they can deliver"
-   - Creates a "will they or won't they" tension
+**Original Video Transcript:**
+${transcript}
 
-3. **BODY** (The Product Story):
-   - Quick, engaging content about the product
-   - Showcases the product's value, benefits, and features
-   - Should build desire and demonstrate why the product is special
-   - Keep it fast-paced and engaging
-   - Focus on benefits that matter to the target audience
-   - Can include demonstrations, comparisons, or testimonials
-   - Should make the viewer think "I want this" or "I need this"
-   - Maintains momentum from the hook and promise
+**Product Description:**
+${productDescription}
 
-4. **PAYOFF** (The Conversion Moment):
-   - Delivers on the promise made in the hook
-   - Shows results, fulfillment, or proof
-   - Should satisfy the curiosity created by the hook and promise
-   - Creates urgency or desire to purchase
-   - Can include call-to-action, limited-time offers, or final compelling reason to buy
-   - Should make the viewer think "I need to buy this now"
-   - This is where the conversion happens
+**Your Creative Task:**
+Transform the original viral video transcript into a fresh, creative script for the user's product. You MUST:
+
+1. **Be Creative, Don't Copy** - Rewrite everything in your own words. NEVER copy exact phrases or sentences from the original. Instead, capture the essence, energy, and style but express it creatively and uniquely.
+
+2. **Maintain the Storytelling DNA** - Keep the same narrative structure, flow, pacing, and storytelling arc (hook, buildup, reveal, payoff). But express it with fresh, creative language.
+
+3. **Preserve Tone and Energy** - Match the exact energy level, speaking style, and conversational tone. If it's enthusiastic, be enthusiastic. If it's calm and reassuring, be calm and reassuring. If it's bold and provocative, be bold and provocative.
+
+4. **Enhance and Improve** - Don't just adapt, IMPROVE the script. Add relevant details about the user's product that make sense. Include specific benefits, features, or uses that are coherent with the product description. Make it more compelling and convincing than the original.
+
+5. **Adapt Hooks and Body Creatively** - Transform the opening hook to be attention-grabbing for the user's product, but maintain the same hook style and energy. Adapt the body content to showcase the product's unique value while maintaining the narrative flow.
+
+6. **Keep Natural Language** - The script should feel authentic, conversational, and natural - like a real person enthusiastically talking about the product.
 
 **Critical Requirements:**
-- The script MUST be focused on UGC marketing and product sales
-- Every section should work together to drive purchase intent
-- The hook is the most critical - it must be impossible to scroll past
-- The promise must create genuine curiosity and anticipation
-- The body should quickly build desire for the product
-- The payoff must deliver satisfaction and drive action
-- The entire script should feel authentic, like a real person sharing their experience
-- Use natural, conversational language (not overly salesy)
-- Make it feel genuine and relatable
-- Optimize for the specified duration (if provided)
-- The script should make viewers want to buy the product
+- **NEVER copy exact phrases or sentences** - Everything must be creatively rewritten
+- Maintain the emotional triggers, promises, and calls-to-action structure, but express them uniquely
+- Add relevant product details, benefits, and features that enhance the script
+- Keep the same energy, enthusiasm level, and speaking style
+- The script should feel fresh and creative, not like a template
+- Maintain the original's storytelling magic but with new, improved content
+- Do NOT add analysis or explanations - just output the transformed script
+- **CRITICAL FORMATTING**: The script must be output as a SINGLE, CONTINUOUS PARAGRAPH with no line breaks, no bullet points, and no special formatting. Just one flowing paragraph of text.
 
-**Output Format:**
-Provide your response EXACTLY in this format (use these exact section headers):
+**Output:**
+Provide ONLY the creatively transformed script as a single continuous paragraph. It should be a fresh, improved version that captures the original's energy and structure but is completely rewritten with creative, unique language focused on the user's product. No headers, no explanations, no line breaks - just the script text flowing naturally in one paragraph.`;
 
-**HOOK:**
-[Your hook here - the scroll stopper]
-
-**PROMISE:**
-[Your promise here - the high-stakes commitment]
-
-**BODY:**
-[Your body here - the product story]
-
-**PAYOFF:**
-[Your payoff here - the conversion moment]
-
-Make sure each section is compelling, conversion-focused, and designed to make viewers want to buy the product.`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const scriptText = response.text();
-
-    // Parse the response to extract each section
-    const hookMatch = scriptText.match(/\*\*HOOK:\*\*\s*(.*?)(?=\*\*PROMISE:\*\*|\*\*BODY:\*\*|\*\*PAYOFF:\*\*|$)/is);
-    const promiseMatch = scriptText.match(/\*\*PROMISE:\*\*\s*(.*?)(?=\*\*BODY:\*\*|\*\*PAYOFF:\*\*|$)/is);
-    const bodyMatch = scriptText.match(/\*\*BODY:\*\*\s*(.*?)(?=\*\*PAYOFF:\*\*|$)/is);
-    const payoffMatch = scriptText.match(/\*\*PAYOFF:\*\*\s*(.*?)$/is);
-
-    // Extract text, handling both markdown and plain text formats
-    const extractText = (match: RegExpMatchArray | null): string => {
-      if (!match) return '';
-      let text = match[1].trim();
-      // Remove markdown formatting if present
-      text = text.replace(/\*\*/g, '').replace(/\*/g, '').trim();
-      return text;
-    };
-
-    const script: {
-      hook: string;
-      promise: string;
-      body: string;
-      payoff: string;
-    } = {
-      hook: extractText(hookMatch),
-      promise: extractText(promiseMatch),
-      body: extractText(bodyMatch),
-      payoff: extractText(payoffMatch),
-    };
-
-    // Validate that we got all sections
-    if (!script.hook || !script.promise || !script.body || !script.payoff) {
-      console.error('Failed to parse script sections. Raw response:', scriptText);
+    let result;
+    try {
+      result = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: transformationPrompt }],
+          },
+        ],
+      });
+    } catch (geminiError: any) {
+      console.error('Error calling Gemini:', geminiError);
       return NextResponse.json(
-        { error: 'Failed to generate complete script. Please try again.' },
+        { 
+          error: 'Error transforming script with Gemini',
+          details: geminiError.message || 'Could not process request with AI'
+        },
+        { status: 500 }
+      );
+    }
+
+    // Extract script text from response and ensure it's a single paragraph
+    let scriptText = '';
+    if (result.candidates && result.candidates[0]?.content?.parts) {
+      scriptText = result.candidates[0].content.parts
+        .map((part: any) => part.text || '')
+        .join('')
+        .trim()
+        // Ensure it's a single paragraph (replace multiple line breaks with spaces)
+        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    if (!scriptText) {
+      console.error('No script text in response:', result);
+      return NextResponse.json(
+        { error: 'Failed to generate script text from AI response' },
         { status: 500 }
       );
     }
 
     // Calculate costs (for backend logging only)
-    const usageMetadata = response.usageMetadata;
+    const usageMetadata = (result as any).usageMetadata;
     if (usageMetadata) {
       const inputTokens = usageMetadata.promptTokenCount || 0;
       const outputTokens = usageMetadata.candidatesTokenCount || 0;
@@ -204,7 +266,7 @@ Make sure each section is compelling, conversion-focused, and designed to make v
     }
 
     return NextResponse.json({
-      script,
+      script: scriptText,
     });
   } catch (error: any) {
     console.error('Error generating viral script:', error);
@@ -222,4 +284,3 @@ Make sure each section is compelling, conversion-focused, and designed to make v
     );
   }
 }
-

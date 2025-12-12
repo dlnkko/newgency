@@ -3,30 +3,34 @@
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 
-interface ViralScript {
-  hook: string;
-  promise: string;
-  body: string;
-  payoff: string;
-}
-
 export default function ViralScriptGenerator() {
-  const [videoPrompt, setVideoPrompt] = useState<string>('');
-  const [duration, setDuration] = useState<number>(15);
-  const [generatedScript, setGeneratedScript] = useState<ViralScript | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [productDescription, setProductDescription] = useState<string>('');
+  const [generatedScript, setGeneratedScript] = useState<string>('');
+  const [adaptedScript, setAdaptedScript] = useState<string>('');
+  const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isAdapting, setIsAdapting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
+  const [copiedAdapted, setCopiedAdapted] = useState<boolean>(false);
+  const [isScraping, setIsScraping] = useState<boolean>(false);
 
   const handleGenerate = async () => {
-    if (!videoPrompt.trim()) {
-      setError('Please enter a video prompt');
+    if (!videoUrl.trim()) {
+      setError('Please enter a video URL (Instagram Reel or TikTok)');
+      return;
+    }
+
+    if (!productDescription.trim()) {
+      setError('Please describe your product');
       return;
     }
 
     setIsGenerating(true);
+    setIsScraping(true);
     setError(null);
-    setGeneratedScript(null);
+    setGeneratedScript('');
 
     try {
       const response = await fetch('/api/generate-viral-script', {
@@ -35,8 +39,8 @@ export default function ViralScriptGenerator() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          videoPrompt,
-          duration,
+          videoUrl,
+          productDescription,
         }),
       });
 
@@ -57,24 +61,69 @@ export default function ViralScriptGenerator() {
       console.error('Error generating viral script:', err);
     } finally {
       setIsGenerating(false);
+      setIsScraping(false);
     }
   };
 
-  const copyToClipboard = async (text: string, sectionId: string) => {
+  const copyToClipboard = async (text: string, isAdapted: boolean = false) => {
+    if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedId(sectionId);
-      setTimeout(() => setCopiedId(null), 3000);
+      if (isAdapted) {
+        setCopiedAdapted(true);
+        setTimeout(() => setCopiedAdapted(false), 3000);
+      } else {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      }
     } catch (err) {
       console.error('Failed to copy:', err);
     }
   };
 
-  const copyFullScript = () => {
+  const handleAdaptScript = async (duration: number) => {
     if (!generatedScript) return;
-    const fullScript = `HOOK:\n${generatedScript.hook}\n\nPROMISE:\n${generatedScript.promise}\n\nBODY:\n${generatedScript.body}\n\nPAYOFF:\n${generatedScript.payoff}`;
-    copyToClipboard(fullScript, 'full');
+
+    setSelectedDuration(duration);
+    setIsAdapting(true);
+    setError(null);
+    setAdaptedScript('');
+
+    try {
+      const response = await fetch('/api/adapt-viral-script', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          originalScript: generatedScript,
+          duration,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
+        } else {
+          setError(data.error || 'Failed to adapt script');
+        }
+        return;
+      }
+
+      setAdaptedScript(data.script);
+    } catch (err) {
+      setError('An error occurred while adapting the script');
+      console.error('Error adapting script:', err);
+    } finally {
+      setIsAdapting(false);
+    }
   };
+
+  // Detect platform from URL
+  const isInstagram = videoUrl.includes('instagram.com/reel') || videoUrl.includes('instagram.com/p/');
+  const isTikTok = videoUrl.includes('tiktok.com');
 
   return (
     <DashboardLayout>
@@ -84,68 +133,55 @@ export default function ViralScriptGenerator() {
             Viral Script Generator
           </h1>
           <p className="text-sm text-zinc-400 sm:text-base">
-            Generate viral UGC marketing scripts that convert. Create compelling hooks, promises, and payoffs designed to make users want to buy your product.
+            Paste a viral Instagram Reel or TikTok URL, describe your product, and get a converted script that maintains the same storytelling, format, and style but focused on your product.
           </p>
         </div>
 
-        {/* Video Prompt Input */}
+        {/* Video URL Input */}
         <div className="mb-8">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Video Prompt
+            Instagram Reel or TikTok URL
+          </label>
+          <input
+            type="text"
+            value={videoUrl}
+            onChange={(e) => setVideoUrl(e.target.value)}
+            placeholder="https://www.instagram.com/reel/... or https://www.tiktok.com/..."
+            disabled={isGenerating}
+            className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {videoUrl && (
+            <p className="mt-2 text-xs text-zinc-500">
+              {isInstagram && '✓ Instagram Reel detected'}
+              {isTikTok && '✓ TikTok video detected'}
+              {!isInstagram && !isTikTok && videoUrl && '⚠ Please enter a valid Instagram Reel or TikTok URL'}
+            </p>
+          )}
+        </div>
+
+        {/* Product Description Input */}
+        <div className="mb-8">
+          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+            Describe Your Product
           </label>
           <textarea
-            value={videoPrompt}
-            onChange={(e) => setVideoPrompt(e.target.value)}
-            placeholder="Describe what happens in your video... (e.g., 'A person unboxes a new skincare product, shows before/after results, demonstrates the product in use')"
+            value={productDescription}
+            onChange={(e) => setProductDescription(e.target.value)}
+            placeholder="Describe your product in detail... (e.g., 'A revolutionary skincare serum with hyaluronic acid that reduces fine lines in 7 days, comes in a premium glass bottle with dropper')"
             rows={6}
             disabled={isGenerating}
             className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
           />
         </div>
 
-        {/* Duration Selection */}
-        <div className="mb-8">
-          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Video Duration (seconds)
-          </label>
-          <div className="grid grid-cols-5 sm:grid-cols-8 gap-2">
-            {Array.from({ length: 15 }, (_, i) => i + 1).map((seconds) => {
-              const isSelected = duration === seconds;
-              const isDefault = seconds === 1;
-              return (
-                <button
-                  key={seconds}
-                  onClick={() => setDuration(seconds)}
-                  disabled={isGenerating}
-                  className={`group relative rounded-lg border-2 transition-all duration-200 ${
-                    isDefault
-                      ? `col-span-2 sm:col-span-1 px-4 sm:px-4 py-3 sm:py-3 text-xs sm:text-sm font-bold ${isSelected ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_15px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30' : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90 hover:shadow-[0_0_8px_rgba(250,204,21,0.1)]'}`
-                      : `px-3 py-2 text-xs font-semibold ${isSelected ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_15px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30' : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90 hover:shadow-[0_0_8px_rgba(250,204,21,0.1)]'}`
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  <span className="relative z-10">{isDefault ? 'Default' : `${seconds}s`}</span>
-                  {isSelected && !isDefault && (
-                    <span className="absolute right-1 top-1/2 -translate-y-1/2 text-amber-400 text-[10px]">✓</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-xs text-zinc-500">
-            {duration === 1 
-              ? 'Default selected - AI will optimize script length automatically.'
-              : `${duration} seconds selected - AI will create a script optimized for this duration.`}
-          </p>
-        </div>
-
         {/* Generate Button */}
         <div className="mb-8">
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !videoPrompt.trim()}
+            disabled={isGenerating || !videoUrl.trim() || !productDescription.trim()}
             className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 text-base font-bold text-white shadow-[0_0_30px_rgba(250,204,21,0.4)] transition-all hover:from-amber-400 hover:to-amber-500 hover:shadow-[0_0_40px_rgba(250,204,21,0.5)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500 disabled:hover:to-amber-600"
           >
-            {isGenerating ? 'Generating Viral Script...' : 'Generate Viral Script'}
+            {isScraping ? 'Scraping video transcript...' : isGenerating ? 'Generating viral script...' : 'Generate Viral Script'}
           </button>
         </div>
 
@@ -158,104 +194,83 @@ export default function ViralScriptGenerator() {
 
         {/* Generated Script */}
         {generatedScript && (
-          <div className="space-y-6">
-            {/* Full Script Copy Button */}
+          <div className="space-y-4">
+            {/* Copy Button */}
             <div className="flex justify-end">
               <button
-                onClick={copyFullScript}
+                onClick={() => copyToClipboard(generatedScript, false)}
                 className="rounded-lg border-2 border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition-all hover:border-amber-500/70 hover:bg-amber-500/20"
               >
-                {copiedId === 'full' ? 'Copied!' : 'Copy Full Script'}
+                {copied ? 'Copied!' : 'Copy Script'}
               </button>
             </div>
 
-            {/* Hook Section */}
+            {/* Script Display */}
             <div className="rounded-2xl border-2 border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-amber-500/5 p-6 shadow-[0_0_30px_rgba(250,204,21,0.15)]">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-lg font-bold uppercase tracking-wide text-amber-400">
-                  🎣 Hook
-                </h3>
-                <button
-                  onClick={() => copyToClipboard(generatedScript.hook, 'hook')}
-                  className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200 transition-all hover:bg-amber-500/20"
-                >
-                  {copiedId === 'hook' ? 'Copied!' : 'Copy'}
-                </button>
+              <h3 className="mb-4 text-lg font-bold uppercase tracking-wide text-amber-400">
+                Your Viral Script
+              </h3>
+              <div className="prose prose-invert max-w-none">
+                <p className="text-sm leading-relaxed text-zinc-100">
+                  {generatedScript}
+                </p>
               </div>
-              <p className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap">
-                {generatedScript.hook}
-              </p>
-              <p className="mt-3 text-xs italic text-zinc-400">
-                The opening line that stops the scroll. Bold, emotional, and impossible to ignore.
-              </p>
             </div>
 
-            {/* Promise Section */}
+            {/* Adapt to Duration Section */}
             <div className="rounded-2xl border-2 border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-blue-500/5 p-6 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-lg font-bold uppercase tracking-wide text-blue-400">
-                  ⚡ Promise
-                </h3>
-                <button
-                  onClick={() => copyToClipboard(generatedScript.promise, 'promise')}
-                  className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200 transition-all hover:bg-blue-500/20"
-                >
-                  {copiedId === 'promise' ? 'Copied!' : 'Copy'}
-                </button>
+              <h3 className="mb-4 text-lg font-bold uppercase tracking-wide text-blue-400">
+                Adapt it to:
+              </h3>
+              <div className="flex flex-wrap gap-3 mb-4">
+                {[15, 20, 30].map((duration) => (
+                  <button
+                    key={duration}
+                    onClick={() => handleAdaptScript(duration)}
+                    disabled={isAdapting}
+                    className={`rounded-lg border-2 px-4 py-2 text-sm font-semibold transition-all ${
+                      selectedDuration === duration
+                        ? 'border-blue-500/80 bg-gradient-to-br from-blue-500/20 to-blue-500/10 text-blue-200 shadow-[0_0_15px_rgba(59,130,246,0.2)] ring-1 ring-blue-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-blue-500/50 hover:bg-zinc-800/50 hover:text-blue-300/90 hover:shadow-[0_0_8px_rgba(59,130,246,0.1)]'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {duration}s
+                  </button>
+                ))}
               </div>
-              <p className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap">
-                {generatedScript.promise}
-              </p>
-              <p className="mt-3 text-xs italic text-zinc-400">
-                The high-stakes promise or challenge that keeps viewers watching to see if it delivers.
-              </p>
+              {isAdapting && (
+                <p className="text-xs text-blue-400 animate-pulse">
+                  Adapting script to {selectedDuration} seconds...
+                </p>
+              )}
             </div>
 
-            {/* Body Section */}
-            <div className="rounded-2xl border-2 border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-purple-500/5 p-6 shadow-[0_0_30px_rgba(168,85,247,0.15)]">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-lg font-bold uppercase tracking-wide text-purple-400">
-                  📦 Body
-                </h3>
-                <button
-                  onClick={() => copyToClipboard(generatedScript.body, 'body')}
-                  className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-200 transition-all hover:bg-purple-500/20"
-                >
-                  {copiedId === 'body' ? 'Copied!' : 'Copy'}
-                </button>
+            {/* Adapted Script Display */}
+            {adaptedScript && (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => copyToClipboard(adaptedScript, true)}
+                    className="rounded-lg border-2 border-green-500/50 bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-200 transition-all hover:border-green-500/70 hover:bg-green-500/20"
+                  >
+                    {copiedAdapted ? 'Copied!' : 'Copy Adapted Script'}
+                  </button>
+                </div>
+                <div className="rounded-2xl border-2 border-green-500/30 bg-gradient-to-br from-green-500/10 to-green-500/5 p-6 shadow-[0_0_30px_rgba(34,197,94,0.15)]">
+                  <h3 className="mb-4 text-lg font-bold uppercase tracking-wide text-green-400">
+                    Adapted Script ({selectedDuration}s)
+                  </h3>
+                  <div className="prose prose-invert max-w-none">
+                    <p className="text-sm leading-relaxed text-zinc-100">
+                      {adaptedScript}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <p className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap">
-                {generatedScript.body}
-              </p>
-              <p className="mt-3 text-xs italic text-zinc-400">
-                Quick, engaging content about the product that builds desire and showcases value.
-              </p>
-            </div>
-
-            {/* Payoff Section */}
-            <div className="rounded-2xl border-2 border-green-500/30 bg-gradient-to-br from-green-500/10 to-green-500/5 p-6 shadow-[0_0_30px_rgba(34,197,94,0.15)]">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-lg font-bold uppercase tracking-wide text-green-400">
-                  🎯 Payoff
-                </h3>
-                <button
-                  onClick={() => copyToClipboard(generatedScript.payoff, 'payoff')}
-                  className="rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-200 transition-all hover:bg-green-500/20"
-                >
-                  {copiedId === 'payoff' ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-              <p className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap">
-                {generatedScript.payoff}
-              </p>
-              <p className="mt-3 text-xs italic text-zinc-400">
-                The satisfying conclusion that delivers on the promise and drives the purchase decision.
-              </p>
-            </div>
+            )}
           </div>
         )}
       </div>
     </DashboardLayout>
   );
 }
-
