@@ -295,7 +295,24 @@ export async function POST(request: NextRequest) {
         analysisPrompt = 'You are an expert narrative designer. Analyze this Facebook/Instagram ad through a storytelling lens. Provide a concise but powerful analysis covering: 1) **Narrative Structure** - story framework (Hero\'s Journey, Before/After, Problem/Solution, Testimonial, Day-in-life), three-act structure with timestamps (setup/confrontation/resolution), inciting incident, 2) **Character** - protagonist type (customer, founder, hero), relatability triggers, transformation arc, antagonist/obstacle, 3) **Conflict & Stakes** - core tension, emotional stakes, urgency, peak dramatic moment, 4) **Story Beats** - major beats with timestamps, rhythm/tempo, plot points, information reveal strategy, 5) **Voice** - narrative voice (1st/2nd/3rd person, VO style), dialogue authenticity, memorable phrases, text overlay contribution, 6) **Visual Storytelling** - symbolic imagery, color grading shifts, camera angles, visual motifs, transitions, 7) **Themes** - underlying message (empowerment, transformation, belonging), universal truths, cultural context, 8) **Emotional Arc** - emotional journey (hope/struggle/breakthrough vs fear/discovery/relief), cathartic moments, vulnerability usage, 9) **Authenticity** - polished vs raw balance, genuine vs manufactured markers, production quality role, 10) **Story-to-CTA** - narrative-to-CTA bridge, earned vs forced CTA, organic product integration, 11) **Replication Blueprint** - shot list with narrative purpose, essential beats, timing per act, visual metaphors to maintain, voice/tone requirements, dialogue structure, non-negotiable vs adaptable elements. Be concise, use timestamps, explain WHY each choice works. Format with clear sections and bold headers.';
         break;
       case 'production':
-        analysisPrompt = 'You are an expert AI video generator prompter, analyze the visual aspects of this video and provide a detailed prompt to get the exact same video, make sure to include the actions, the lighting, the hyper-realism, the scenes, cuts, everything that comes into place include it. **IMPORTANT: If there is any text overlay in the video, you MUST specify exactly what text appears in the overlay (quote the exact words/phrases). Include this in your prompt so the user can modify it if needed.** The output must be only the detailed prompt optimized for AI video generation in one paragraph.';
+        analysisPrompt = `You are an expert AI video generator prompter, analyze the visual aspects of this video and provide a detailed prompt to get the exact same video, make sure to include the actions, the lighting, the hyper-realism, the scenes, cuts, everything that comes into place include it. 
+
+**CRITICAL ANALYSIS REQUIREMENTS:**
+
+1. **Audio/Text Structure Detection:**
+   - Determine if the video has VOICEOVER (narration/spoken content) OR only TEXT OVERLAY (text on screen, no spoken words)
+   - If there's voiceover: specify "HAS_VOICEOVER: yes" and describe the narration style
+   - If there's only text overlay (no voiceover): specify "HAS_VOICEOVER: no" and indicate "TEXT_OVERLAY_ONLY: yes"
+
+2. **Text Overlay Analysis (if present):**
+   - Specify exactly what text appears in the overlay (quote the exact words/phrases)
+   - Describe the TEXT DESIGN: font style, size, weight (bold, regular, etc.)
+   - Describe the TEXT COLORS: exact colors used, gradients, effects
+   - Describe the TEXT GRAPHICS: animations, transitions, effects, shadows, outlines
+   - Describe the TEXT PLACEMENT: position on screen, timing, appearance/disappearance
+   - Describe the TEXT STYLE: modern, bold, minimalist, decorative, etc.
+
+The output must be only the detailed prompt optimized for AI video generation in one paragraph.`;
         break;
       default:
         analysisPrompt = 'Analiza este video de anuncio publicitario en detalle.';
@@ -507,18 +524,37 @@ ${analysisText}
 Transform the original production prompt into an equally detailed video prompt, but now adapted for the user's product/service: "${productService}".
 ${productImageFile ? 'Use the provided product image as a reference to ensure the adapted prompt accurately describes the product\'s appearance, colors, materials, textures, and visual characteristics. The prompt must be faithful to what is shown in the image.' : ''}
 
-**Critical Requirements:**
-- Maintain the EXACT same level of detail as the original prompt
-- Keep ALL the production elements (lighting, camera movements, cuts, scenes, hyper-realism, etc.)
-- Transform ALL actions, product references, and visual elements to be relevant to "${productService}"
+**CRITICAL REQUIREMENTS:**
+
+1. **Audio/Text Structure - MUST MATCH ORIGINAL:**
+   - FIRST, analyze the original prompt to determine if it has VOICEOVER or only TEXT OVERLAY
+   - If the original has "HAS_VOICEOVER: no" or "TEXT_OVERLAY_ONLY: yes", then your adapted prompt MUST also have ONLY TEXT OVERLAY (NO voiceover, NO narration, NO spoken words)
+   - If the original has voiceover, you may include voiceover but adapt it to "${productService}"
+   - **CRITICAL**: If original is TEXT OVERLAY ONLY, the adapted version MUST be TEXT OVERLAY ONLY - do NOT add voiceover
+
+2. **Text Overlay (if original has text overlay):**
+   - Adapt the text content to be relevant to "${productService}", but maintain the SAME TEXT DESIGN (font style, size, weight)
+   - Maintain the SAME TEXT COLORS (exact colors, gradients, effects from original)
+   - Maintain the SAME TEXT GRAPHICS (animations, transitions, effects, shadows, outlines from original)
+   - Maintain the SAME TEXT PLACEMENT (position on screen, timing, appearance/disappearance)
+   - Maintain the SAME TEXT STYLE (modern, bold, minimalist, decorative, etc.)
+   - Adapt ONLY the actual words/phrases to be relevant to "${productService}", but keep everything else (graphics, colors, design) EXACTLY as described in the original
+
+3. **General Adaptation:**
+   - Maintain the EXACT same level of detail as the original prompt
+   - Keep ALL the production elements (lighting, camera movements, cuts, scenes, hyper-realism, etc.)
+   - Transform ALL actions, product references, and visual elements to be relevant to "${productService}"
 ${productImageFile ? '- Accurately describe the product from the image: exact colors, materials, textures, shape, size, branding, and visual details' : ''}
-- If the original prompt shows a product being used, show "${productService}" being used in the same way
-- If the original prompt has specific actions, adapt those actions to make sense with "${productService}"
-- Maintain the same visual style, pacing, and cinematography
-- Keep all technical details (lighting, camera angles, cuts, transitions, etc.) exactly the same
-- Only change what needs to change to make it relevant to "${productService}"
-- The output must be a single, detailed paragraph optimized for AI video generation
-- **IMPORTANT: If the original prompt includes text overlay, adapt the text overlay to be relevant to "${productService}" while maintaining the same style and placement**
+   - If the original prompt shows a product being used, show "${productService}" being used in the same way
+   - If the original prompt has specific actions, adapt those actions to make sense with "${productService}"
+   - Maintain the same visual style, pacing, and cinematography
+   - Keep all technical details (lighting, camera angles, cuts, transitions, etc.) exactly the same
+   - Keep the same emotional tone and mood
+   - Only change what needs to change to make it relevant to "${productService}"
+
+4. **Output Format:**
+   - The output must be a single, detailed paragraph optimized for AI video generation
+   - No line breaks, no additional explanations or formatting
 
 **Output:**
 Provide ONLY the adapted production prompt as a single continuous paragraph, without line breaks, without additional explanations or formatting.`;
