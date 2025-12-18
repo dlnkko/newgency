@@ -155,78 +155,81 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Stream el video directamente desde la URL a Gemini Files (sin cargar todo en memoria)
-    // Esto es más eficiente para producción, especialmente con videos grandes
-    console.log('Streaming video desde URL a Gemini Files:', cleanVideoUrl);
+    // Descargar el video y subirlo a Gemini Files
+    // IMPORTANTE: El video se descarga temporalmente en RAM (no en disco), se sube a Gemini, y luego la memoria se libera automáticamente
+    // Para producción con muchos usuarios, el servidor necesita suficiente RAM para manejar múltiples descargas simultáneas
+    console.log('Descargando video desde URL:', cleanVideoUrl);
     let myfile;
+    let videoBuffer: Buffer | null = null;
+    
     try {
-      // Descargar el video como stream (más eficiente para producción)
+      // Primero, hacer HEAD request para obtener el tamaño del video (opcional, para logging)
+      try {
+        const headResponse = await axios.head(cleanVideoUrl, {
+          timeout: 10000,
+          maxRedirects: 5
+        });
+        const contentLength = headResponse.headers['content-length'];
+        if (contentLength) {
+          const sizeMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
+          console.log(`Tamaño del video: ${sizeMB} MB`);
+        }
+      } catch (headError) {
+        // Si falla el HEAD, continuar igual
+        console.log('No se pudo obtener el tamaño del video (HEAD request falló), continuando...');
+      }
+      
+      // Descargar el video en memoria (RAM temporal, se libera después de subir)
       const videoResponse = await axios.get(cleanVideoUrl, {
-        responseType: 'stream',
+        responseType: 'arraybuffer',
         timeout: 120000, // 120 segundos para videos más largos
         maxRedirects: 5,
         maxContentLength: Infinity, // Sin límite de tamaño
         maxBodyLength: Infinity
       });
       
-      // Convertir el stream de axios a un stream compatible con Gemini
-      const { Readable } = await import('stream');
-      const videoStream = videoResponse.data as NodeJS.ReadableStream;
+      videoBuffer = Buffer.from(videoResponse.data);
+      console.log('Video descargado en RAM:', videoBuffer.length, 'bytes (', (videoBuffer.length / (1024 * 1024)).toFixed(2), 'MB)');
       
-      // Subir directamente el stream a Gemini Files
-      // Esto evita cargar todo el video en memoria, ideal para producción
-      myfile = await ai.files.upload({
-        file: videoStream as any,
-        config: { mimeType: 'video/mp4' }
-      });
-      
-      console.log('Video streamed y subido a Gemini:', myfile.uri);
-      console.log('Estado inicial del archivo:', myfile.state);
-    } catch (streamError: any) {
-      console.error('Error al hacer streaming del video:', streamError);
-      console.log('Intentando fallback: descarga en memoria (para videos pequeños)...');
-      
-      // Fallback: si el streaming falla, intentar con descarga en memoria (para videos pequeños)
-      try {
-        const videoResponse = await axios.get(cleanVideoUrl, {
-          responseType: 'arraybuffer',
-          timeout: 60000,
-          maxRedirects: 5
-        });
-        
-        const videoBuffer = Buffer.from(videoResponse.data);
-        console.log('Video descargado en memoria (fallback):', videoBuffer.length, 'bytes');
-        
-        if (videoBuffer.length === 0) {
-          return NextResponse.json(
-            { 
-              error: 'El video descargado está vacío',
-              details: 'El video no tiene contenido'
-            },
-            { status: 500 }
-          );
-        }
-        
-        // Subir desde buffer como fallback
-        const videoUint8Array = new Uint8Array(videoBuffer);
-        const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
-        
-        myfile = await ai.files.upload({
-          file: videoBlob,
-          config: { mimeType: 'video/mp4' }
-        });
-        
-        console.log('Video subido a Gemini (fallback desde buffer):', myfile.uri);
-      } catch (fallbackError: any) {
-        console.error('Error en fallback:', fallbackError);
+      if (videoBuffer.length === 0) {
         return NextResponse.json(
           { 
-            error: 'Error al procesar el video',
-            details: streamError.message || fallbackError.message || 'No se pudo descargar o subir el video. El video puede ser muy grande o la URL no es accesible.'
+            error: 'El video descargado está vacío',
+            details: 'El video no tiene contenido'
           },
           { status: 500 }
         );
       }
+      
+      // Convertir buffer a Blob para subirlo a Gemini Files
+      const videoUint8Array = new Uint8Array(videoBuffer);
+      const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
+      
+      // Subir el video a Gemini Files
+      console.log('Subiendo video a Gemini Files...');
+      myfile = await ai.files.upload({
+        file: videoBlob,
+        config: { mimeType: 'video/mp4' }
+      });
+      
+      console.log('Video subido a Gemini:', myfile.uri);
+      console.log('Estado inicial del archivo:', myfile.state);
+      
+      // Liberar la memoria explícitamente (aunque JavaScript lo hará automáticamente)
+      videoBuffer = null;
+      
+    } catch (videoError: any) {
+      // Asegurarse de liberar la memoria en caso de error
+      videoBuffer = null;
+      
+      console.error('Error al descargar o subir el video:', videoError);
+      return NextResponse.json(
+        { 
+          error: 'Error al procesar el video',
+          details: videoError.message || 'No se pudo descargar o subir el video. El video puede ser muy grande o la URL no es accesible.'
+        },
+        { status: 500 }
+      );
     }
 
     // Esperar a que el archivo esté en estado ACTIVE
