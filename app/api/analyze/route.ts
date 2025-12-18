@@ -520,19 +520,31 @@ ${productImageFile ? '3. An image of the user\'s product/service (analyze this i
 **Original Production Prompt:**
 ${analysisText}
 
+**User's Product/Service Description:**
+"${productService}"
+
 **Your Task:**
-Transform the original production prompt into an equally detailed video prompt, but now adapted for the user's product/service: "${productService}".
+Transform the original production prompt into an equally detailed video prompt, but now adapted for the user's product/service described above.
 ${productImageFile ? 'Use the provided product image as a reference to ensure the adapted prompt accurately describes the product\'s appearance, colors, materials, textures, and visual characteristics. The prompt must be faithful to what is shown in the image.' : ''}
 
 **CRITICAL REQUIREMENTS:**
 
-1. **Audio/Text Structure - MUST MATCH ORIGINAL:**
+1. **Scene Coherence with Product Description:**
+   - Analyze the user's product/service description: "${productService}"
+   - Create scenes that are COHERENT with what the product/service does and its purpose
+   - Adapt ALL scenes from the original video to show the user's product/service in action
+   - The actions and what happens in each scene must make sense with the product/service description
+   - If the user describes "earplugs that lets you control the noises in the street", create scenes showing someone using earplugs, controlling street noise, experiencing the benefit
+   - If the user describes a service or product with specific features, show those features in action through the scenes
+   - Make sure every scene tells part of the story of how the product/service works or its benefits, based on the description provided
+
+2. **Audio/Text Structure - MUST MATCH ORIGINAL:**
    - FIRST, analyze the original prompt to determine if it has VOICEOVER or only TEXT OVERLAY
    - If the original has "HAS_VOICEOVER: no" or "TEXT_OVERLAY_ONLY: yes", then your adapted prompt MUST also have ONLY TEXT OVERLAY (NO voiceover, NO narration, NO spoken words)
    - If the original has voiceover, you may include voiceover but adapt it to "${productService}"
    - **CRITICAL**: If original is TEXT OVERLAY ONLY, the adapted version MUST be TEXT OVERLAY ONLY - do NOT add voiceover
 
-2. **Text Overlay (if original has text overlay):**
+3. **Text Overlay (if original has text overlay):**
    - Adapt the text content to be relevant to "${productService}", but maintain the SAME TEXT DESIGN (font style, size, weight)
    - Maintain the SAME TEXT COLORS (exact colors, gradients, effects from original)
    - Maintain the SAME TEXT GRAPHICS (animations, transitions, effects, shadows, outlines from original)
@@ -540,17 +552,17 @@ ${productImageFile ? 'Use the provided product image as a reference to ensure th
    - Maintain the SAME TEXT STYLE (modern, bold, minimalist, decorative, etc.)
    - Adapt ONLY the actual words/phrases to be relevant to "${productService}", but keep everything else (graphics, colors, design) EXACTLY as described in the original
 
-3. **General Adaptation:**
-   - Maintain the EXACT same level of detail as the original prompt
-   - Keep ALL the production elements (lighting, camera movements, cuts, scenes, hyper-realism, etc.)
+4. **Action and Scene Adaptation:**
    - Transform ALL actions, product references, and visual elements to be relevant to "${productService}"
+   - Adapt scenes to show the product/service being used or demonstrated based on the description
+   - If the original shows someone using a product, show someone using "${productService}" in a way that demonstrates what it does (based on the description)
+   - Make sure actions in scenes are logical and coherent with the product/service description
+   - Each scene should contribute to showing how the product/service works, what problem it solves, or what benefit it provides (based on the description)
 ${productImageFile ? '- Accurately describe the product from the image: exact colors, materials, textures, shape, size, branding, and visual details' : ''}
-   - If the original prompt shows a product being used, show "${productService}" being used in the same way
-   - If the original prompt has specific actions, adapt those actions to make sense with "${productService}"
-   - Maintain the same visual style, pacing, and cinematography
+   - Maintain the same visual style, pacing, and cinematography from the original
    - Keep all technical details (lighting, camera angles, cuts, transitions, etc.) exactly the same
    - Keep the same emotional tone and mood
-   - Only change what needs to change to make it relevant to "${productService}"
+   - Maintain the EXACT same level of detail as the original prompt
 
 4. **Output Format:**
    - The output must be a single, detailed paragraph optimized for AI video generation

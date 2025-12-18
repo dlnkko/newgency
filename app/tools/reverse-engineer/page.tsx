@@ -284,14 +284,14 @@ export default function ReverseEngineer() {
                 htmlFor="productService"
                 className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
               >
-                Your Product/Service
+                Describe your product or service
               </label>
               <input
                 id="productService"
                 type="text"
                 value={productService}
                 onChange={(e) => setProductService(e.target.value)}
-                placeholder="e.g., Premium coffee subscription, Fitness app, Luxury skincare product"
+                placeholder="e.g., earplugs that lets you control the noises in the street"
                 className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black"
               />
             </div>
