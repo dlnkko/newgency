@@ -398,46 +398,9 @@ export default function ReverseEngineer() {
         {/* Results */}
         {result && (
           <div className="mt-6 space-y-6">
-            {/* Original Production Prompt */}
-            {result.geminiAnalysis && (
-              <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(250,204,21,0.22)]">
-                <div className="mb-3 flex items-center gap-2">
-                  <svg
-                    className="h-5 w-5 text-amber-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                    />
-                  </svg>
-                  <h3 className="text-xl font-semibold text-zinc-50">
-                    {result.type === 'production' ? 'Original Production Prompt' : 'AI breakdown (Gemini)'}
-                  </h3>
-                </div>
-                <div className="prose prose-sm max-w-none text-zinc-200/90">
-                  <div
-                    className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-amber-100/5"
-                    style={{
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: result.type === 'production' 
-                        ? `<p class="mb-3 leading-relaxed">${result.geminiAnalysis.text.replace(/\n/g, '<br />')}</p>`
-                        : formatGeminiText(result.geminiAnalysis.text),
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Adapted Prompt for User's Product/Service */}
-            {result.adaptedPrompt && (
+            {/* Show Adapted Prompt if available, otherwise show original */}
+            {result.adaptedPrompt ? (
+              // Adapted Prompt (when productService is provided)
               <div className="rounded-2xl border border-emerald-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(16,185,129,0.22)]">
                 <div className="mb-3 flex items-center gap-2">
                   <svg
@@ -454,7 +417,7 @@ export default function ReverseEngineer() {
                     />
                   </svg>
                   <h3 className="text-xl font-semibold text-zinc-50">
-                    Adapted Prompt for Your Product/Service
+                    Adapted Production Prompt
                   </h3>
                 </div>
                 <div className="mb-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 px-4 py-2">
@@ -483,9 +446,47 @@ export default function ReverseEngineer() {
                   }}
                   className="mt-4 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
                 >
-                  {copied ? 'Copied!' : 'Copy Adapted Prompt'}
+                  {copied ? 'Copied!' : 'Copy Prompt'}
                 </button>
               </div>
+            ) : (
+              // Original Prompt (when no productService provided)
+              result.geminiAnalysis && (
+                <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(250,204,21,0.22)]">
+                  <div className="mb-3 flex items-center gap-2">
+                    <svg
+                      className="h-5 w-5 text-amber-300"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                      />
+                    </svg>
+                    <h3 className="text-xl font-semibold text-zinc-50">
+                      {result.type === 'production' ? 'Production Prompt' : 'AI breakdown (Gemini)'}
+                    </h3>
+                  </div>
+                  <div className="prose prose-sm max-w-none text-zinc-200/90">
+                    <div
+                      className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-amber-100/5"
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        wordWrap: 'break-word',
+                      }}
+                      dangerouslySetInnerHTML={{
+                        __html: result.type === 'production' 
+                          ? `<p class="mb-3 leading-relaxed">${result.geminiAnalysis.text.replace(/\n/g, '<br />')}</p>`
+                          : formatGeminiText(result.geminiAnalysis.text),
+                      }}
+                    />
+                  </div>
+                </div>
+              )
             )}
           </div>
         )}

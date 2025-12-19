@@ -16,6 +16,29 @@ function getGoogleGenAI() {
   });
 }
 
+// Helper function to detect language from text (simple heuristic)
+function detectLanguage(text: string): string {
+  if (!text || text.trim().length === 0) return 'en';
+  
+  // Simple heuristic based on common characters
+  const spanishChars = /[ñáéíóúüÑÁÉÍÓÚÜ]/;
+  const hasSpanishChars = spanishChars.test(text);
+  
+  // Count common Spanish words vs English words
+  const spanishWords = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'del', 'una'];
+  const englishWords = ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at'];
+  
+  const lowerText = text.toLowerCase();
+  const spanishCount = spanishWords.filter(word => lowerText.includes(word)).length;
+  const englishCount = englishWords.filter(word => lowerText.includes(word)).length;
+  
+  if (hasSpanishChars || spanishCount > englishCount) {
+    return 'es';
+  }
+  
+  return 'en';
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check rate limit
@@ -288,6 +311,12 @@ export async function POST(request: NextRequest) {
       console.log('Archivo listo en estado ACTIVE, procediendo con el análisis...');
     }
 
+    // Detectar idioma del usuario si hay productService
+    let userLanguage = 'en'; // default
+    if (productService && productService.trim()) {
+      userLanguage = detectLanguage(productService);
+    }
+
     // Crear prompt según el tipo de análisis
     let analysisPrompt = '';
     switch (type) {
@@ -298,24 +327,10 @@ export async function POST(request: NextRequest) {
         analysisPrompt = 'You are an expert narrative designer. Analyze this Facebook/Instagram ad through a storytelling lens. Provide a concise but powerful analysis covering: 1) **Narrative Structure** - story framework (Hero\'s Journey, Before/After, Problem/Solution, Testimonial, Day-in-life), three-act structure with timestamps (setup/confrontation/resolution), inciting incident, 2) **Character** - protagonist type (customer, founder, hero), relatability triggers, transformation arc, antagonist/obstacle, 3) **Conflict & Stakes** - core tension, emotional stakes, urgency, peak dramatic moment, 4) **Story Beats** - major beats with timestamps, rhythm/tempo, plot points, information reveal strategy, 5) **Voice** - narrative voice (1st/2nd/3rd person, VO style), dialogue authenticity, memorable phrases, text overlay contribution, 6) **Visual Storytelling** - symbolic imagery, color grading shifts, camera angles, visual motifs, transitions, 7) **Themes** - underlying message (empowerment, transformation, belonging), universal truths, cultural context, 8) **Emotional Arc** - emotional journey (hope/struggle/breakthrough vs fear/discovery/relief), cathartic moments, vulnerability usage, 9) **Authenticity** - polished vs raw balance, genuine vs manufactured markers, production quality role, 10) **Story-to-CTA** - narrative-to-CTA bridge, earned vs forced CTA, organic product integration, 11) **Replication Blueprint** - shot list with narrative purpose, essential beats, timing per act, visual metaphors to maintain, voice/tone requirements, dialogue structure, non-negotiable vs adaptable elements. Be concise, use timestamps, explain WHY each choice works. Format with clear sections and bold headers.';
         break;
       case 'production':
-        analysisPrompt = `You are an expert AI video generator prompter, analyze the visual aspects of this video and provide a detailed prompt to get the exact same video, make sure to include the actions, the lighting, the hyper-realism, the scenes, cuts, everything that comes into place include it. 
-
-**CRITICAL ANALYSIS REQUIREMENTS:**
-
-1. **Audio/Text Structure Detection:**
-   - Determine if the video has VOICEOVER (narration/spoken content) OR only TEXT OVERLAY (text on screen, no spoken words)
-   - If there's voiceover: specify "HAS_VOICEOVER: yes" and describe the narration style
-   - If there's only text overlay (no voiceover): specify "HAS_VOICEOVER: no" and indicate "TEXT_OVERLAY_ONLY: yes"
-
-2. **Text Overlay Analysis (if present):**
-   - Specify exactly what text appears in the overlay (quote the exact words/phrases)
-   - Describe the TEXT DESIGN: font style, size, weight (bold, regular, etc.)
-   - Describe the TEXT COLORS: exact colors used, gradients, effects
-   - Describe the TEXT GRAPHICS: animations, transitions, effects, shadows, outlines
-   - Describe the TEXT PLACEMENT: position on screen, timing, appearance/disappearance
-   - Describe the TEXT STYLE: modern, bold, minimalist, decorative, etc.
-
-The output must be only the detailed prompt optimized for AI video generation in one paragraph.`;
+        const langInstruction = userLanguage === 'es' 
+          ? 'Genera el prompt en ESPAÑOL.' 
+          : 'Generate the prompt in ENGLISH.';
+        analysisPrompt = `Analyze this ad video and generate a detailed prompt in a single paragraph that describes exactly how to recreate this video. The prompt must include: all visual actions and scenes in chronological order, lighting configuration (natural, artificial, hyperrealistic), camera movements and angles, all text overlays with their exact content and visual design (colors, fonts, graphics, placement) if present, whether there's voiceover or only text overlay, visual quality and hyperrealism requirements, and format and aspect ratio. Generate ONLY the prompt as ONE continuous paragraph without headers, sections, bullet points, or labels. Integrate all information naturally and fluidly. ${langInstruction}`;
         break;
       default:
         analysisPrompt = 'Analiza este video de anuncio publicitario en detalle.';
@@ -464,7 +479,14 @@ The output must be only the detailed prompt optimized for AI video generation in
           try {
             console.log('Uploading product image to Gemini Files...');
             const productBuffer = Buffer.from(productImage.split(',')[1], 'base64');
-            const productMime = productImage.split(';')[0].split(':')[1] || 'image/png';
+            let productMime = productImage.split(';')[0].split(':')[1] || 'image/png';
+            
+            // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
+            const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+            if (!supportedFormats.includes(productMime.toLowerCase())) {
+              console.log(`Converting unsupported format ${productMime} to PNG`);
+              productMime = 'image/png';
+            }
             
             const productUint8Array = new Uint8Array(productBuffer);
             const productBlob = new Blob([productUint8Array], { type: productMime });
@@ -514,65 +536,39 @@ The output must be only the detailed prompt optimized for AI video generation in
           }
         }
         
-        const adaptationPrompt = `You are an expert AI video generator prompt engineer. You have been given:
+        const targetLanguage = detectLanguage(productService);
+        const langText = targetLanguage === 'es' ? 'español' : 'english';
+        const langInstructions = targetLanguage === 'es' 
+          ? {
+              intro: 'Tienes un prompt detallado que describe un video de un anuncio publicitario. Adapta ese prompt al producto o servicio del usuario, manteniendo la misma estructura técnica (iluminación, cámara, cortes, transiciones, estilo visual) pero transformando todas las acciones y visuales para que sean coherentes con el producto/servicio del usuario.',
+              original: 'PROMPT ORIGINAL DEL VIDEO:',
+              product: 'PRODUCTO/SERVICIO A ADAPTAR:',
+              image: 'IMAGEN DEL PRODUCTO: Tienes una imagen del producto. Úsala para describir con precisión su apariencia, colores, materiales, texturas, forma, tamaño y branding en el prompt adaptado.',
+              instructions: 'Transforma todas las acciones para que muestren cómo se usa',
+              output: 'Genera ÚNICAMENTE el prompt adaptado en ESPAÑOL, en UN SOLO párrafo continuo sin saltos de línea, encabezados ni formato adicional.'
+            }
+          : {
+              intro: 'You have a detailed prompt that describes an ad video. Adapt that prompt to the user\'s product/service, maintaining the same technical structure (lighting, camera, cuts, transitions, visual style) but transforming all actions and visuals to be coherent with the user\'s product/service.',
+              original: 'ORIGINAL VIDEO PROMPT:',
+              product: 'PRODUCT/SERVICE TO ADAPT TO:',
+              image: 'PRODUCT IMAGE: You have access to a product image. Use it to accurately describe its appearance, colors, materials, textures, shape, size, and branding in the adapted prompt.',
+              instructions: 'Transform all actions to show how',
+              output: 'Generate ONLY the adapted prompt in ENGLISH, as ONE continuous paragraph without line breaks, headers, or additional formatting.'
+            };
+        
+        const adaptationPrompt = `${langInstructions.intro}
 
-1. A detailed production prompt that was reverse-engineered from a successful ad video
-2. A user's product/service: "${productService}"
-${productImageFile ? '3. An image of the user\'s product/service (analyze this image carefully to understand the exact product appearance, colors, materials, textures, and characteristics)' : ''}
-
-**Original Production Prompt:**
+${langInstructions.original}
 ${analysisText}
 
-**User's Product/Service Description:**
+${langInstructions.product}
 "${productService}"
+${productImageFile ? `${langInstructions.image}` : ''}
 
-**Your Task:**
-Transform the original production prompt into an equally detailed video prompt, but now adapted for the user's product/service described above.
-${productImageFile ? 'Use the provided product image as a reference to ensure the adapted prompt accurately describes the product\'s appearance, colors, materials, textures, and visual characteristics. The prompt must be faithful to what is shown in the image.' : ''}
+INSTRUCTIONS:
+${langInstructions.instructions} "${productService}" in a logical and coherent way. Adapt all visual descriptions to show "${productService}" instead of the original product. If there are text overlays or voiceover, adapt their content to be relevant to "${productService}" but maintain the same design, colors, graphics, placement, and style. Preserve the same lighting, camera movements, angles, cuts, transitions, pacing, format, and aspect ratio from the original.
 
-**CRITICAL REQUIREMENTS:**
-
-1. **Scene Coherence with Product Description:**
-   - Analyze the user's product/service description: "${productService}"
-   - Create scenes that are COHERENT with what the product/service does and its purpose
-   - Adapt ALL scenes from the original video to show the user's product/service in action
-   - The actions and what happens in each scene must make sense with the product/service description
-   - If the user describes "earplugs that lets you control the noises in the street", create scenes showing someone using earplugs, controlling street noise, experiencing the benefit
-   - If the user describes a service or product with specific features, show those features in action through the scenes
-   - Make sure every scene tells part of the story of how the product/service works or its benefits, based on the description provided
-
-2. **Audio/Text Structure - MUST MATCH ORIGINAL:**
-   - FIRST, analyze the original prompt to determine if it has VOICEOVER or only TEXT OVERLAY
-   - If the original has "HAS_VOICEOVER: no" or "TEXT_OVERLAY_ONLY: yes", then your adapted prompt MUST also have ONLY TEXT OVERLAY (NO voiceover, NO narration, NO spoken words)
-   - If the original has voiceover, you may include voiceover but adapt it to "${productService}"
-   - **CRITICAL**: If original is TEXT OVERLAY ONLY, the adapted version MUST be TEXT OVERLAY ONLY - do NOT add voiceover
-
-3. **Text Overlay (if original has text overlay):**
-   - Adapt the text content to be relevant to "${productService}", but maintain the SAME TEXT DESIGN (font style, size, weight)
-   - Maintain the SAME TEXT COLORS (exact colors, gradients, effects from original)
-   - Maintain the SAME TEXT GRAPHICS (animations, transitions, effects, shadows, outlines from original)
-   - Maintain the SAME TEXT PLACEMENT (position on screen, timing, appearance/disappearance)
-   - Maintain the SAME TEXT STYLE (modern, bold, minimalist, decorative, etc.)
-   - Adapt ONLY the actual words/phrases to be relevant to "${productService}", but keep everything else (graphics, colors, design) EXACTLY as described in the original
-
-4. **Action and Scene Adaptation:**
-   - Transform ALL actions, product references, and visual elements to be relevant to "${productService}"
-   - Adapt scenes to show the product/service being used or demonstrated based on the description
-   - If the original shows someone using a product, show someone using "${productService}" in a way that demonstrates what it does (based on the description)
-   - Make sure actions in scenes are logical and coherent with the product/service description
-   - Each scene should contribute to showing how the product/service works, what problem it solves, or what benefit it provides (based on the description)
-${productImageFile ? '- Accurately describe the product from the image: exact colors, materials, textures, shape, size, branding, and visual details' : ''}
-   - Maintain the same visual style, pacing, and cinematography from the original
-   - Keep all technical details (lighting, camera angles, cuts, transitions, etc.) exactly the same
-   - Keep the same emotional tone and mood
-   - Maintain the EXACT same level of detail as the original prompt
-
-4. **Output Format:**
-   - The output must be a single, detailed paragraph optimized for AI video generation
-   - No line breaks, no additional explanations or formatting
-
-**Output:**
-Provide ONLY the adapted production prompt as a single continuous paragraph, without line breaks, without additional explanations or formatting.`;
+${langInstructions.output}`;
 
         const adaptationParts: any[] = [
           {
@@ -609,9 +605,10 @@ Provide ONLY the adapted production prompt as a single continuous paragraph, wit
           adaptationText = (adaptationResult as any).text;
         }
 
-        if (adaptationText) {
+        if (adaptationText && adaptationText.trim().length > 0) {
           adaptedPrompt = adaptationText.trim();
-          console.log('Adapted prompt generated successfully');
+          console.log('Adapted prompt generated successfully, length:', adaptedPrompt.length);
+          console.log('Adapted prompt preview:', adaptedPrompt.substring(0, 200));
           
           // Calculate costs for adaptation (server-side only)
           try {
@@ -636,30 +633,59 @@ Provide ONLY the adapted production prompt as a single continuous paragraph, wit
           } catch (adaptCostError) {
             console.error('Error calculating adaptation costs:', adaptCostError);
           }
+        } else {
+          console.warn('Adapted prompt text is empty or invalid');
+          adaptedPrompt = null;
         }
       } catch (adaptationError: any) {
         console.error('Error generating adapted prompt:', adaptationError);
+        console.error('Error details:', adaptationError.message);
+        adaptedPrompt = null;
         // Don't fail the whole request if adaptation fails, just log it
       }
     } else if (type === 'production' && productService && productService.trim() && !hasValidAnalysis) {
       console.warn('Cannot generate adapted prompt: original analysis was not obtained successfully');
       console.warn('Analysis text:', analysisText);
+      adaptedPrompt = null;
+    } else if (type === 'production' && (!productService || !productService.trim())) {
+      console.log('No product/service provided, skipping adapted prompt generation');
+      adaptedPrompt = null;
     }
     
     console.log('Análisis completado');
+    console.log('Adapted prompt final value:', adaptedPrompt ? `Present (${adaptedPrompt.length} chars)` : 'null');
 
-    return NextResponse.json({
-      success: true,
-      adId,
-      type,
-      data,
-      geminiAnalysis: {
-        text: analysisText,
-        fileUri: myfile.uri
-      },
-      adaptedPrompt: adaptedPrompt || null,
-      usage: usageInfo
-    });
+    // Si hay productService y adaptedPrompt, solo devolver el adapted prompt
+    // Si no hay productService o no se generó adaptedPrompt, devolver el análisis original
+    if (type === 'production' && productService && productService.trim() && adaptedPrompt) {
+      // Solo devolver adapted prompt cuando hay productService
+      return NextResponse.json({
+        success: true,
+        adId,
+        type,
+        data,
+        geminiAnalysis: {
+          text: adaptedPrompt,
+          fileUri: myfile.uri
+        },
+        adaptedPrompt: adaptedPrompt,
+        usage: usageInfo
+      });
+    } else {
+      // Devolver análisis original
+      return NextResponse.json({
+        success: true,
+        adId,
+        type,
+        data,
+        geminiAnalysis: {
+          text: analysisText,
+          fileUri: myfile.uri
+        },
+        adaptedPrompt: null,
+        usage: usageInfo
+      });
+    }
 
   } catch (error: any) {
     console.error('Error al analizar el anuncio:', error);
