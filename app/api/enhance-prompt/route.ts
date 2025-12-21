@@ -180,11 +180,11 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
 
 Respond ONLY with the enhanced text as a single continuous paragraph, without line breaks, without additional explanations or special formatting.`;
 
-    // Llamar a Gemini 3 Pro Preview
+    // Llamar a Gemini 3 Flash Preview
     let result;
     try {
       result = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',
@@ -239,7 +239,7 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
         const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
         const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
-        // Precios de Gemini 3 Pro Preview (por millón de tokens)
+        // Precios de Gemini 3 Flash Preview (por millón de tokens)
         // Input: $2 por millón (hasta 200k tokens)
         // Output: $12 por millón (hasta 200k tokens)
         const inputCostPerMillion = 2.0;

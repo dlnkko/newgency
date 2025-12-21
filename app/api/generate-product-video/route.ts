@@ -205,7 +205,7 @@ Provide your response EXACTLY in this format:
 
     try {
       const result = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',
@@ -269,7 +269,7 @@ ${videoPrompt}
 Provide ONLY the optimized prompt as a single continuous paragraph, under 999 characters.`;
 
             const optimizationResult = await ai.models.generateContent({
-              model: 'gemini-3-pro-preview',
+              model: 'gemini-3-flash-preview',
               contents: [
                 {
                   role: 'user',
@@ -330,7 +330,7 @@ Provide ONLY the optimized prompt as a single continuous paragraph, under 999 ch
           const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
           const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
-          // Gemini 3 Pro Preview pricing: Input $2/M tokens, Output $12/M tokens
+          // Gemini 3 Flash Preview pricing: Input $2/M tokens, Output $12/M tokens
           const inputCostPerMillion = 2.0;
           const outputCostPerMillion = 12.0;
 

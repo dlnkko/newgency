@@ -91,7 +91,7 @@ Provide ONLY the adapted script as a single continuous paragraph optimized for $
     let result;
     try {
       result = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',

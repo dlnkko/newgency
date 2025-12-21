@@ -214,7 +214,7 @@ Format your response EXACTLY as:
     let staticAdAnalysis;
     try {
       staticAdAnalysis = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',
@@ -482,7 +482,7 @@ ${scrapedBranding ? '- Integrate product brand colors and typography where appro
     let productAdaptation;
     try {
       productAdaptation = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',

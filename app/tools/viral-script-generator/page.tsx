@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
+import CopyButton from '@/app/components/CopyButton';
 
 export default function ViralScriptGenerator() {
   const [videoUrl, setVideoUrl] = useState<string>('');
@@ -12,8 +13,6 @@ export default function ViralScriptGenerator() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isAdapting, setIsAdapting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<boolean>(false);
-  const [copiedAdapted, setCopiedAdapted] = useState<boolean>(false);
   const [isScraping, setIsScraping] = useState<boolean>(false);
 
   const handleGenerate = async () => {
@@ -65,21 +64,6 @@ export default function ViralScriptGenerator() {
     }
   };
 
-  const copyToClipboard = async (text: string, isAdapted: boolean = false) => {
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      if (isAdapted) {
-        setCopiedAdapted(true);
-        setTimeout(() => setCopiedAdapted(false), 3000);
-      } else {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 3000);
-      }
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
 
   const handleAdaptScript = async (duration: number) => {
     if (!generatedScript) return;
@@ -197,12 +181,11 @@ export default function ViralScriptGenerator() {
           <div className="space-y-4">
             {/* Copy Button */}
             <div className="flex justify-end">
-              <button
-                onClick={() => copyToClipboard(generatedScript, false)}
-                className="rounded-lg border-2 border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition-all hover:border-amber-500/70 hover:bg-amber-500/20"
-              >
-                {copied ? 'Copied!' : 'Copy Script'}
-              </button>
+              <CopyButton 
+                text={generatedScript} 
+                label="Copy Script"
+                copiedLabel="Copied!"
+              />
             </div>
 
             {/* Script Display */}
@@ -249,12 +232,12 @@ export default function ViralScriptGenerator() {
             {adaptedScript && (
               <div className="space-y-4">
                 <div className="flex justify-end">
-                  <button
-                    onClick={() => copyToClipboard(adaptedScript, true)}
-                    className="rounded-lg border-2 border-green-500/50 bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-200 transition-all hover:border-green-500/70 hover:bg-green-500/20"
-                  >
-                    {copiedAdapted ? 'Copied!' : 'Copy Adapted Script'}
-                  </button>
+                  <CopyButton 
+                    text={adaptedScript} 
+                    label="Copy Adapted Script"
+                    copiedLabel="Copied!"
+                    className="bg-green-500/10 text-green-200 border-green-500/50 hover:bg-green-500/20 hover:border-green-500/70"
+                  />
                 </div>
                 <div className="rounded-2xl border-2 border-green-500/30 bg-gradient-to-br from-green-500/10 to-green-500/5 p-6 shadow-[0_0_30px_rgba(34,197,94,0.15)]">
                   <h3 className="mb-4 text-lg font-bold uppercase tracking-wide text-green-400">

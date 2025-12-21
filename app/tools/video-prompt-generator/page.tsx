@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
+import CopyButton from '@/app/components/CopyButton';
 
 type ProductFocus = 'conceptual' | 'ugc' | null;
 type MainStyle = 'hyperrealistic';
@@ -63,7 +64,6 @@ export default function VideoPromptGenerator() {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
-  const [copied, setCopied] = useState<boolean>(false);
 
   const handleSceneCountChange = (count: number) => {
     setSceneCount(count);
@@ -603,19 +603,11 @@ export default function VideoPromptGenerator() {
                 <h3 className="text-xl font-bold text-amber-300">Generated Prompt</h3>
                 <p className="mt-1 text-xs text-zinc-500">Ready to use in your AI video generator</p>
               </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedPrompt);
-                  setCopied(true);
-                  setTimeout(() => {
-                    setCopied(false);
-                  }, 3000);
-                }}
-                className="flex items-center gap-2 rounded-xl border-2 border-amber-500/50 bg-amber-500/10 px-5 py-2.5 text-sm font-semibold text-amber-300 transition-all hover:border-amber-500/70 hover:bg-amber-500/20 hover:shadow-[0_0_15px_rgba(250,204,21,0.2)]"
-              >
-                <span>📋</span>
-                <span>{copied ? 'Copied!' : 'Copy'}</span>
-              </button>
+              <CopyButton 
+                text={generatedPrompt} 
+                label="Copy"
+                copiedLabel="Copied!"
+              />
             </div>
             <pre className="whitespace-pre-wrap rounded-xl border-2 border-zinc-800/50 bg-zinc-950/70 p-6 text-sm leading-relaxed text-zinc-200 font-mono">
               {generatedPrompt}

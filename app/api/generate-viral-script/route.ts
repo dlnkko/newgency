@@ -202,7 +202,7 @@ Provide ONLY the creatively transformed script as a single continuous paragraph.
     let result;
     try {
       result = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',

@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
+import CopyButton from '@/app/components/CopyButton';
 
 type AnalysisType = 'psychological' | 'storytelling' | 'production' | null;
 
-// Helper to format Gemini text into simple HTML
-function formatGeminiText(text: string): string {
+// Helper to format analysis text into simple HTML
+function formatAnalysisText(text: string): string {
   if (!text) return '';
   
   // Escapar HTML primero
@@ -122,7 +123,6 @@ export default function ReverseEngineer() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<boolean>(false);
 
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -436,18 +436,14 @@ export default function ReverseEngineer() {
                     <p className="mb-3 leading-relaxed">{result.adaptedPrompt}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(result.adaptedPrompt);
-                    setCopied(true);
-                    setTimeout(() => {
-                      setCopied(false);
-                    }, 3000);
-                  }}
-                  className="mt-4 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
-                >
-                  {copied ? 'Copied!' : 'Copy Prompt'}
-                </button>
+                <div className="mt-4 flex justify-end">
+                  <CopyButton 
+                    text={result.adaptedPrompt} 
+                    label="Copy Prompt"
+                    copiedLabel="Copied!"
+                    className="bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 hover:border-emerald-500/70"
+                  />
+                </div>
               </div>
             ) : (
               // Original Prompt (when no productService provided)
@@ -468,8 +464,15 @@ export default function ReverseEngineer() {
                       />
                     </svg>
                     <h3 className="text-xl font-semibold text-zinc-50">
-                      {result.type === 'production' ? 'Production Prompt' : 'AI breakdown (Gemini)'}
+                      {result.type === 'production' ? 'Production Prompt' : result.type === 'psychological' ? 'Psychological Analysis' : result.type === 'storytelling' ? 'Storytelling Analysis' : 'Analysis'}
                     </h3>
+                  </div>
+                  <div className="mb-4 flex justify-end">
+                    <CopyButton 
+                      text={result.geminiAnalysis.text} 
+                      label="Copy Analysis"
+                      copiedLabel="Copied!"
+                    />
                   </div>
                   <div className="prose prose-sm max-w-none text-zinc-200/90">
                     <div
@@ -481,7 +484,7 @@ export default function ReverseEngineer() {
                       dangerouslySetInnerHTML={{
                         __html: result.type === 'production' 
                           ? `<p class="mb-3 leading-relaxed">${result.geminiAnalysis.text.replace(/\n/g, '<br />')}</p>`
-                          : formatGeminiText(result.geminiAnalysis.text),
+                          : formatAnalysisText(result.geminiAnalysis.text),
                       }}
                     />
                   </div>

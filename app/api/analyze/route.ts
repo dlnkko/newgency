@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
     let result;
     try {
       result = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',
@@ -427,7 +427,7 @@ export async function POST(request: NextRequest) {
         const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
         const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
-        // Precios de Gemini 3 Pro Preview (por millón de tokens)
+        // Precios de Gemini 3 Flash Preview (por millón de tokens)
         // Input: $2 por millón (hasta 200k tokens)
         // Output: $12 por millón (hasta 200k tokens)
         const inputCostPerMillion = 2.0;
@@ -587,7 +587,7 @@ ${langInstructions.output}`;
         }
 
         const adaptationResult = await ai.models.generateContent({
-          model: 'gemini-3-pro-preview',
+          model: 'gemini-3-flash-preview',
           contents: [
             {
               role: 'user',
