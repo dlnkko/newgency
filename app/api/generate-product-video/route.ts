@@ -330,9 +330,9 @@ Provide ONLY the optimized prompt as a single continuous paragraph, under 999 ch
           const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
           const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
-          // Gemini 3 Flash Preview pricing: Input $2/M tokens, Output $12/M tokens
-          const inputCostPerMillion = 2.0;
-          const outputCostPerMillion = 12.0;
+          // Gemini 3 Flash Preview pricing: Input $0.50/M tokens, Output $3/M tokens
+          const inputCostPerMillion = 0.5;
+          const outputCostPerMillion = 3.0;
 
           const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
           const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;

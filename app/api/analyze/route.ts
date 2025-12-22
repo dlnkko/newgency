@@ -428,10 +428,10 @@ export async function POST(request: NextRequest) {
         const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
         // Precios de Gemini 3 Flash Preview (por millón de tokens)
-        // Input: $2 por millón (hasta 200k tokens)
-        // Output: $12 por millón (hasta 200k tokens)
-        const inputCostPerMillion = 2.0;
-        const outputCostPerMillion = 12.0;
+        // Input: $0.50 por millón de tokens
+        // Output: $3 por millón de tokens
+        const inputCostPerMillion = 0.5;
+        const outputCostPerMillion = 3.0;
 
         const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
         const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
@@ -618,8 +618,8 @@ ${langInstructions.output}`;
               const adaptCandidatesTokens = adaptationUsageMetadata.candidatesTokenCount || 0;
               const adaptTotalTokens = adaptationUsageMetadata.totalTokenCount || (adaptPromptTokens + adaptCandidatesTokens);
 
-              const inputCostPerMillion = 2.0;
-              const outputCostPerMillion = 12.0;
+              const inputCostPerMillion = 0.5;
+              const outputCostPerMillion = 3.0;
 
               const adaptInputCost = (adaptPromptTokens / 1_000_000) * inputCostPerMillion;
               const adaptOutputCost = (adaptCandidatesTokens / 1_000_000) * outputCostPerMillion;

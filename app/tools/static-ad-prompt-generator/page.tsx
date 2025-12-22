@@ -14,7 +14,6 @@ export default function StaticAdPromptGenerator() {
   const [error, setError] = useState<string | null>(null);
   const [staticAdPreview, setStaticAdPreview] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
   const [costInfo, setCostInfo] = useState<any>(null);
 
   const handleStaticAdUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,13 +145,7 @@ export default function StaticAdPromptGenerator() {
       }
 
       setGeneratedPrompt(data.prompt);
-      setDebugInfo(data.debug || null);
       setCostInfo(data.cost || null);
-      
-      // Log debug info to console
-      if (data.debug) {
-        console.log('=== DEBUG INFO ===', data.debug);
-      }
       if (data.cost) {
         console.log('=== COST INFO ===', data.cost);
       }
@@ -351,35 +344,6 @@ export default function StaticAdPromptGenerator() {
                 {generatedPrompt}
               </pre>
             </div>
-
-            {/* Debug Info */}
-            {debugInfo && (
-              <div className="rounded-2xl border border-blue-500/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
-                <h3 className="mb-4 text-lg font-bold text-blue-300">Debug Information</h3>
-                
-                {debugInfo.copywritingProfile && (
-                  <div className="mb-4 rounded-xl border border-blue-800/50 bg-zinc-950/70 p-4">
-                    <h4 className="mb-2 text-sm font-semibold text-blue-400">Copywriting Profile Identified:</h4>
-                    <div className="space-y-1 text-xs text-zinc-300">
-                      <p><span className="text-zinc-500">Style:</span> {debugInfo.copywritingProfile.styleCategory || 'N/A'}</p>
-                      <p><span className="text-zinc-500">Tone:</span> {debugInfo.copywritingProfile.tone || 'N/A'}</p>
-                      <p><span className="text-zinc-500">Word Count:</span> {debugInfo.copywritingProfile.wordCount || 'N/A'}</p>
-                      <p><span className="text-zinc-500">Language Style:</span> {debugInfo.copywritingProfile.languageStyle || 'N/A'}</p>
-                      {debugInfo.copywritingProfile.keyMessages && (
-                        <p><span className="text-zinc-500">Key Messages:</span> {debugInfo.copywritingProfile.keyMessages}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {debugInfo.scrapedSummary && (
-                  <div className="mb-4 rounded-xl border border-green-800/50 bg-zinc-950/70 p-4">
-                    <h4 className="mb-2 text-sm font-semibold text-green-400">Scraped Product Summary:</h4>
-                    <p className="text-xs text-zinc-300">{debugInfo.scrapedSummary}</p>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Cost Info */}
             {costInfo && costInfo.total && (

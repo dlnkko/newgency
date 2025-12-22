@@ -302,8 +302,8 @@ Format your response EXACTLY as:
           const candidatesTokens = step1UsageMetadata.candidatesTokenCount || 0;
           const totalTokens = step1UsageMetadata.totalTokenCount || (promptTokens + candidatesTokens);
           
-          const inputCostPerMillion = 2.0;
-          const outputCostPerMillion = 12.0;
+          const inputCostPerMillion = 0.5;
+          const outputCostPerMillion = 3.0;
           const inputCost = (promptTokens / 1_000_000) * inputCostPerMillion;
           const outputCost = (candidatesTokens / 1_000_000) * outputCostPerMillion;
           const totalStep1Cost = inputCost + outputCost;
@@ -432,21 +432,23 @@ ${referencePrompt}
 Adapt the reference prompt above to create a NEW prompt for the product in the provided image. The new prompt must:
 
 1. **Analyze Product Context (CRITICAL):**
-   - Analyze the product image to understand: product type, category, purpose, target audience, industry
-   - Determine if visual elements from reference need contextual adaptation
-   - **Contextual Adaptation Examples:**
-     * If reference ad is fitness/gym themed but new product is cosmetics/beauty (e.g., lipstick): adapt background to beauty/skincare context (elegant, soft, beauty-focused), adapt person styling to beauty-focused look (makeup, elegant pose), adapt setting to beauty/photography studio
-     * If reference ad is tech/electronics but product is food/beverage: adapt background to food/kitchen context, adapt person to food lifestyle
-     * If reference ad is sports but product is fashion: adapt background to fashion/photography context, adapt person styling to fashion-forward
+   - Analyze the product image to understand: product type, category, purpose, target audience, industry, and what actions/activities are typically associated with using this product
+   - Determine what the product is actually used for and what kind of person/action would naturally use it
+   - **CRITICAL: Person and Action Adaptation:**
+     * The person in the image MUST be performing actions or in poses that are coherent with how the NEW product is actually used
+     * Example: If product is creatina (supplement for exercise): person should be exercising, working out, in gym setting with athletic clothing, NOT just smiling with glasses
+     * Example: If product is headphones: person could be listening to music, in casual setting enjoying audio
+     * Example: If product is beauty cream: person should be in beauty/self-care context, applying product or showing results
+     * **Do NOT copy the person's pose/action from reference if it doesn't match the NEW product's actual use case**
    - Always maintain the EXACT same design structure, composition, and layout from reference
-   - Only adapt the contextual elements (background setting, person styling, visual theme) to match the product category appropriately
+   - Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the product category and actual use case appropriately
    - Keep all visual design principles, effects, and aesthetics consistent
 
 2. **Maintain ALL design elements** from the reference prompt:
    - Keep the EXACT same composition structure
    - Keep the EXACT same layout and positioning of all elements
    - Keep the EXACT same visual effects (lighting style, shadows, effects)
-   - Keep the EXACT same person/character presentation style (if applicable - but adapt contextually as needed)
+   - **Person/Character**: Maintain the same visual style and presentation approach, BUT adapt the person's pose, expression, clothing, and actions to be coherent with the NEW product's actual use case (see section 4 for details)
    - Keep the EXACT same buttons/CTAs design and placement (if applicable)
    - Keep the EXACT same typography placement and text positioning
 
@@ -457,13 +459,22 @@ ${scrapedBranding ? '- Consider using product brand typography if it fits the de
 - Maintain reference color palette for background and overall design
 - Use brand colors strategically for product elements and accents
 
-4. **Replace/Adapt product references:**
-   - Analyze the product image: type, category, colors, branding, shape, characteristics
+4. **Replace/Adapt product references AND adapt people/actions to match product context (CRITICAL):**
+   - Analyze the product image: type, category, purpose, colors, branding, shape, characteristics
    - Replace product descriptions with the NEW product from the provided image
-   - If reference shows person holding product: show person holding NEW product the SAME way
+   - **ADAPT PEOPLE AND ACTIONS TO MATCH PRODUCT CONTEXT:**
+     * Analyze what the NEW product is used for and what actions/activities are associated with it
+     * If product is fitness/sports (e.g., creatine, protein, gym equipment): show person doing exercise, working out, in gym/sports setting, with appropriate athletic clothing and active pose
+     * If product is beauty/cosmetics (e.g., makeup, skincare): show person in beauty/photography context, applying product or in elegant beauty-focused pose
+     * If product is tech/gadgets: show person using/interacting with product in tech context
+     * If product is food/beverage: show person consuming or preparing food in kitchen/dining context
+     * If product is fashion/clothing: show person wearing fashion items in fashion-forward context
+     * If product is health/wellness: show person in health/wellness activity relevant to product
+     * **CRITICAL**: Do NOT keep the same person pose/action from reference if it doesn't match the NEW product. Adapt the person's pose, expression, clothing, setting, and action to be coherent with what the NEW product is actually used for.
+   - If reference shows person holding product: adapt to show person using/interacting with NEW product in contextually appropriate way
    - If reference shows multiple products: show multiple instances of NEW product in SAME arrangement
    - Maintain same angles, lighting, shadows as reference but for NEW product
-   - Adapt visual context (background, setting, person styling) to match the NEW product's category if needed
+   - Adapt ALL visual context (background, setting, person styling, person actions/pose) to match the NEW product's actual use case and category
 
 5. **Create Copywriting:**
 ${copywritingInstructions}
@@ -471,8 +482,9 @@ ${copywritingInstructions}
 **Output:**
 Provide ONLY the final, complete, EXTREMELY DETAILED prompt ready for AI image generation. The prompt should:
 - Maintain ALL visual design elements from the reference prompt (composition, layout, typography placement, background style, effects)
-- Adapt contextual elements (background setting, person styling) to match the NEW product's category appropriately
-- Feature the NEW product from the provided image
+- Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the NEW product's actual use case and category appropriately
+- **CRITICAL**: Ensure the person in the image is performing actions or in poses that are coherent with how the NEW product is actually used (e.g., exercising for fitness products, applying for beauty products, using for tech products)
+- Feature the NEW product from the provided image in contextually appropriate use
 ${scrapedBranding ? '- Integrate product brand colors and typography where appropriate' : ''}
 - Include the new copywriting (${copywritingProfile?.wordCount || 10} words)
 - Be ready to copy and paste into Nano Banana Pro or similar AI image generators
@@ -537,8 +549,8 @@ ${scrapedBranding ? '- Integrate product brand colors and typography where appro
         const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
         const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
-        const inputCostPerMillion = 2.0;
-        const outputCostPerMillion = 12.0;
+        const inputCostPerMillion = 0.5;
+        const outputCostPerMillion = 3.0;
 
         const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
         const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
