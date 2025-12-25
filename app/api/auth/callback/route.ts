@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyWhopMembership } from '@/lib/whop-membership';
-
-// NOTA: La App de Whop NO necesita publicarse
-// Solo se usa para obtener credenciales OAuth (Client ID y Client Secret)
-// El Product ID es de tu comunidad/producto real que quieres proteger
+import { whopClient, checkUserAccess } from '@/lib/whop-sdk';
 
 const WHOP_CLIENT_SECRET = process.env.WHOP_CLIENT_SECRET;
 const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID || process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
 const WHOP_PRODUCT_ID = process.env.NEXT_PUBLIC_WHOP_PRODUCT_ID || 'prod_ZfB8PwCxIaiC2';
-const WHOP_API_KEY = process.env.WHOP_API_KEY;
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,14 +14,12 @@ export async function GET(request: NextRequest) {
     // Si hay un error en el callback de OAuth
     if (error) {
       console.error('Error en callback de OAuth:', error);
-      // Redirigir al dashboard con mensaje de error
       return NextResponse.redirect(new URL(`/?error=${encodeURIComponent(error)}`, request.url));
     }
 
     // Si no hay código de autorización
     if (!code) {
       console.error('No se recibió código de autorización');
-      // Redirigir al dashboard
       return NextResponse.redirect(new URL('/', request.url));
     }
 
@@ -43,26 +36,15 @@ export async function GET(request: NextRequest) {
     console.log('=== OAUTH2 TOKEN EXCHANGE ===');
     console.log('Redirect URI:', redirectUri);
     console.log('Client ID:', WHOP_CLIENT_ID);
-    console.log('Client ID length:', WHOP_CLIENT_ID?.length || 0);
-    console.log('Has Client Secret:', !!WHOP_CLIENT_SECRET);
-    console.log('Client Secret length:', WHOP_CLIENT_SECRET?.length || 0);
-    console.log('Code length:', code.length);
     
     // Validar que el Client ID tenga el formato correcto
     if (WHOP_CLIENT_ID && !WHOP_CLIENT_ID.startsWith('app_')) {
       console.error('❌ ERROR: WHOP_CLIENT_ID debe empezar con "app_"');
-      console.error('❌ Valor actual:', WHOP_CLIENT_ID);
-      return NextResponse.redirect(new URL('/?error=config_error', request.url));
-    }
-
-    // Validar que el Client Secret no esté vacío
-    if (!WHOP_CLIENT_SECRET || WHOP_CLIENT_SECRET.trim().length === 0) {
-      console.error('❌ ERROR: WHOP_CLIENT_SECRET está vacío');
       return NextResponse.redirect(new URL('/?error=config_error', request.url));
     }
 
     // Intercambiar código por access_token usando OAuth2
-    // Intentar múltiples endpoints y formatos según la documentación de Whop
+    // Intentar múltiples formatos según la documentación de Whop
     let tokenResponse: Response | null = null;
     let lastError: string | null = null;
 
@@ -130,59 +112,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Formato 3: Basic Auth + JSON body
-    if (!tokenResponse || !tokenResponse.ok) {
-      try {
-        const basicAuth = Buffer.from(`${WHOP_CLIENT_ID}:${WHOP_CLIENT_SECRET}`).toString('base64');
-
-        console.log('Intentando formato 3: Basic Auth + JSON');
-        tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Basic ${basicAuth}`,
-          },
-          body: JSON.stringify({
-            grant_type: 'authorization_code',
-            code: code,
-            redirect_uri: redirectUri,
-          }),
-        });
-
-        if (tokenResponse.ok) {
-          console.log('✅ Token exchange exitoso con formato 3');
-        } else {
-          const errorText = await tokenResponse.text();
-          console.log('❌ Formato 3 falló:', tokenResponse.status, errorText);
-          lastError = errorText;
-          tokenResponse = null;
-        }
-      } catch (error: any) {
-        console.log('❌ Error en formato 3:', error.message);
-        lastError = error.message;
-      }
-    }
-
     if (!tokenResponse || !tokenResponse.ok) {
       const errorText = lastError || (tokenResponse ? await tokenResponse.text() : 'No se pudo conectar con la API de Whop');
       console.error('❌ Error exchanging code for token:', tokenResponse?.status || 'NO_RESPONSE', errorText);
-      console.error('=== INFORMACIÓN DE DEBUG ===');
-      console.error('Redirect URI usado:', redirectUri);
-      console.error('Redirect URI debe coincidir EXACTAMENTE en Whop');
-      console.error('Client ID usado:', WHOP_CLIENT_ID);
-      console.error('Client ID longitud:', WHOP_CLIENT_ID?.length || 0);
-      console.error('Client Secret existe:', !!WHOP_CLIENT_SECRET);
-      console.error('Client Secret longitud:', WHOP_CLIENT_SECRET?.length || 0);
-      console.error('Origin:', origin);
-      console.error('Code recibido:', code.substring(0, 20) + '...');
-      console.error('');
-      console.error('⚠️ VERIFICA EN WHOP:');
-      console.error('1. El Redirect URI debe ser EXACTAMENTE:', redirectUri);
-      console.error('2. El Client ID debe ser:', WHOP_CLIENT_ID);
-      console.error('3. El Client Secret debe coincidir con el de Whop');
-      console.error('4. Ve a https://dev.whop.com/ → Tu App → OAuth para verificar');
       
-      // Mensaje de error más descriptivo
       let errorCode = 'auth_failed';
       if (errorText.includes('invalid_client')) {
         errorCode = 'invalid_client';
@@ -190,7 +123,6 @@ export async function GET(request: NextRequest) {
         errorCode = 'redirect_uri_mismatch';
       }
       
-      // Redirigir al dashboard con mensaje de error
       return NextResponse.redirect(new URL(`/?error=${errorCode}`, request.url));
     }
 
@@ -198,49 +130,35 @@ export async function GET(request: NextRequest) {
     const accessToken = tokenData.access_token;
     const userId = tokenData.user_id || tokenData.user?.id;
 
-    if (!accessToken) {
-      console.error('No se recibió access_token en la respuesta');
+    if (!accessToken || !userId) {
+      console.error('No se recibió access_token o user_id en la respuesta');
       return NextResponse.redirect(new URL('/?error=invalid_token', request.url));
     }
 
-    // Verificar membresía activa usando /api/v2/me
-    console.log('=== VERIFICACIÓN DE MEMBRESÍA CON /api/v2/me ===');
+    console.log('=== VERIFICACIÓN DE ACCESO CON SDK ===');
+    console.log('User ID:', userId);
     console.log('Product ID:', WHOP_PRODUCT_ID);
-    
-    let membershipCheck;
-    let finalUserId = userId;
-    
-    try {
-      membershipCheck = await verifyWhopMembership(accessToken, WHOP_PRODUCT_ID, WHOP_API_KEY);
 
-      if (!membershipCheck.hasAccess) {
-        console.log('❌ Usuario no tiene membresía activa');
-        console.log('Error:', membershipCheck.error);
+    // Verificar acceso usando el SDK de Whop
+    try {
+      const accessCheck = await checkUserAccess(userId, WHOP_PRODUCT_ID);
+
+      if (!accessCheck.hasAccess) {
+        console.log('❌ Usuario no tiene acceso');
+        console.log('Access level:', accessCheck.accessLevel);
+        console.log('Error:', accessCheck.error);
         
-        // Redirigir a página de error/venta
-        return NextResponse.redirect(new URL(`/no-access?error=${encodeURIComponent(membershipCheck.error || 'no_access')}`, request.url));
+        return NextResponse.redirect(new URL(`/no-access?error=${encodeURIComponent(accessCheck.error || 'no_access')}`, request.url));
       }
 
-      if (membershipCheck.isAdmin) {
+      if (accessCheck.isAdmin) {
         console.log('✅ Usuario es ADMIN, permitiendo acceso');
       } else {
-        console.log('✅ Usuario tiene membresía activa');
-        console.log('Membresía ID:', membershipCheck.membership?.id);
-        console.log('Status:', membershipCheck.membership?.status);
-      }
-      
-      // Usar user_id de la respuesta de /api/v2/me si no está en tokenData
-      if (membershipCheck.user?.id && !finalUserId) {
-        finalUserId = membershipCheck.user.id;
+        console.log('✅ Usuario tiene acceso (membresía activa)');
       }
     } catch (error: any) {
-      console.error('Error verificando membresía:', error);
+      console.error('Error verificando acceso:', error);
       return NextResponse.redirect(new URL('/?error=access_check_failed', request.url));
-    }
-    
-    if (!finalUserId) {
-      console.error('No se pudo obtener user_id');
-      return NextResponse.redirect(new URL('/?error=invalid_token', request.url));
     }
 
     // Usuario tiene acceso, establecer cookies de sesión
@@ -255,7 +173,7 @@ export async function GET(request: NextRequest) {
       path: '/',
     });
 
-    response.cookies.set('whop_user_id', finalUserId, {
+    response.cookies.set('whop_user_id', userId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -266,8 +184,6 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Error en callback de autenticación:', error);
-    // Redirigir al dashboard con mensaje de error
     return NextResponse.redirect(new URL('/?error=authentication_failed', request.url));
   }
 }
-

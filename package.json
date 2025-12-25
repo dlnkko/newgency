@@ -14,6 +14,7 @@
     "@upstash/ratelimit": "^2.0.7",
     "@upstash/redis": "^1.35.7",
     "@whop-apps/sdk": "^0.0.1-canary.117",
+    "@whop/sdk": "^0.0.20",
     "axios": "^1.13.2",
     "next": "^16.0.7",
     "react": "19.2.0",
