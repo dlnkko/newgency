@@ -47,10 +47,12 @@ export async function GET(request: NextRequest) {
 
     // Intercambiar código por token usando la API de Whop
     // NOTA: El redirect_uri debe ser EXACTAMENTE el mismo que se usó en la autorización
+    // El endpoint requiere autenticación con el API Key
     const tokenResponse = await fetch('https://api.whop.com/api/v2/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${WHOP_API_KEY}`,
       },
       body: JSON.stringify({
         grant_type: 'authorization_code',
