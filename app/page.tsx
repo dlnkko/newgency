@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const tools = [
@@ -47,7 +47,8 @@ const tools = [
   }
 ];
 
-export default function Home() {
+// Component that uses useSearchParams - must be wrapped in Suspense
+function HomeContent() {
   const [hoveredTool, setHoveredTool] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const searchParams = useSearchParams();
@@ -232,5 +233,18 @@ export default function Home() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Main component wrapped in Suspense
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-black via-zinc-950 to-zinc-900 flex items-center justify-center px-4">
+        <div className="text-zinc-400">Loading...</div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
