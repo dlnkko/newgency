@@ -16,6 +16,16 @@ function getGoogleGenAI() {
   });
 }
 
+function getScrapeCreatorsApiKey() {
+  const apiKey = process.env.SCRAPECREATORS_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('SCRAPECREATORS_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
+  }
+  
+  return apiKey;
+}
+
 // Helper function to detect language from text (simple heuristic)
 function detectLanguage(text: string): string {
   if (!text || text.trim().length === 0) return 'en';
@@ -65,6 +75,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Initialize AI client at runtime
+    const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
+    console.log('=== VERIFICACIÓN DE API KEYS ===');
+    console.log('GOOGLE_GENAI_API_KEY existe?', !!googleApiKey);
+    console.log('GOOGLE_GENAI_API_KEY primeros 10 chars:', googleApiKey ? `${googleApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
+    console.log('GOOGLE_GENAI_API_KEY longitud:', googleApiKey?.length || 0);
+    
     const ai = getGoogleGenAI();
     const body = await request.json();
     const { url, type, productService, productImage } = body;
@@ -98,46 +114,293 @@ export async function POST(request: NextRequest) {
     }
 
     // Llamar a la API de scrapecreators con el ID y get_transcript: true
-    const { data } = await axios.get(
-      `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}`,
-      {
-        headers: {
-          'x-api-key': 'cY3EyKqcFZf3pbfPFuvZ9t0LmDJ2',
-          'get_transcript': 'true'
+    let data;
+    try {
+      const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
+      const response = await axios.get(
+        `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}`,
+        {
+          headers: {
+            'x-api-key': scrapeCreatorsApiKey,
+            'get_transcript': 'true'
+          },
+          timeout: 30000, // 30 segundos de timeout
+          validateStatus: (status) => status < 500 // No lanzar error para códigos 4xx
+        }
+      );
+      
+      // Log de la respuesta completa para debugging
+      console.log('=== RESPUESTA COMPLETA DE SCRAPECREATORS ===');
+      console.log('response.status:', response.status);
+      console.log('API Key usada (primeros 10 chars):', scrapeCreatorsApiKey ? `${scrapeCreatorsApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
+      console.log('response.data type:', typeof response.data);
+      console.log('response.data keys:', Object.keys(response.data || {}));
+      console.log('response.data completo (primeros 500 chars):', JSON.stringify(response.data, null, 2).substring(0, 500));
+      
+      // Verificar errores de créditos o pagos (402)
+      if (response.status === 402) {
+        const errorMessage = response.data?.message || 'No hay créditos disponibles';
+        console.error('❌ Error 402 - Sin créditos:', errorMessage);
+        return NextResponse.json(
+          {
+            error: 'Sin créditos en ScrapeCreators',
+            details: errorMessage || 'Tu cuenta de ScrapeCreators no tiene créditos disponibles. Por favor, compra más créditos en https://scrapecreators.com',
+            statusCode: 402
+          },
+          { status: 402 }
+        );
+      }
+      
+      // Verificar otros errores HTTP (4xx)
+      if (response.status >= 400 && response.status < 500) {
+        const errorMessage = response.data?.message || response.data?.error || 'Error desconocido';
+        console.error(`❌ Error ${response.status}:`, errorMessage);
+        return NextResponse.json(
+          {
+            error: 'Error al obtener datos del anuncio',
+            details: errorMessage,
+            statusCode: response.status
+          },
+          { status: response.status }
+        );
+      }
+      
+      // La respuesta puede estar en response.data directamente o en response.data.message
+      data = response.data;
+      
+      // Si los datos están dentro de 'message', extraerlos
+      if (data && typeof data === 'object' && 'message' in data && !('snapshot' in data)) {
+        console.log('⚠️ Los datos están dentro de "message", extrayendo...');
+        const messageData = data.message;
+        if (messageData && typeof messageData === 'object' && 'snapshot' in messageData) {
+          console.log('✅ Datos encontrados en data.message');
+          data = messageData;
+        } else if (typeof messageData === 'string') {
+          // Si message es un string JSON, parsearlo
+          try {
+            const parsed = JSON.parse(messageData);
+            if (parsed && typeof parsed === 'object' && 'snapshot' in parsed) {
+              console.log('✅ Datos parseados desde string JSON en message');
+              data = parsed;
+            }
+          } catch (e) {
+            console.log('❌ No se pudo parsear message como JSON');
+          }
         }
       }
-    );
+      
+      console.log('Data final keys:', Object.keys(data || {}));
+      console.log('Data tiene snapshot?', !!(data?.snapshot));
+    } catch (scrapeError: any) {
+      // Manejar errores específicos de la API de ScrapeCreators
+      if (axios.isAxiosError(scrapeError)) {
+        const errorCode = scrapeError.code;
+        const errorMessage = scrapeError.message;
+        
+        // Error de DNS o conectividad
+        if (errorCode === 'ENOTFOUND' || errorCode === 'ECONNREFUSED' || errorCode === 'ETIMEDOUT') {
+          console.error('Error de conexión con ScrapeCreators API:', {
+            code: errorCode,
+            message: errorMessage,
+            url: scrapeError.config?.url
+          });
+          
+          return NextResponse.json(
+            {
+              error: 'Error de conexión con ScrapeCreators API',
+              details: `No se pudo conectar con la API de ScrapeCreators. Verifica tu conexión a internet o que el servicio esté disponible. Error: ${errorMessage}`,
+              errorCode: errorCode
+            },
+            { status: 503 }
+          );
+        }
+        
+        // Error de autenticación (401, 403)
+        if (scrapeError.response?.status === 401 || scrapeError.response?.status === 403) {
+          return NextResponse.json(
+            {
+              error: 'Error de autenticación con ScrapeCreators API',
+              details: 'La API key de ScrapeCreators no es válida o ha expirado. Verifica tu API key en el archivo .env.local'
+            },
+            { status: 401 }
+          );
+        }
+        
+        // Error de recurso no encontrado (404)
+        if (scrapeError.response?.status === 404) {
+          return NextResponse.json(
+            {
+              error: 'Anuncio no encontrado',
+              details: `No se pudo encontrar el anuncio con ID ${adId} en la biblioteca de Facebook Ads. Verifica que el ID sea correcto.`
+            },
+            { status: 404 }
+          );
+        }
+        
+        // Otros errores HTTP
+        if (scrapeError.response) {
+          return NextResponse.json(
+            {
+              error: 'Error al obtener datos del anuncio',
+              details: scrapeError.response.data || scrapeError.message,
+              statusCode: scrapeError.response.status
+            },
+            { status: scrapeError.response.status }
+          );
+        }
+      }
+      
+      // Error desconocido
+      console.error('Error desconocido al llamar a ScrapeCreators:', scrapeError);
+      return NextResponse.json(
+        {
+          error: 'Error al obtener datos del anuncio',
+          details: scrapeError.message || 'Error desconocido al comunicarse con ScrapeCreators API'
+        },
+        { status: 500 }
+      );
+    }
 
+    // Log completo de la estructura de datos para debugging
+    console.log('=== ESTRUCTURA COMPLETA DE DATOS DE SCRAPECREATORS ===');
+    console.log('Tipo de data:', typeof data);
+    console.log('Data es null/undefined?', data === null || data === undefined);
+    if (data) {
+      console.log('Keys principales:', Object.keys(data));
+      
+      // Si data tiene 'message' y no tiene 'snapshot', intentar extraer de message
+      if ('message' in data && !('snapshot' in data)) {
+        console.log('⚠️ Data tiene "message" pero no "snapshot", verificando contenido...');
+        console.log('Tipo de message:', typeof data.message);
+        
+        if (typeof data.message === 'string') {
+          try {
+            const parsed = JSON.parse(data.message);
+            console.log('✅ Parseado exitoso de message como JSON');
+            if (parsed && typeof parsed === 'object' && 'snapshot' in parsed) {
+              console.log('✅ Datos válidos encontrados en message parseado');
+              data = parsed;
+            }
+          } catch (e) {
+            console.log('❌ No se pudo parsear message como JSON:', e);
+          }
+        } else if (data.message && typeof data.message === 'object' && 'snapshot' in data.message) {
+          console.log('✅ Datos encontrados directamente en data.message');
+          data = data.message;
+        }
+      }
+      
+      if (data.snapshot) {
+        console.log('Keys de snapshot:', Object.keys(data.snapshot));
+        console.log('snapshot.videos existe?', !!data.snapshot.videos);
+        console.log('snapshot.videos es array?', Array.isArray(data.snapshot.videos));
+        if (Array.isArray(data.snapshot.videos)) {
+          console.log('snapshot.videos.length:', data.snapshot.videos.length);
+          if (data.snapshot.videos.length > 0) {
+            console.log('Primer video completo:', JSON.stringify(data.snapshot.videos[0], null, 2));
+          }
+        }
+      } else {
+        console.log('❌ No se encontró snapshot en data después de procesar');
+        console.log('Data actual keys:', Object.keys(data || {}));
+      }
+    }
+    
     // Buscar la URL del video en múltiples estructuras posibles
     let videoUrl: string | null = null;
     
-    // 1. Buscar en snapshot.videos (estructura estándar)
+    // 1. Buscar en snapshot.videos (estructura estándar) - PRIORIDAD: HD primero, luego SD
     if (data?.snapshot?.videos && Array.isArray(data.snapshot.videos) && data.snapshot.videos.length > 0) {
-      videoUrl = data.snapshot.videos[0]?.video_sd_url || data.snapshot.videos[0]?.video_hd_url || null;
+      console.log('✅ Encontrado snapshot.videos con', data.snapshot.videos.length, 'video(s)');
+      const firstVideo = data.snapshot.videos[0];
+      console.log('Keys del primer video:', Object.keys(firstVideo || {}));
+      console.log('video_hd_url:', firstVideo?.video_hd_url ? 'EXISTE' : 'NO EXISTE');
+      console.log('video_sd_url:', firstVideo?.video_sd_url ? 'EXISTE' : 'NO EXISTE');
+      
+      // Priorizar HD sobre SD
+      videoUrl = firstVideo?.video_hd_url || firstVideo?.video_sd_url || firstVideo?.url || firstVideo?.video_url || null;
+      
+      if (videoUrl) {
+        console.log('✅ URL del video encontrada en snapshot.videos:', videoUrl.substring(0, 100) + '...');
+      } else {
+        console.log('❌ No se encontró URL en el primer video');
+      }
+    } else {
+      console.log('❌ snapshot.videos no existe o está vacío');
+      if (data?.snapshot) {
+        console.log('snapshot existe pero videos no:', Object.keys(data.snapshot));
+      }
     }
     
     // 2. Buscar en snapshot.cards (estructura DCO - Dynamic Creative Optimization)
     if (!videoUrl && data?.snapshot?.cards && Array.isArray(data.snapshot.cards)) {
+      console.log('Buscando en snapshot.cards, cantidad:', data.snapshot.cards.length);
       for (const card of data.snapshot.cards) {
-        if (card.video_sd_url || card.video_hd_url) {
-          videoUrl = card.video_sd_url || card.video_hd_url || null;
+        console.log('Card keys:', Object.keys(card || {}));
+        if (card.video_sd_url || card.video_hd_url || card.video_url || card.url) {
+          videoUrl = card.video_sd_url || card.video_hd_url || card.video_url || card.url || null;
           break;
+        }
+        // Buscar dentro de objetos anidados en cards
+        if (card.video && typeof card.video === 'object') {
+          videoUrl = card.video.url || card.video.video_sd_url || card.video.video_hd_url || null;
+          if (videoUrl) break;
+        }
+        if (card.media && typeof card.media === 'object') {
+          videoUrl = card.media.video_url || card.media.url || null;
+          if (videoUrl) break;
         }
       }
     }
     
-    // 3. Otras ubicaciones posibles
+    // 3. Buscar en snapshot.body (algunas estructuras tienen el video aquí)
+    if (!videoUrl && data?.snapshot?.body) {
+      console.log('Buscando en snapshot.body');
+      const body = data.snapshot.body;
+      if (typeof body === 'object') {
+        videoUrl = body.video_url || body.video_sd_url || body.video_hd_url || body.url || null;
+        if (!videoUrl && body.video && typeof body.video === 'object') {
+          videoUrl = body.video.url || body.video.video_sd_url || body.video.video_hd_url || null;
+        }
+      }
+    }
+    
+    // 4. Buscar en snapshot.media
+    if (!videoUrl && data?.snapshot?.media) {
+      console.log('Buscando en snapshot.media');
+      const media = data.snapshot.media;
+      if (Array.isArray(media)) {
+        for (const item of media) {
+          if (item.type === 'video' || item.video_url || item.url) {
+            videoUrl = item.video_url || item.url || item.video_sd_url || item.video_hd_url || null;
+            if (videoUrl) break;
+          }
+        }
+      } else if (typeof media === 'object') {
+        videoUrl = media.video_url || media.url || media.video_sd_url || media.video_hd_url || null;
+      }
+    }
+    
+    // 5. Otras ubicaciones posibles en el nivel raíz
     if (!videoUrl) {
+      console.log('Buscando en ubicaciones alternativas del nivel raíz');
       videoUrl = 
         data?.video_sd_url || 
+        data?.video_hd_url ||
         data?.video_sd_urls?.[0] ||
+        data?.video_hd_urls?.[0] ||
         data?.video?.sd_url || 
+        data?.video?.hd_url ||
         data?.video?.video_sd_url ||
+        data?.video?.video_hd_url ||
+        data?.video?.url ||
         data?.video_url ||
         data?.videoUrl ||
         data?.media?.video?.url ||
         data?.media?.video_sd_url ||
+        data?.media?.video_hd_url ||
         data?.ad_snapshot?.video_sd_url ||
+        data?.ad_snapshot?.video_hd_url ||
         (data?.video && typeof data.video === 'string' ? data.video : null) ||
         (data?.videos && Array.isArray(data.videos) && data.videos[0]?.url ? data.videos[0].url : null);
     }
@@ -147,18 +410,24 @@ export async function POST(request: NextRequest) {
       hasVideos: !!data?.snapshot?.videos,
       videosLength: data?.snapshot?.videos?.length || 0,
       hasCards: !!data?.snapshot?.cards,
-      cardsLength: data?.snapshot?.cards?.length || 0
+      cardsLength: data?.snapshot?.cards?.length || 0,
+      hasBody: !!data?.snapshot?.body,
+      hasMedia: !!data?.snapshot?.media
     });
     
     if (!videoUrl) {
+      // Devolver error en lugar de success: false para que el frontend lo maneje
       return NextResponse.json({
-        success: false,
+        error: 'No se encontró video en el anuncio',
+        details: 'El anuncio no contiene un video o la estructura de datos es diferente a la esperada. Verifica que el anuncio tenga un video y que el ID sea correcto.',
         adId,
         type,
-        data,
-        message: 'No se encontró URL de video para analizar. El anuncio puede no tener video o la estructura de la respuesta es diferente.',
-        geminiAnalysis: null
-      });
+        dataStructure: {
+          hasSnapshot: !!data?.snapshot,
+          snapshotKeys: data?.snapshot ? Object.keys(data.snapshot) : [],
+          topLevelKeys: Object.keys(data || {})
+        }
+      }, { status: 404 });
     }
 
     // Validar y limpiar la URL del video
@@ -246,6 +515,23 @@ export async function POST(request: NextRequest) {
       videoBuffer = null;
       
       console.error('Error al descargar o subir el video:', videoError);
+      
+      // Manejar específicamente errores de API key inválida
+      if (videoError.message?.includes('API key not valid') || 
+          videoError.message?.includes('API_KEY_INVALID') ||
+          videoError.status === 400 && videoError.message?.includes('API key')) {
+        console.error('❌ Error: API key de Google Gemini no es válida');
+        console.error('API key usada (primeros 10 chars):', googleApiKey ? `${googleApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
+        
+        return NextResponse.json(
+          { 
+            error: 'API key de Google Gemini no válida',
+            details: 'La API key de Google Gemini no es válida o ha expirado. Por favor, verifica tu API key en el archivo .env.local y reinicia el servidor. Obtén una nueva API key en: https://aistudio.google.com/apikey'
+          },
+          { status: 401 }
+        );
+      }
+      
       return NextResponse.json(
         { 
           error: 'Error al procesar el video',
