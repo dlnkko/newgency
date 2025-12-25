@@ -40,10 +40,13 @@ export async function GET(request: NextRequest) {
     const origin = request.nextUrl.origin;
     const redirectUri = `${origin}/api/auth/callback`;
 
-    console.log('=== OAUTH2 V2 TOKEN EXCHANGE ===');
+    console.log('=== OAUTH2 TOKEN EXCHANGE ===');
     console.log('Redirect URI:', redirectUri);
     console.log('Client ID:', WHOP_CLIENT_ID);
+    console.log('Client ID length:', WHOP_CLIENT_ID?.length || 0);
     console.log('Has Client Secret:', !!WHOP_CLIENT_SECRET);
+    console.log('Client Secret length:', WHOP_CLIENT_SECRET?.length || 0);
+    console.log('Code length:', code.length);
     
     // Validar que el Client ID tenga el formato correcto
     if (WHOP_CLIENT_ID && !WHOP_CLIENT_ID.startsWith('app_')) {
@@ -52,43 +55,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/?error=config_error', request.url));
     }
 
-    // Intercambiar código por access_token usando OAuth2 v2
+    // Validar que el Client Secret no esté vacío
+    if (!WHOP_CLIENT_SECRET || WHOP_CLIENT_SECRET.trim().length === 0) {
+      console.error('❌ ERROR: WHOP_CLIENT_SECRET está vacío');
+      return NextResponse.redirect(new URL('/?error=config_error', request.url));
+    }
+
+    // Intercambiar código por access_token usando OAuth2
     // Intentar múltiples endpoints y formatos según la documentación de Whop
     let tokenResponse: Response | null = null;
     let lastError: string | null = null;
 
-    // Formato 1: application/x-www-form-urlencoded (estándar OAuth2) - API v2
+    // Formato 1: Basic Auth + form-urlencoded (estándar OAuth2)
     try {
+      const basicAuth = Buffer.from(`${WHOP_CLIENT_ID}:${WHOP_CLIENT_SECRET}`).toString('base64');
       const formData = new URLSearchParams();
       formData.append('grant_type', 'authorization_code');
       formData.append('code', code);
-      formData.append('client_id', WHOP_CLIENT_ID);
-      formData.append('client_secret', WHOP_CLIENT_SECRET);
       formData.append('redirect_uri', redirectUri);
 
-      console.log('Intentando OAuth2 v2: application/x-www-form-urlencoded');
-      tokenResponse = await fetch('https://api.whop.com/api/v2/oauth/token', {
+      console.log('Intentando formato 1: Basic Auth + form-urlencoded');
+      tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${basicAuth}`,
         },
         body: formData.toString(),
       });
 
       if (tokenResponse.ok) {
-        console.log('✅ Token exchange exitoso con OAuth2 v2');
+        console.log('✅ Token exchange exitoso con Basic Auth');
       } else {
         const errorText = await tokenResponse.text();
-        console.log('❌ OAuth2 v2 falló:', tokenResponse.status, errorText);
+        console.log('❌ Formato 1 falló:', tokenResponse.status, errorText);
         lastError = errorText;
         tokenResponse = null;
       }
     } catch (error: any) {
-      console.log('❌ Error en OAuth2 v2:', error.message);
+      console.log('❌ Error en formato 1:', error.message);
       lastError = error.message;
     }
 
-    // Formato 2: Intentar con data.whop.com/api/v5/oauth/token (fallback)
+    // Formato 2: client_id y client_secret en body (form-urlencoded)
     if (!tokenResponse || !tokenResponse.ok) {
       try {
         const formData = new URLSearchParams();
@@ -98,7 +107,7 @@ export async function GET(request: NextRequest) {
         formData.append('client_secret', WHOP_CLIENT_SECRET);
         formData.append('redirect_uri', redirectUri);
 
-        console.log('Intentando fallback: data.whop.com/api/v5/oauth/token');
+        console.log('Intentando formato 2: client_id/client_secret en body');
         tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
           method: 'POST',
           headers: {
@@ -108,15 +117,48 @@ export async function GET(request: NextRequest) {
         });
 
         if (tokenResponse.ok) {
-          console.log('✅ Token exchange exitoso con fallback');
+          console.log('✅ Token exchange exitoso con formato 2');
         } else {
           const errorText = await tokenResponse.text();
-          console.log('❌ Fallback falló:', tokenResponse.status, errorText);
+          console.log('❌ Formato 2 falló:', tokenResponse.status, errorText);
           lastError = errorText;
           tokenResponse = null;
         }
       } catch (error: any) {
-        console.log('❌ Error en fallback:', error.message);
+        console.log('❌ Error en formato 2:', error.message);
+        lastError = error.message;
+      }
+    }
+
+    // Formato 3: Basic Auth + JSON body
+    if (!tokenResponse || !tokenResponse.ok) {
+      try {
+        const basicAuth = Buffer.from(`${WHOP_CLIENT_ID}:${WHOP_CLIENT_SECRET}`).toString('base64');
+
+        console.log('Intentando formato 3: Basic Auth + JSON');
+        tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${basicAuth}`,
+          },
+          body: JSON.stringify({
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: redirectUri,
+          }),
+        });
+
+        if (tokenResponse.ok) {
+          console.log('✅ Token exchange exitoso con formato 3');
+        } else {
+          const errorText = await tokenResponse.text();
+          console.log('❌ Formato 3 falló:', tokenResponse.status, errorText);
+          lastError = errorText;
+          tokenResponse = null;
+        }
+      } catch (error: any) {
+        console.log('❌ Error en formato 3:', error.message);
         lastError = error.message;
       }
     }
@@ -132,6 +174,13 @@ export async function GET(request: NextRequest) {
       console.error('Client Secret existe:', !!WHOP_CLIENT_SECRET);
       console.error('Client Secret longitud:', WHOP_CLIENT_SECRET?.length || 0);
       console.error('Origin:', origin);
+      console.error('Code recibido:', code.substring(0, 20) + '...');
+      console.error('');
+      console.error('⚠️ VERIFICA EN WHOP:');
+      console.error('1. El Redirect URI debe ser EXACTAMENTE:', redirectUri);
+      console.error('2. El Client ID debe ser:', WHOP_CLIENT_ID);
+      console.error('3. El Client Secret debe coincidir con el de Whop');
+      console.error('4. Ve a https://dev.whop.com/ → Tu App → OAuth para verificar');
       
       // Mensaje de error más descriptivo
       let errorCode = 'auth_failed';
