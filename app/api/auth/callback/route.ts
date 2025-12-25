@@ -36,10 +36,20 @@ export async function GET(request: NextRequest) {
     console.log('=== OAUTH2 TOKEN EXCHANGE ===');
     console.log('Redirect URI:', redirectUri);
     console.log('Client ID:', WHOP_CLIENT_ID);
+    console.log('Client ID length:', WHOP_CLIENT_ID?.length || 0);
+    console.log('Client Secret exists:', !!WHOP_CLIENT_SECRET);
+    console.log('Client Secret length:', WHOP_CLIENT_SECRET?.length || 0);
+    console.log('Code length:', code.length);
     
     // Validar que el Client ID tenga el formato correcto
     if (WHOP_CLIENT_ID && !WHOP_CLIENT_ID.startsWith('app_')) {
       console.error('❌ ERROR: WHOP_CLIENT_ID debe empezar con "app_"');
+      return NextResponse.redirect(new URL('/?error=config_error', request.url));
+    }
+
+    // Validar que el Client Secret no esté vacío
+    if (!WHOP_CLIENT_SECRET || WHOP_CLIENT_SECRET.trim().length === 0) {
+      console.error('❌ ERROR: WHOP_CLIENT_SECRET está vacío');
       return NextResponse.redirect(new URL('/?error=config_error', request.url));
     }
 
@@ -115,6 +125,20 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse || !tokenResponse.ok) {
       const errorText = lastError || (tokenResponse ? await tokenResponse.text() : 'No se pudo conectar con la API de Whop');
       console.error('❌ Error exchanging code for token:', tokenResponse?.status || 'NO_RESPONSE', errorText);
+      console.error('');
+      console.error('=== INFORMACIÓN DE DEBUG ===');
+      console.error('Redirect URI usado:', redirectUri);
+      console.error('Client ID usado:', WHOP_CLIENT_ID);
+      console.error('Client ID primeros 10 chars:', WHOP_CLIENT_ID?.substring(0, 10));
+      console.error('Client Secret existe:', !!WHOP_CLIENT_SECRET);
+      console.error('Client Secret primeros 10 chars:', WHOP_CLIENT_SECRET?.substring(0, 10));
+      console.error('');
+      console.error('⚠️ VERIFICA EN WHOP (https://dev.whop.com/ → Tu App → OAuth):');
+      console.error('1. El Redirect URI debe ser EXACTAMENTE:', redirectUri);
+      console.error('2. El Client ID debe ser:', WHOP_CLIENT_ID);
+      console.error('3. El Client Secret debe coincidir EXACTAMENTE con el de Whop');
+      console.error('4. Asegúrate de que no haya espacios al inicio o final del Client Secret');
+      console.error('5. Verifica que el Client ID empiece con "app_" (no "prod_")');
       
       let errorCode = 'auth_failed';
       if (errorText.includes('invalid_client')) {
