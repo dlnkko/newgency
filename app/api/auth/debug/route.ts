@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkWhopAccess } from '@/lib/whop-access';
+import { checkUserAccess } from '@/lib/whop-sdk';
 
 const WHOP_PRODUCT_ID = process.env.NEXT_PUBLIC_WHOP_PRODUCT_ID || 'prod_ZfB8PwCxIaiC2';
 
@@ -15,16 +15,16 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Verificar acceso usando checkAccess API
+  // Verificar acceso usando el SDK de Whop
   let accessInfo = null;
   if (whopApiKey) {
     try {
-      const accessCheck = await checkWhopAccess(whopUserId, WHOP_PRODUCT_ID, whopApiKey);
+      const accessCheck = await checkUserAccess(whopUserId, WHOP_PRODUCT_ID);
       accessInfo = {
-        has_access: accessCheck.has_access,
-        access_level: accessCheck.access_level,
-        isCustomer: accessCheck.access_level === 'customer',
-        isAdmin: accessCheck.access_level === 'admin',
+        has_access: accessCheck.hasAccess,
+        access_level: accessCheck.accessLevel,
+        isCustomer: accessCheck.accessLevel === 'customer',
+        isAdmin: accessCheck.isAdmin,
       };
     } catch (error: any) {
       accessInfo = {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       : accessInfo?.isAdmin
       ? '✅ Eres administrador. Tienes acceso completo.'
       : '❌ No tienes acceso. Necesitas comprar una membresía para usar el software.',
-    note: 'Esta información se verifica automáticamente usando la API oficial de Whop checkAccess'
+    note: 'Esta información se verifica automáticamente usando el SDK oficial de Whop'
   });
 }
 
