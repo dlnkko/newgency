@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { checkWhopAccess } from '@/lib/whop-access';
+import { verifyWhopMembership } from '@/lib/whop-membership';
 
 const WHOP_PRODUCT_ID = process.env.NEXT_PUBLIC_WHOP_PRODUCT_ID || 'prod_ZfB8PwCxIaiC2';
-const WHOP_APP_ID = process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
+const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID || process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
+const WHOP_API_KEY = process.env.WHOP_API_KEY;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Permitir acceso a rutas públicas (callback de auth, logout, debug, API routes, etc.)
+  // Permitir acceso a rutas públicas (callback de auth, logout, debug, API routes, no-access, etc.)
   if (
     pathname.startsWith('/api/auth/callback') ||
     pathname.startsWith('/api/auth/logout') ||
@@ -16,7 +17,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon.ico') ||
-    pathname.startsWith('/_vercel')
+    pathname.startsWith('/_vercel') ||
+    pathname.startsWith('/no-access')
   ) {
     return NextResponse.next();
   }
@@ -36,44 +38,42 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Verificar acceso del usuario al producto usando checkAccess API
+  // Verificar membresía activa usando /api/v2/me
   try {
-    const whopApiKey = process.env.WHOP_API_KEY;
-    if (!whopApiKey) {
-      console.error('WHOP_API_KEY no está configurada');
-      return NextResponse.redirect('https://whop.com');
-    }
-
-    // Usar la API oficial checkAccess de Whop
-    const accessCheck = await checkWhopAccess(whopUserId, WHOP_PRODUCT_ID, whopApiKey);
-
-    console.log('=== VERIFICACIÓN DE ACCESO WHOP ===');
+    console.log('=== VERIFICACIÓN DE MEMBRESÍA EN MIDDLEWARE ===');
     console.log('Usuario:', whopUserId);
     console.log('Producto:', WHOP_PRODUCT_ID);
-    console.log('has_access:', accessCheck.has_access);
-    console.log('access_level:', accessCheck.access_level);
 
-    // Si el usuario es admin (según Whop), permitir acceso
-    if (accessCheck.access_level === 'admin') {
-      console.log('✅ Usuario es admin de Whop, permitiendo acceso');
+    // Verificar membresía activa usando el access_token
+    const membershipCheck = await verifyWhopMembership(sessionToken, WHOP_PRODUCT_ID, WHOP_API_KEY);
+
+    if (membershipCheck.hasAccess) {
+      if (membershipCheck.isAdmin) {
+        console.log('✅ Usuario es ADMIN, permitiendo acceso');
+      } else {
+        console.log('✅ Usuario tiene membresía activa, permitiendo acceso');
+        console.log('Membresía ID:', membershipCheck.membership?.id);
+        console.log('Status:', membershipCheck.membership?.status);
+      }
       return NextResponse.next();
     }
 
-    // Si el usuario tiene acceso como customer (membresía activa), permitir acceso
-    if (accessCheck.has_access && accessCheck.access_level === 'customer') {
-      console.log('✅ Usuario tiene membresía activa, permitiendo acceso');
-      return NextResponse.next();
+    // Usuario no tiene membresía activa, redirigir a página de error/venta
+    console.log('❌ Usuario no tiene membresía activa');
+    console.log('Error:', membershipCheck.error);
+    return NextResponse.redirect(new URL(`/no-access?error=${encodeURIComponent(membershipCheck.error || 'no_access')}`, request.url));
+  } catch (error: any) {
+    console.error('Error verificando membresía en middleware:', error);
+    
+    // Si el token es inválido, redirigir a login
+    if (error.message?.includes('inválido') || error.message?.includes('expirado')) {
+      const redirectUri = `${request.nextUrl.origin}/api/auth/callback`;
+      const whopAuthUrl = `https://whop.com/oauth?client_id=${WHOP_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+      return NextResponse.redirect(whopAuthUrl);
     }
-
-    // Usuario no tiene acceso, redirigir al dashboard con mensaje
-    console.log('❌ Usuario no tiene acceso, redirigiendo al dashboard');
-    return NextResponse.redirect(new URL('/?error=no_access', request.url));
-  } catch (error) {
-    console.error('Error verificando acceso en middleware de Whop:', error);
-    // En caso de error, redirigir a login de Whop
-    const redirectUri = `${request.nextUrl.origin}/api/auth/callback`;
-    const whopAuthUrl = `https://whop.com/oauth?client_id=${WHOP_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    return NextResponse.redirect(whopAuthUrl);
+    
+    // En caso de otros errores, redirigir a página de error
+    return NextResponse.redirect(new URL('/?error=access_check_failed', request.url));
   }
 }
 

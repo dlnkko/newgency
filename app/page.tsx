@@ -87,13 +87,13 @@ function HomeContent() {
   };
 
   const handleWhopLogin = () => {
-    // Usar el APP ID configurado (debe estar en NEXT_PUBLIC_WHOP_APP_ID)
-    const whopAppId = process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
+    // Usar el CLIENT_ID configurado (puede estar en WHOP_CLIENT_ID o NEXT_PUBLIC_WHOP_APP_ID)
+    const whopClientId = process.env.NEXT_PUBLIC_WHOP_CLIENT_ID || process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
     // Construir redirect_uri - debe coincidir EXACTAMENTE con el registrado en Whop
     // IMPORTANTE: No agregar barra final (/)
     const redirectUri = `${window.location.origin}/api/auth/callback`;
     // URL correcta de OAuth de Whop según documentación oficial
-    const whopAuthUrl = `https://whop.com/oauth?client_id=${whopAppId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const whopAuthUrl = `https://whop.com/oauth?client_id=${whopClientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     window.location.href = whopAuthUrl;
   };
 
