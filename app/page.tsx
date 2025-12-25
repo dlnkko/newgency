@@ -79,6 +79,9 @@ function HomeContent() {
       'config_error': 'Configuration error. Please contact the administrator.',
       'access_check_failed': 'Error verifying your access. Please try again.',
       'authentication_failed': 'Authentication error. Please try again.',
+      'invalid_client': 'Invalid client credentials. Please verify your Client ID and Client Secret are correct in the environment variables. Make sure NEXT_PUBLIC_WHOP_APP_ID starts with "app_" (not "prod_").',
+      'redirect_uri_mismatch': 'Redirect URI mismatch. The redirect URI in Whop must match exactly: https://newgency.vercel.app/api/auth/callback',
+      'config_error': 'Configuration error. Check that NEXT_PUBLIC_WHOP_APP_ID starts with "app_" (not "prod_"). Get the correct App ID from https://dev.whop.com/ → Your App → OAuth tab.',
     };
     
     return messages[errorCode] || 'An error occurred. Please try again.';

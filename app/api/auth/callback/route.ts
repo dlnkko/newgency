@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { checkWhopAccess } from '@/lib/whop-access';
 
+// NOTA: La App de Whop NO necesita publicarse
+// Solo se usa para obtener credenciales OAuth (Client ID y Client Secret)
+// El Product ID es de tu comunidad/producto real que quieres proteger
+
 const WHOP_API_KEY = process.env.WHOP_API_KEY;
 const WHOP_CLIENT_SECRET = process.env.WHOP_CLIENT_SECRET;
 const WHOP_APP_ID = process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
@@ -35,37 +39,156 @@ export async function GET(request: NextRequest) {
     }
 
     // Construir redirect_uri - debe coincidir EXACTAMENTE con el registrado en Whop
-    const redirectUri = 'https://newgency.vercel.app/api/auth/callback';
+    // Usar el origin de la request para que funcione tanto en producción como desarrollo
+    const origin = request.nextUrl.origin;
+    const redirectUri = `${origin}/api/auth/callback`;
 
     console.log('=== OAUTH TOKEN EXCHANGE ===');
     console.log('Redirect URI:', redirectUri);
     console.log('Client ID:', WHOP_APP_ID);
+    console.log('Client ID length:', WHOP_APP_ID?.length);
     console.log('Has API Key:', !!WHOP_API_KEY);
     console.log('Has Client Secret:', !!WHOP_CLIENT_SECRET);
+    console.log('Client Secret length:', WHOP_CLIENT_SECRET?.length);
+    
+    // Validar que el Client ID tenga el formato correcto
+    if (WHOP_APP_ID && !WHOP_APP_ID.startsWith('app_')) {
+      console.error('❌ ERROR: NEXT_PUBLIC_WHOP_APP_ID debe empezar con "app_"');
+      console.error('❌ Valor actual:', WHOP_APP_ID);
+      console.error('❌ Si empieza con "prod_", estás usando el Product ID en lugar del App ID');
+      console.error('❌ Ve a https://dev.whop.com/ → Tu App → OAuth para obtener el Client ID correcto');
+      return NextResponse.redirect(new URL('/?error=config_error', request.url));
+    }
+    
+    // Validar que el Client Secret exista
+    if (!WHOP_CLIENT_SECRET) {
+      console.error('❌ ERROR: WHOP_CLIENT_SECRET no está configurada');
+      console.error('❌ Ve a https://dev.whop.com/ → Tu App → OAuth para obtener el Client Secret');
+      return NextResponse.redirect(new URL('/?error=config_error', request.url));
+    }
 
     // Intercambiar código por token usando la API de Whop
-    // IMPORTANTE: NO incluir header Authorization durante el intercambio de token
-    // El client_secret es lo único que identifica a la app en este paso
-    const tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        code: code,
-        client_id: WHOP_APP_ID,
-        client_secret: WHOP_CLIENT_SECRET,
-        redirect_uri: redirectUri,
-      }),
-    });
+    // Intentar múltiples formatos según estándares OAuth2
+    let tokenResponse: Response | null = null;
+    let lastError: string | null = null;
 
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error('Error exchanging code for token:', tokenResponse.status, errorText);
-      console.error('Make sure the redirect_uri in Whop matches exactly:', redirectUri);
+    // Formato 1: application/x-www-form-urlencoded (estándar OAuth2)
+    try {
+      const formData = new URLSearchParams();
+      formData.append('grant_type', 'authorization_code');
+      formData.append('code', code);
+      formData.append('client_id', WHOP_APP_ID);
+      formData.append('client_secret', WHOP_CLIENT_SECRET);
+      formData.append('redirect_uri', redirectUri);
+
+      console.log('Intentando formato 1: application/x-www-form-urlencoded');
+      tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+
+      if (tokenResponse.ok) {
+        console.log('✅ Token exchange exitoso con formato form-urlencoded');
+      } else {
+        const errorText = await tokenResponse.text();
+        console.log('❌ Formato 1 falló:', tokenResponse.status, errorText);
+        lastError = errorText;
+        tokenResponse = null;
+      }
+    } catch (error: any) {
+      console.log('❌ Error en formato 1:', error.message);
+      lastError = error.message;
+    }
+
+    // Formato 2: Basic Auth + JSON body
+    if (!tokenResponse || !tokenResponse.ok) {
+      try {
+        const basicAuth = Buffer.from(`${WHOP_APP_ID}:${WHOP_CLIENT_SECRET}`).toString('base64');
+        
+        console.log('Intentando formato 2: Basic Auth + JSON');
+        tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${basicAuth}`,
+          },
+          body: JSON.stringify({
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: redirectUri,
+          }),
+        });
+
+        if (tokenResponse.ok) {
+          console.log('✅ Token exchange exitoso con formato Basic Auth');
+        } else {
+          const errorText = await tokenResponse.text();
+          console.log('❌ Formato 2 falló:', tokenResponse.status, errorText);
+          lastError = errorText;
+          tokenResponse = null;
+        }
+      } catch (error: any) {
+        console.log('❌ Error en formato 2:', error.message);
+        lastError = error.message;
+      }
+    }
+
+    // Formato 3: JSON body sin Basic Auth (formato original)
+    if (!tokenResponse || !tokenResponse.ok) {
+      try {
+        console.log('Intentando formato 3: JSON body (formato original)');
+        tokenResponse = await fetch('https://data.whop.com/api/v5/oauth/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            grant_type: 'authorization_code',
+            code: code,
+            client_id: WHOP_APP_ID,
+            client_secret: WHOP_CLIENT_SECRET,
+            redirect_uri: redirectUri,
+          }),
+        });
+
+        if (tokenResponse.ok) {
+          console.log('✅ Token exchange exitoso con formato JSON');
+        } else {
+          const errorText = await tokenResponse.text();
+          console.log('❌ Formato 3 falló:', tokenResponse.status, errorText);
+          lastError = errorText;
+        }
+      } catch (error: any) {
+        console.log('❌ Error en formato 3:', error.message);
+        lastError = error.message;
+      }
+    }
+
+    if (!tokenResponse || !tokenResponse.ok) {
+      const errorText = lastError || (tokenResponse ? await tokenResponse.text() : 'No se pudo conectar con la API de Whop');
+      console.error('❌ Error exchanging code for token:', tokenResponse?.status || 'NO_RESPONSE', errorText);
+      console.error('=== INFORMACIÓN DE DEBUG ===');
+      console.error('Redirect URI usado:', redirectUri);
+      console.error('Redirect URI debe coincidir EXACTAMENTE en Whop');
+      console.error('Client ID usado:', WHOP_APP_ID);
+      console.error('Client ID longitud:', WHOP_APP_ID?.length || 0);
+      console.error('Client Secret existe:', !!WHOP_CLIENT_SECRET);
+      console.error('Client Secret longitud:', WHOP_CLIENT_SECRET?.length || 0);
+      console.error('Origin:', origin);
+      
+      // Mensaje de error más descriptivo
+      let errorCode = 'auth_failed';
+      if (errorText.includes('invalid_client')) {
+        errorCode = 'invalid_client';
+      } else if (errorText.includes('redirect_uri') || errorText.includes('redirect')) {
+        errorCode = 'redirect_uri_mismatch';
+      }
+      
       // Redirigir al dashboard con mensaje de error
-      return NextResponse.redirect(new URL('/?error=auth_failed', request.url));
+      return NextResponse.redirect(new URL(`/?error=${errorCode}`, request.url));
     }
 
     const tokenData = await tokenResponse.json();
