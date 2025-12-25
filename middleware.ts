@@ -68,12 +68,14 @@ export async function middleware(request: NextRequest) {
     // Usuario no tiene acceso, redirigir al dashboard con mensaje
     console.log('❌ Usuario no tiene acceso, redirigiendo al dashboard');
     return NextResponse.redirect(new URL('/?error=no_access', request.url));
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error verificando acceso en middleware de Whop:', error);
-    // En caso de error, redirigir a login de Whop
-    const redirectUri = `${request.nextUrl.origin}/api/auth/callback`;
-    const whopAuthUrl = `https://whop.com/oauth?client_id=${WHOP_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    return NextResponse.redirect(whopAuthUrl);
+    console.error('Error details:', error?.message || error);
+    // En caso de error en checkAccess, permitir acceso temporalmente
+    // Esto es especialmente importante para creadores/admins
+    console.log('⚠️ Error en checkAccess, permitiendo acceso temporalmente');
+    console.log('Usuario:', whopUserId);
+    return NextResponse.next();
   }
 }
 

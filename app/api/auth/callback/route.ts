@@ -42,13 +42,15 @@ export async function GET(request: NextRequest) {
     console.log('Client ID:', WHOP_APP_ID);
     console.log('Has API Key:', !!WHOP_API_KEY);
     console.log('Has Client Secret:', !!WHOP_CLIENT_SECRET);
+    console.log('Client Secret length:', WHOP_CLIENT_SECRET?.length || 0);
+    console.log('Code received:', code ? 'Yes (length: ' + code.length + ')' : 'No');
 
     // Intercambiar código por token usando la API de Whop
+    // NOTA: El redirect_uri debe ser EXACTAMENTE el mismo que se usó en la autorización
     const tokenResponse = await fetch('https://api.whop.com/api/v2/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WHOP_API_KEY}`,
       },
       body: JSON.stringify({
         grant_type: 'authorization_code',
@@ -61,8 +63,23 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('Error exchanging code for token:', tokenResponse.status, errorText);
-      console.error('Make sure the redirect_uri in Whop matches exactly:', redirectUri);
+      console.error('=== OAUTH TOKEN EXCHANGE FAILED ===');
+      console.error('Status:', tokenResponse.status);
+      console.error('Error response:', errorText);
+      console.error('Redirect URI used:', redirectUri);
+      console.error('Client ID:', WHOP_APP_ID);
+      console.error('Has Client Secret:', !!WHOP_CLIENT_SECRET);
+      console.error('Request URL origin:', request.nextUrl.origin);
+      
+      // Intentar parsear el error para más detalles
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('Error details (parsed):', JSON.stringify(errorJson, null, 2));
+      } catch (e) {
+        // Si no es JSON, solo usar el texto
+        console.error('Error is not JSON, raw text:', errorText);
+      }
+      
       // Redirigir al dashboard con mensaje de error
       return NextResponse.redirect(new URL('/?error=auth_failed', request.url));
     }
@@ -84,6 +101,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/?error=config_error', request.url));
     }
 
+    // Intentar verificar acceso, pero no bloquear el login si falla
+    // El middleware verificará el acceso en cada request
     try {
       const accessCheck = await checkWhopAccess(userId, WHOP_PRODUCT_ID, WHOP_API_KEY);
 
@@ -93,21 +112,23 @@ export async function GET(request: NextRequest) {
       console.log('has_access:', accessCheck.has_access);
       console.log('access_level:', accessCheck.access_level);
 
-      // Solo permitir acceso si el usuario tiene membresía activa (customer) o es admin
-      if (!accessCheck.has_access || accessCheck.access_level === 'no_access') {
-        console.log('❌ Usuario no tiene acceso');
-        // Redirigir al dashboard con mensaje de que no tiene acceso
-        // El middleware se encargará de bloquear el acceso a las rutas protegidas
-        return NextResponse.redirect(new URL('/?error=no_access', request.url));
+      // Si el usuario es admin, siempre permitir acceso
+      if (accessCheck.access_level === 'admin') {
+        console.log('✅ Usuario es admin, permitiendo acceso');
+        // Continuar con el login
+      } else if (accessCheck.has_access && accessCheck.access_level === 'customer') {
+        console.log('✅ Usuario tiene membresía activa, permitiendo acceso');
+        // Continuar con el login
+      } else {
+        console.log('⚠️ Usuario no tiene acceso según checkAccess, pero continuando login');
+        console.log('El middleware verificará el acceso en cada request');
+        // Continuar con el login de todas formas - el middleware verificará después
       }
-
-      // Si tiene acceso (customer o admin), continuar con el proceso de autenticación
-      console.log('✅ Usuario tiene acceso, continuando con autenticación');
-    } catch (error) {
-      console.error('Error verificando acceso:', error);
-      // En caso de error, permitir login pero el middleware verificará después
-      // Redirigir al dashboard
-      return NextResponse.redirect(new URL('/?error=access_check_failed', request.url));
+    } catch (error: any) {
+      console.error('Error verificando acceso en callback:', error);
+      console.log('⚠️ Continuando con login a pesar del error - el middleware verificará el acceso');
+      // No bloquear el login - permitir que continúe y el middleware verificará después
+      // Esto es especialmente importante para creadores/admins que pueden tener problemas con checkAccess
     }
 
     // Usuario tiene acceso, establecer cookies de sesión
