@@ -1,79 +1,170 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { checkUserAccess } from '@/lib/whop-sdk';
-
-const WHOP_PRODUCT_ID = process.env.NEXT_PUBLIC_WHOP_PRODUCT_ID || 'prod_ZfB8PwCxIaiC2';
-const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID || process.env.NEXT_PUBLIC_WHOP_APP_ID || 'app_1NcIzCMmQK7kYR';
+import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Permitir acceso a rutas públicas (callback de auth, logout, debug, API routes, no-access, etc.)
+  // Permitir acceso a rutas públicas (solo API y assets estáticos)
   if (
-    pathname.startsWith('/api/auth/callback') ||
+    pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/logout') ||
-    pathname.startsWith('/api/auth/debug') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon.ico') ||
     pathname.startsWith('/_vercel') ||
-    pathname.startsWith('/no-access')
+    pathname.startsWith('/no-access') ||
+    pathname === '/login'
   ) {
     return NextResponse.next();
   }
 
-  // Obtener el user_id de las cookies
-  const whopUserId = request.cookies.get('whop_user_id')?.value;
-
-  // Si no hay sesión, permitir acceso a la página principal para mostrar el botón de login
-  if (!whopUserId) {
-    if (pathname === '/') {
-      return NextResponse.next();
-    }
-    return NextResponse.redirect(new URL('/', request.url));
-  }
-
-  // Verificar acceso usando el SDK de Whop
-  try {
-    console.log('=== VERIFICACIÓN DE ACCESO EN MIDDLEWARE (SDK) ===');
-    console.log('Usuario:', whopUserId);
-    console.log('Producto:', WHOP_PRODUCT_ID);
-
-    const accessCheck = await checkUserAccess(whopUserId, WHOP_PRODUCT_ID);
-
-    if (accessCheck.hasAccess) {
-      if (accessCheck.isAdmin) {
-        console.log('✅ Usuario es ADMIN, permitiendo acceso');
-      } else {
-        console.log('✅ Usuario tiene acceso (membresía activa)');
-      }
-      return NextResponse.next();
-    }
-
-    // Usuario no tiene acceso, redirigir a página de error/venta
-    console.log('❌ Usuario no tiene acceso');
-    console.log('Access level:', accessCheck.accessLevel);
-    return NextResponse.redirect(new URL(`/no-access?error=${encodeURIComponent(accessCheck.error || 'no_access')}`, request.url));
-  } catch (error: any) {
-    console.error('Error verificando acceso en middleware:', error);
+  // Para la ruta raíz, verificar sesión y redirigir apropiadamente
+  if (pathname === '/') {
+    const sessionCookie = request.cookies.get('app_session')?.value;
     
-    // Si hay error, redirigir a login
-    const redirectUri = `${request.nextUrl.origin}/api/auth/callback`;
-    const whopAuthUrl = `https://whop.com/oauth?client_id=${WHOP_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    return NextResponse.redirect(whopAuthUrl);
+    if (!sessionCookie) {
+      // Si no hay sesión, redirigir al login
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    try {
+      const sessionData = JSON.parse(sessionCookie);
+      const userEmail = sessionData.email?.toLowerCase();
+
+      if (!userEmail || !sessionData.verified) {
+        // Si la sesión no es válida, redirigir al login
+        const response = NextResponse.redirect(new URL('/login', request.url));
+        response.cookies.delete('app_session');
+        return response;
+      }
+
+      // Verificar que el usuario tenga membresía activa
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+      
+      if (!supabaseUrl || !supabaseAnonKey) {
+        const response = NextResponse.redirect(new URL('/login', request.url));
+        response.cookies.delete('app_session');
+        return response;
+      }
+
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          get() { return undefined; },
+          set() {},
+          remove() {},
+        },
+      });
+
+      const { data: whopUser, error: whopError } = await supabase
+        .from('whop_users')
+        .select('email, status')
+        .eq('email', userEmail)
+        .single();
+
+      // Si no está activo, redirigir al login
+      if (whopError || !whopUser || whopUser.status !== 'active') {
+        const response = NextResponse.redirect(new URL('/login?error=no_active_membership', request.url));
+        response.cookies.delete('app_session');
+        return response;
+      }
+
+      // Si hay sesión válida y status activo, redirigir al dashboard
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    } catch (error) {
+      // Si hay error, redirigir al login
+      const response = NextResponse.redirect(new URL('/login', request.url));
+      response.cookies.delete('app_session');
+      return response;
+    }
   }
+
+  // Proteger rutas que empiezan con /dashboard o /tools
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/tools')) {
+    const response = NextResponse.next();
+    
+    // Obtener la sesión de la cookie
+    const sessionCookie = request.cookies.get('app_session')?.value;
+    
+    if (!sessionCookie) {
+      // Si no hay cookie de sesión, redirigir al login
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    try {
+      // Parsear la sesión
+      const sessionData = JSON.parse(sessionCookie);
+      const userEmail = sessionData.email?.toLowerCase();
+
+      if (!userEmail || !sessionData.verified) {
+        // Si la sesión no es válida, redirigir al login
+        response.cookies.delete('app_session');
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+
+      // Crear cliente de Supabase para verificar el status
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+      
+      if (!supabaseUrl || !supabaseAnonKey) {
+        response.cookies.delete('app_session');
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          get() { return undefined; },
+          set() {},
+          remove() {},
+        },
+      });
+
+      // Verificar en tiempo real que el usuario tenga membresía activa
+      // Esto consulta directamente la base de datos, por lo que si el webhook de Whop
+      // actualiza el status a 'inactive', el usuario será expulsado en la siguiente petición
+      const { data: whopUser, error: whopError } = await supabase
+        .from('whop_users')
+        .select('email, status')
+        .eq('email', userEmail)
+        .single();
+
+      // Si hay error al consultar o el usuario no existe o no está activo, expulsar
+      if (whopError || !whopUser || whopUser.status !== 'active') {
+        console.log(`Usuario ${userEmail} expulsado: status=${whopUser?.status || 'no encontrado'}, error=${whopError?.message || 'none'}`);
+        
+        // Limpiar cookie de sesión
+        response.cookies.delete('app_session');
+        
+        return NextResponse.redirect(
+          new URL('/login?error=no_active_membership', request.url)
+        );
+      }
+
+      // Usuario tiene sesión válida y membresía activa, permitir acceso
+      return response;
+    } catch (error) {
+      console.error('Error en middleware:', error);
+      // En caso de error, limpiar sesión y redirigir
+      response.cookies.delete('app_session');
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api/auth/callback (ruta de callback)
+     * - api/auth/login (ruta de login)
+     * - api/auth/logout (ruta de logout)
      * - api (otras rutas API)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      */
-    '/((?!api/auth/callback|api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/auth/login|api/auth/logout|api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
