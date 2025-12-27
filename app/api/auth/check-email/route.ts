@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
 
     if (!email || !email.includes('@')) {
       return NextResponse.json(
-        { error: 'Email inválido' },
+        { error: 'Invalid email' },
         { status: 400 }
       );
     }
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.json(
-        { error: 'Configuración de Supabase no encontrada' },
+        { error: 'Supabase configuration not found' },
         { status: 500 }
       );
     }
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       if (error.code === 'PGRST116') {
         console.log('❌ Usuario no encontrado en la base de datos');
         return NextResponse.json(
-          { error: 'No tienes una membresía activa', status: 'not_found' },
+          { error: 'You do not have an active membership', status: 'not_found' },
           { status: 403 }
         );
       }
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (!data) {
       console.log('❌ No se encontraron datos para el usuario');
       return NextResponse.json(
-        { error: 'No tienes una membresía activa', status: 'not_found' },
+        { error: 'You do not have an active membership', status: 'not_found' },
         { status: 403 }
       );
     }
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       console.log(`⚠️ Usuario encontrado pero status es '${data.status}', no 'active'`);
       return NextResponse.json(
         { 
-          error: 'No tienes una membresía activa', 
+          error: 'You do not have an active membership', 
           status: data.status,
           found: true 
         },
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error verificando email:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al verificar el email' },
+      { error: error.message || 'Error verifying email' },
       { status: 500 }
     );
   }

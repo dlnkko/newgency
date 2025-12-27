@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
 
     if (!email || !email.includes('@')) {
       return NextResponse.json(
-        { error: 'Email inválido' },
+        { error: 'Invalid email' },
         { status: 400 }
       );
     }
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.json(
-        { error: 'Configuración de Supabase no encontrada' },
+        { error: 'Supabase configuration not found' },
         { status: 500 }
       );
     }
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error en debug:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al verificar el email', stack: error.stack },
+      { error: error.message || 'Error verifying email', stack: error.stack },
       { status: 500 }
     );
   }

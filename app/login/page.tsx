@@ -33,7 +33,7 @@ function LoginForm() {
     setError(null);
 
     if (!email || !email.includes('@')) {
-      setError('Por favor, ingresa un email válido');
+      setError('Please enter a valid email');
       setLoading(false);
       return;
     }
@@ -51,14 +51,14 @@ function LoginForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al iniciar sesión');
+        throw new Error(data.error || 'Error signing in');
       }
 
       // Si el login es exitoso, redirigir al dashboard
       router.push('/dashboard');
     } catch (err: any) {
       console.error('Error en login:', err);
-      setError(err.message || 'Ocurrió un error al iniciar sesión');
+      setError(err.message || 'An error occurred while signing in');
       setLoading(false);
     }
   };

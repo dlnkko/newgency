@@ -14,16 +14,16 @@ function NoAccessContent() {
     if (!errorCode) return null;
     
     const messages: Record<string, string> = {
-      'no_access': 'No tienes acceso a esta aplicación. Necesitas una membresía activa.',
-      'Usuario no tiene membresía para este producto': 'No tienes una membresía para este producto.',
-      'Usuario no tiene membresías': 'No tienes membresías activas.',
-      'Membresía existe pero está inactive': 'Tu membresía está inactiva. Por favor, reactívala.',
-      'Membresía existe pero está cancelled': 'Tu membresía ha sido cancelada.',
-      'Membresía existe pero está expired': 'Tu membresía ha expirado.',
-      'Token de acceso inválido o expirado': 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
+      'no_access': 'You do not have access to this application. You need an active membership.',
+      'Usuario no tiene membresía para este producto': 'You do not have a membership for this product.',
+      'Usuario no tiene membresías': 'You do not have active memberships.',
+      'Membresía existe pero está inactive': 'Your membership is inactive. Please reactivate it.',
+      'Membresía existe pero está cancelled': 'Your membership has been cancelled.',
+      'Membresía existe pero está expired': 'Your membership has expired.',
+      'Token de acceso inválido o expirado': 'Your session has expired. Please sign in again.',
     };
     
-    return messages[errorCode] || 'No tienes acceso a esta aplicación.';
+    return messages[errorCode] || 'You do not have access to this application.';
   };
 
   const errorMessage = getErrorMessage(error);
@@ -53,7 +53,7 @@ function NoAccessContent() {
             </div>
           </div>
           <h1 className="mb-4 text-4xl font-bold text-zinc-50 sm:text-5xl">
-            Acceso Restringido
+            Access Restricted
           </h1>
           {errorMessage && (
             <p className="text-lg text-red-400 mb-4">
@@ -61,16 +61,16 @@ function NoAccessContent() {
             </p>
           )}
           <p className="text-zinc-400 mb-8">
-            Esta aplicación está disponible solo para miembros activos de la comunidad.
+            This application is available only for active community members.
           </p>
         </div>
 
         <div className="bg-gradient-to-br from-zinc-900/90 via-zinc-950/90 to-black rounded-2xl border-2 border-zinc-800/70 p-8">
           <h2 className="text-xl font-semibold text-zinc-50 mb-4">
-            ¿No tienes una membresía?
+            Don't have a membership?
           </h2>
           <p className="text-zinc-300 mb-6">
-            Únete a nuestra comunidad para acceder a todas las herramientas exclusivas.
+            Join our community to access all exclusive tools.
           </p>
           
           <a
@@ -82,24 +82,24 @@ function NoAccessContent() {
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
             </svg>
-            Obtener Membresía
+            Get Membership
           </a>
 
           <Link
             href="/"
             className="text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
           >
-            Volver al inicio
+            Back to home
           </Link>
         </div>
 
         <div className="mt-8 text-sm text-zinc-500">
           <p>
-            ¿Ya tienes una membresía?{' '}
+            Already have a membership?{' '}
             <Link href="/api/auth/logout" className="text-amber-400 hover:text-amber-300">
-              Cierra sesión
+              Sign out
             </Link>
-            {' '}e inicia sesión nuevamente.
+            {' '}and sign in again.
           </p>
         </div>
       </div>
@@ -112,7 +112,7 @@ export default function NoAccessPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-gradient-to-br from-black via-zinc-950 to-zinc-900 flex items-center justify-center px-4">
-          <div className="text-zinc-400">Cargando...</div>
+          <div className="text-zinc-400">Loading...</div>
         </div>
       }
     >

@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
 
     if (!email || !email.includes('@')) {
       return NextResponse.json(
-        { error: 'Email inválido' },
+        { error: 'Invalid email' },
         { status: 400 }
       );
     }
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.json(
-        { error: 'Configuración de Supabase no encontrada' },
+        { error: 'Supabase configuration not found' },
         { status: 500 }
       );
     }
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     if (whopError || !whopUser || whopUser.status !== 'active') {
       return NextResponse.json(
-        { error: 'No tienes una membresía activa' },
+        { error: 'You do not have an active membership' },
         { status: 403 }
       );
     }
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       // Si falla, intentar crear sesión directa con password temporal
       // Pero mejor usar el magic link
       return NextResponse.json(
-        { error: 'Error al crear sesión. Por favor, intenta de nuevo.' },
+        { error: 'Error creating session. Please try again.' },
         { status: 500 }
       );
     }
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error en auto-login:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al iniciar sesión' },
+      { error: error.message || 'Error signing in' },
       { status: 500 }
     );
   }

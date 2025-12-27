@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     if (!url || !type) {
       return NextResponse.json(
-        { error: 'URL y tipo de análisis son requeridos' },
+        { error: 'URL and analysis type are required' },
         { status: 400 }
       );
     }
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     if (!adId) {
       return NextResponse.json(
-        { error: 'No se pudo extraer el ID del anuncio de la URL. Asegúrate de que la URL tenga el formato correcto: https://www.facebook.com/ads/library/?id=XXXXX' },
+        { error: 'Could not extract ad ID from URL. Make sure the URL has the correct format: https://www.facebook.com/ads/library/?id=XXXXX' },
         { status: 400 }
       );
     }
@@ -139,12 +139,12 @@ export async function POST(request: NextRequest) {
       
       // Verificar errores de créditos o pagos (402)
       if (response.status === 402) {
-        const errorMessage = response.data?.message || 'No hay créditos disponibles';
+        const errorMessage = response.data?.message || 'No credits available';
         console.error('❌ Error 402 - Sin créditos:', errorMessage);
         return NextResponse.json(
           {
-            error: 'Sin créditos en ScrapeCreators',
-            details: errorMessage || 'Tu cuenta de ScrapeCreators no tiene créditos disponibles. Por favor, compra más créditos en https://scrapecreators.com',
+            error: 'No credits in ScrapeCreators',
+            details: errorMessage || 'Your ScrapeCreators account does not have available credits. Please purchase more credits at https://scrapecreators.com',
             statusCode: 402
           },
           { status: 402 }
@@ -153,11 +153,11 @@ export async function POST(request: NextRequest) {
       
       // Verificar otros errores HTTP (4xx)
       if (response.status >= 400 && response.status < 500) {
-        const errorMessage = response.data?.message || response.data?.error || 'Error desconocido';
+        const errorMessage = response.data?.message || response.data?.error || 'Unknown error';
         console.error(`❌ Error ${response.status}:`, errorMessage);
         return NextResponse.json(
           {
-            error: 'Error al obtener datos del anuncio',
+            error: 'Error getting ad data',
             details: errorMessage,
             statusCode: response.status
           },
@@ -207,8 +207,8 @@ export async function POST(request: NextRequest) {
           
           return NextResponse.json(
             {
-              error: 'Error de conexión con ScrapeCreators API',
-              details: `No se pudo conectar con la API de ScrapeCreators. Verifica tu conexión a internet o que el servicio esté disponible. Error: ${errorMessage}`,
+              error: 'Connection error with ScrapeCreators API',
+              details: `Could not connect to ScrapeCreators API. Check your internet connection or that the service is available. Error: ${errorMessage}`,
               errorCode: errorCode
             },
             { status: 503 }
@@ -219,8 +219,8 @@ export async function POST(request: NextRequest) {
         if (scrapeError.response?.status === 401 || scrapeError.response?.status === 403) {
           return NextResponse.json(
             {
-              error: 'Error de autenticación con ScrapeCreators API',
-              details: 'La API key de ScrapeCreators no es válida o ha expirado. Verifica tu API key en el archivo .env.local'
+              error: 'Authentication error with ScrapeCreators API',
+              details: 'The ScrapeCreators API key is not valid or has expired. Verify your API key in the .env.local file'
             },
             { status: 401 }
           );
@@ -230,8 +230,8 @@ export async function POST(request: NextRequest) {
         if (scrapeError.response?.status === 404) {
           return NextResponse.json(
             {
-              error: 'Anuncio no encontrado',
-              details: `No se pudo encontrar el anuncio con ID ${adId} en la biblioteca de Facebook Ads. Verifica que el ID sea correcto.`
+              error: 'Ad not found',
+              details: `Could not find the ad with ID ${adId} in the Facebook Ads library. Verify that the ID is correct.`
             },
             { status: 404 }
           );
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
         if (scrapeError.response) {
           return NextResponse.json(
             {
-              error: 'Error al obtener datos del anuncio',
+              error: 'Error getting ad data',
               details: scrapeError.response.data || scrapeError.message,
               statusCode: scrapeError.response.status
             },
@@ -254,8 +254,8 @@ export async function POST(request: NextRequest) {
       console.error('Error desconocido al llamar a ScrapeCreators:', scrapeError);
       return NextResponse.json(
         {
-          error: 'Error al obtener datos del anuncio',
-          details: scrapeError.message || 'Error desconocido al comunicarse con ScrapeCreators API'
+          error: 'Error getting ad data',
+          details: scrapeError.message || 'Unknown error communicating with ScrapeCreators API'
         },
         { status: 500 }
       );
@@ -418,8 +418,8 @@ export async function POST(request: NextRequest) {
     if (!videoUrl) {
       // Devolver error en lugar de success: false para que el frontend lo maneje
       return NextResponse.json({
-        error: 'No se encontró video en el anuncio',
-        details: 'El anuncio no contiene un video o la estructura de datos es diferente a la esperada. Verifica que el anuncio tenga un video y que el ID sea correcto.',
+        error: 'No video found in ad',
+        details: 'The ad does not contain a video or the data structure is different than expected. Verify that the ad has a video and that the ID is correct.',
         adId,
         type,
         dataStructure: {
@@ -440,8 +440,8 @@ export async function POST(request: NextRequest) {
       console.error('Error al parsear URL del video:', urlError);
       return NextResponse.json(
         { 
-          error: 'La URL del video no es válida',
-          details: 'No se pudo parsear la URL del video correctamente'
+          error: 'Video URL is not valid',
+          details: 'Could not parse the video URL correctly'
         },
         { status: 400 }
       );
@@ -486,7 +486,7 @@ export async function POST(request: NextRequest) {
       if (videoBuffer.length === 0) {
         return NextResponse.json(
           { 
-            error: 'El video descargado está vacío',
+            error: 'Downloaded video is empty',
             details: 'El video no tiene contenido'
           },
           { status: 500 }
@@ -525,8 +525,8 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json(
           { 
-            error: 'API key de Google Gemini no válida',
-            details: 'La API key de Google Gemini no es válida o ha expirado. Por favor, verifica tu API key en el archivo .env.local y reinicia el servidor. Obtén una nueva API key en: https://aistudio.google.com/apikey'
+            error: 'Google Gemini API key is not valid',
+            details: 'The Google Gemini API key is not valid or has expired. Please verify your API key in the .env.local file and restart the server. Get a new API key at: https://aistudio.google.com/apikey'
           },
           { status: 401 }
         );
@@ -534,8 +534,8 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json(
         { 
-          error: 'Error al procesar el video',
-          details: videoError.message || 'No se pudo descargar o subir el video. El video puede ser muy grande o la URL no es accesible.'
+          error: 'Error processing video',
+          details: videoError.message || 'Could not download or upload the video. The video may be too large or the URL is not accessible.'
         },
         { status: 500 }
       );
@@ -566,7 +566,7 @@ export async function POST(request: NextRequest) {
         if (Date.now() - startTime > maxWaitTime) {
           return NextResponse.json(
             { 
-              error: 'Timeout esperando que el archivo esté listo',
+              error: 'Timeout waiting for file to be ready',
               details: `El archivo no alcanzó el estado ACTIVE después de ${maxWaitTime / 1000} segundos. Estado actual: ${myfile.state}`
             },
             { status: 500 }
@@ -649,8 +649,8 @@ export async function POST(request: NextRequest) {
       console.error('Error al llamar a Gemini:', geminiError);
       return NextResponse.json(
         { 
-          error: 'Error al analizar el video con Gemini',
-          details: geminiError.message || 'No se pudo procesar el video con la IA',
+          error: 'Error analyzing video with Gemini',
+          details: geminiError.message || 'Could not process the video with AI',
           geminiError: geminiError.response?.data || geminiError.message
         },
         { status: 500 }
@@ -658,7 +658,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Obtener el texto de la respuesta
-    let analysisText = 'No se pudo obtener el análisis';
+    let analysisText = 'Could not get analysis';
     let analysisError = null;
     try {
       // La respuesta de Gemini tiene la estructura: result.candidates[0].content.parts[0].text
@@ -691,7 +691,7 @@ export async function POST(request: NextRequest) {
     }
     
     // If analysis failed, return error early
-    if (!analysisText || analysisText === 'No se pudo obtener el análisis' || analysisText.trim().length === 0) {
+    if (!analysisText || analysisText === 'Could not get analysis' || analysisText.trim().length === 0) {
       return NextResponse.json(
         {
           error: 'Failed to generate production prompt',
@@ -750,7 +750,7 @@ export async function POST(request: NextRequest) {
     // BUT only if we successfully got the original analysis
     let adaptedPrompt = null;
     const hasValidAnalysis = analysisText && 
-                             analysisText !== 'No se pudo obtener el análisis' && 
+                             analysisText !== 'Could not get analysis' && 
                              analysisText.trim().length > 0;
     
     if (type === 'production' && productService && productService.trim() && hasValidAnalysis) {
@@ -992,7 +992,7 @@ ${langInstructions.output}`;
       
       return NextResponse.json(
         { 
-          error: 'Error al obtener datos del anuncio',
+          error: 'Error getting ad data',
           details: errorData 
             ? (typeof errorData === 'string' ? errorData : JSON.stringify(errorData))
             : errorMessage,
@@ -1003,12 +1003,12 @@ ${langInstructions.output}`;
     }
 
     // Error de Gemini u otro error
-    const errorMessage = error.message || 'Error desconocido';
+    const errorMessage = error.message || 'Unknown error';
     console.error('Error general:', errorMessage);
     
     return NextResponse.json(
       { 
-        error: 'Error interno del servidor',
+        error: 'Internal server error',
         details: errorMessage,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },

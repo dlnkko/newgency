@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
 
     if (!email || !email.includes('@')) {
       return NextResponse.json(
-        { error: 'Email inválido' },
+        { error: 'Invalid email' },
         { status: 400 }
       );
     }
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.json(
-        { error: 'Configuración de Supabase no encontrada' },
+        { error: 'Supabase configuration not found' },
         { status: 500 }
       );
     }
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     if (error || !data) {
       return NextResponse.json(
-        { error: 'No tienes una membresía activa' },
+        { error: 'You do not have an active membership' },
         { status: 403 }
       );
     }
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     // Verificar que el status sea 'active'
     if (data.status !== 'active') {
       return NextResponse.json(
-        { error: 'No tienes una membresía activa' },
+        { error: 'You do not have an active membership' },
         { status: 403 }
       );
     }
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error en login:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al iniciar sesión' },
+      { error: error.message || 'Error signing in' },
       { status: 500 }
     );
   }
