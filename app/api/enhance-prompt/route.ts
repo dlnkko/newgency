@@ -169,6 +169,18 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
 ${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${ugcCloseUpInstructions}${lightingInstructions}
 
+**CRITICAL DEFAULT INSTRUCTION - SELF-RECORDED VIDEO (MANDATORY UNLESS EXPLICITLY OVERRIDDEN):**
+The video MUST ALWAYS be generated as if it were **self-recorded (selfie-style)** by default. This means:
+- The same person who performs the actions is the one recording themselves with their phone/camera
+- The person is holding the camera/phone and recording themselves while doing the actions
+- The person is narrating, talking, and showing things directly to the camera as they perform the actions
+- Everything happens from the first-person perspective of the person recording themselves
+- The camera angle should be as if the person is holding their phone in front of them, showing themselves and the product/actions
+- The person is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
+- The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
+
+**ONLY EXCEPTION:** If the user EXPLICITLY states in the action text that the video should NOT be self-recorded (e.g., "third person view", "someone else recording", "external camera", "not selfie", etc.), then you may deviate from this default. Otherwise, ALWAYS assume self-recorded selfie-style by default.
+
 The final output must be strictly a single, continuous paragraph, without line breaks, interweaving the action, product focus, technical composition, and visual aesthetics to create a cohesive and powerful instruction. The prompt's focus must ensure the video looks **100% authentic**, as if it were recorded by a real person on their phone (iPhone/Android), emphasizing the **spontaneity, natural handheld camera movements (slight shake, imperfect zoom, quick pan), subtle mobile grain, and genuine ambient lighting without professional artifices**. The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content. **IMPORTANT: If the action or scene description suggests there should be text overlay (on-screen text, captions, subtitles, or any text appearing in the video), you MUST explicitly specify what text should appear in the overlay. Quote the exact words/phrases that should be displayed so the user can easily modify them if needed.**
 
 [ACTION TEXT TO ENHANCE]: ${actionText}
