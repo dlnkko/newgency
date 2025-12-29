@@ -8,10 +8,7 @@ export default function ViralScriptGenerator() {
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [productDescription, setProductDescription] = useState<string>('');
   const [generatedScript, setGeneratedScript] = useState<string>('');
-  const [adaptedScript, setAdaptedScript] = useState<string>('');
-  const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [isAdapting, setIsAdapting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState<boolean>(false);
 
@@ -61,47 +58,6 @@ export default function ViralScriptGenerator() {
     } finally {
       setIsGenerating(false);
       setIsScraping(false);
-    }
-  };
-
-
-  const handleAdaptScript = async (duration: number) => {
-    if (!generatedScript) return;
-
-    setSelectedDuration(duration);
-    setIsAdapting(true);
-    setError(null);
-    setAdaptedScript('');
-
-    try {
-      const response = await fetch('/api/adapt-viral-script', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          originalScript: generatedScript,
-          duration,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
-        } else {
-          setError(data.error || 'Failed to adapt script');
-        }
-        return;
-      }
-
-      setAdaptedScript(data.script);
-    } catch (err) {
-      setError('An error occurred while adapting the script');
-      console.error('Error adapting script:', err);
-    } finally {
-      setIsAdapting(false);
     }
   };
 
@@ -199,58 +155,6 @@ export default function ViralScriptGenerator() {
                 </p>
               </div>
             </div>
-
-            {/* Adapt to Duration Section */}
-            <div className="rounded-2xl border-2 border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-blue-500/5 p-6 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
-              <h3 className="mb-4 text-lg font-bold uppercase tracking-wide text-blue-400">
-                Adapt it to:
-              </h3>
-              <div className="flex flex-wrap gap-3 mb-4">
-                {[15, 20, 30].map((duration) => (
-                  <button
-                    key={duration}
-                    onClick={() => handleAdaptScript(duration)}
-                    disabled={isAdapting}
-                    className={`rounded-lg border-2 px-4 py-2 text-sm font-semibold transition-all ${
-                      selectedDuration === duration
-                        ? 'border-blue-500/80 bg-gradient-to-br from-blue-500/20 to-blue-500/10 text-blue-200 shadow-[0_0_15px_rgba(59,130,246,0.2)] ring-1 ring-blue-500/30'
-                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-blue-500/50 hover:bg-zinc-800/50 hover:text-blue-300/90 hover:shadow-[0_0_8px_rgba(59,130,246,0.1)]'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {duration}s
-                  </button>
-                ))}
-              </div>
-              {isAdapting && (
-                <p className="text-xs text-blue-400 animate-pulse">
-                  Adapting script to {selectedDuration} seconds...
-                </p>
-              )}
-            </div>
-
-            {/* Adapted Script Display */}
-            {adaptedScript && (
-              <div className="space-y-4">
-                <div className="flex justify-end">
-                  <CopyButton 
-                    text={adaptedScript} 
-                    label="Copy Adapted Script"
-                    copiedLabel="Copied!"
-                    className="bg-green-500/10 text-green-200 border-green-500/50 hover:bg-green-500/20 hover:border-green-500/70"
-                  />
-                </div>
-                <div className="rounded-2xl border-2 border-green-500/30 bg-gradient-to-br from-green-500/10 to-green-500/5 p-6 shadow-[0_0_30px_rgba(34,197,94,0.15)]">
-                  <h3 className="mb-4 text-lg font-bold uppercase tracking-wide text-green-400">
-                    Adapted Script ({selectedDuration}s)
-                  </h3>
-                  <div className="prose prose-invert max-w-none">
-                    <p className="text-sm leading-relaxed text-zinc-100">
-                      {adaptedScript}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

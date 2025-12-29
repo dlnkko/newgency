@@ -398,16 +398,30 @@ Using the EXACT scraped product page information below, create copywriting that:
 - Matches the same style: "${copywritingProfile.styleCategory || 'persuasive'}"
 - EXACT word count: ${copywritingProfile.wordCount || 10} words (target: ${copywritingProfile.wordCount ? copywritingProfile.wordCount - 2 : 8} to ${copywritingProfile.wordCount ? copywritingProfile.wordCount + 2 : 12} words)
 
+**CRITICAL RESTRICTIONS - DO NOT COPY FROM REFERENCE AD:**
+- **NEVER copy specific details from the reference ad** such as: discounts (e.g., "40% off", "50% discount"), prices, percentages, promotional offers, sale information, specific numbers, dates, or any product-specific information from the reference ad
+- **ONLY use information from the scraped product page data** provided below
+- **ONLY match the style, tone, and rhetorical figure** from the reference ad - NOT the actual content, numbers, or specific details
+- If the reference ad mentions discounts, prices, or percentages, DO NOT include those in the new copywriting
+- Base the copywriting SOLELY on the scraped product information below
+
 **Scraped Product Page Data (use this EXACT information - do not summarize):**
 ${scrapedSummary}
 
-Reformulate this product information into copywriting using the SAME rhetorical approach as the reference ad. Apply the same literary/rhetorical device (${rhetoricalFigures.primary || 'style'}) to create compelling copywriting about the product.`;
+Reformulate this product information into copywriting using the SAME rhetorical approach as the reference ad. Apply the same literary/rhetorical device (${rhetoricalFigures.primary || 'style'}) to create compelling copywriting about the product. Use ONLY the information from the scraped data above - do not copy any specific details (discounts, prices, percentages, offers) from the reference ad.`;
       
       console.log('\n📝 Creating copywriting from scraped data with rhetorical figure');
     } else if (copywriting && !isUrlScraped) {
       // Manual copywriting provided
       copywritingInstructions = `**Copywriting:**
-Use this exact copywriting in the prompt: "${copywriting}"`;
+Use this exact copywriting in the prompt: "${copywriting}"
+
+**CRITICAL RESTRICTIONS - DO NOT COPY FROM REFERENCE AD:**
+- **NEVER copy specific details from the reference ad** such as: discounts (e.g., "40% off", "50% discount"), prices, percentages, promotional offers, sale information, specific numbers, dates, or any product-specific information from the reference ad
+- **ONLY use the copywriting provided above** by the user
+- **ONLY match the style, tone, and rhetorical figure** from the reference ad - NOT the actual content, numbers, or specific details
+- If the reference ad mentions discounts, prices, or percentages, DO NOT include those in the new copywriting
+- Base the copywriting SOLELY on the user-provided copywriting above`;
       console.log('\n📝 Using manual copywriting');
     } else {
       copywritingInstructions = `**Copywriting:**
@@ -415,7 +429,12 @@ Create copywriting matching the reference style:
 - Rhetorical figure: ${rhetoricalFigures?.primary || 'match reference'}
 - Tone: ${copywritingProfile?.tone || 'professional'}
 - Style: ${copywritingProfile?.styleCategory || 'persuasive'}
-- Word count: ${copywritingProfile?.wordCount || 10} words`;
+- Word count: ${copywritingProfile?.wordCount || 10} words
+
+**CRITICAL RESTRICTIONS - DO NOT COPY FROM REFERENCE AD:**
+- **NEVER copy specific details from the reference ad** such as: discounts (e.g., "40% off", "50% discount"), prices, percentages, promotional offers, sale information, specific numbers, dates, or any product-specific information from the reference ad
+- **ONLY match the style, tone, and rhetorical figure** from the reference ad - NOT the actual content, numbers, or specific details
+- If the reference ad mentions discounts, prices, or percentages, DO NOT include those in the new copywriting`;
       console.log('\n📝 Creating copywriting from profile only');
     }
 
