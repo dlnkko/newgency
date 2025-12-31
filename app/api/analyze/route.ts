@@ -616,7 +616,7 @@ export async function POST(request: NextRequest) {
         const langInstruction = userLanguage === 'es' 
           ? 'Genera el prompt en ESPAÑOL.' 
           : 'Generate the prompt in ENGLISH.';
-        analysisPrompt = `Analyze this ad video and generate a detailed prompt in a single paragraph that describes exactly how to recreate this video. The prompt must include: all visual actions and scenes in chronological order, lighting configuration (natural, artificial, hyperrealistic), camera movements and angles, all text overlays with their exact content and visual design (colors, fonts, graphics, placement) if present, whether there's voiceover or only text overlay, visual quality and hyperrealism requirements, and format and aspect ratio. Generate ONLY the prompt as ONE continuous paragraph without headers, sections, bullet points, or labels. Integrate all information naturally and fluidly. ${langInstruction}`;
+        analysisPrompt = `Analyze this ad video and generate a detailed prompt in a single paragraph that describes exactly how to recreate this video. The prompt must include: all visual actions and scenes in chronological order, lighting configuration (natural, artificial, hyperrealistic), camera movements and angles, visual quality and hyperrealism requirements, and format and aspect ratio. **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video in the generated prompt. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND. Generate ONLY the prompt as ONE continuous paragraph without headers, sections, bullet points, or labels. Integrate all information naturally and fluidly. ${langInstruction}`;
         break;
       default:
         analysisPrompt = 'Analiza este video de anuncio publicitario en detalle.';
@@ -852,7 +852,7 @@ ${langInstructions.product}
 ${productImageFile ? `${langInstructions.image}` : ''}
 
 INSTRUCTIONS:
-${langInstructions.instructions} "${productService}" in a logical and coherent way. Adapt all visual descriptions to show "${productService}" instead of the original product. If there are text overlays or voiceover, adapt their content to be relevant to "${productService}" but maintain the same design, colors, graphics, placement, and style. Preserve the same lighting, camera movements, angles, cuts, transitions, pacing, format, and aspect ratio from the original.
+${langInstructions.instructions} "${productService}" in a logical and coherent way. Adapt all visual descriptions to show "${productService}" instead of the original product. **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video in the generated prompt. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND. Preserve the same lighting, camera movements, angles, cuts, transitions, pacing, format, and aspect ratio from the original.
 
 ${langInstructions.output}`;
 

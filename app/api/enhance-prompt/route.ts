@@ -214,7 +214,7 @@ The final output must be strictly a single, continuous paragraph, without line b
 - **Subtle mobile grain**: Authentic iPhone camera grain and noise characteristics
 - **Genuine ambient lighting**: Without professional artifices, exactly as iPhone cameras capture real-world lighting
 
-The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. **IMPORTANT: If the action or scene description suggests there should be text overlay (on-screen text, captions, subtitles, or any text appearing in the video), you MUST explicitly specify what text should appear in the overlay. Quote the exact words/phrases that should be displayed so the user can easily modify them if needed.**
+The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. **CRITICAL PROHIBITION - NO TEXT OVERLAY: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.**
 
 [ACTION TEXT TO ENHANCE]: ${actionText}
 

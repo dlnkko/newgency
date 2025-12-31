@@ -377,12 +377,20 @@ Format your response EXACTLY as:
         .filter(Boolean)
         .join(', ');
 
-      brandingIntegration = `**Brand Integration:**
-Use the following branding elements from the product page:
-${colorList ? `- Product Brand Colors: ${colorList} (integrate these colors into the design where appropriate, especially for product elements and accents)` : ''}
-${typographyInfo.fontFamilies || fontList ? `- Product Brand Typography: ${typographyInfo.fontFamilies || fontList} (consider using these fonts for product text or headlines if they fit the design aesthetic)` : ''}
-${typographyInfo.fontSizes ? `- Brand Font Sizes: ${JSON.stringify(typographyInfo.fontSizes)}` : ''}
-Integrate these brand elements while maintaining the reference ad's overall design structure and composition.`;
+      brandingIntegration = `**Brand Integration (CRITICAL - FROM SCRAPED PRODUCT PAGE):**
+The following branding elements were scraped from the product page URL. You MUST use these in the prompt:
+${colorList ? `- **Product Brand Colors (SCRAPED)**: ${colorList} 
+  * These are the actual brand colors from the product page
+  * Integrate these colors into the design where appropriate, especially for product elements, accents, highlights, and brand-specific visual elements
+  * Use these colors strategically to maintain brand consistency while respecting the reference ad's overall design structure` : ''}
+${typographyInfo.fontFamilies || fontList ? `- **Product Brand Typography (SCRAPED)**: ${typographyInfo.fontFamilies || fontList}
+  * These are the actual fonts used on the product page
+  * Consider using these fonts for product text, headlines, or brand-specific text elements if they fit the design aesthetic
+  * Maintain brand typography consistency where appropriate` : ''}
+${typographyInfo.fontSizes ? `- **Brand Font Sizes (SCRAPED)**: ${JSON.stringify(typographyInfo.fontSizes)}
+  * Use these font sizes as reference for brand-consistent typography` : ''}
+
+**IMPORTANT**: These branding elements come directly from the scraped product page. Integrate them into the design while maintaining the reference ad's overall structure and composition. The brand colors and typography should be visible in the final prompt to ensure brand consistency.`;
       
       console.log('\n🎨 Branding integration instructions created');
     }
@@ -473,10 +481,11 @@ Adapt the reference prompt above to create a NEW prompt for the product in the p
 
 3. **Adapt Colors and Typography:**
 ${scrapedBranding ? brandingIntegration : '- Use reference colors and typography, but adapt product-specific elements'}
-${scrapedBranding ? '- Integrate product brand colors from branding data where appropriate (product elements, accents, highlights)' : ''}
-${scrapedBranding ? '- Consider using product brand typography if it fits the design aesthetic (for product text or headlines)' : ''}
-- Maintain reference color palette for background and overall design
-- Use brand colors strategically for product elements and accents
+${scrapedBranding ? '' : '- Maintain reference color palette for background and overall design'}
+${scrapedBranding ? '- **CRITICAL**: The branding information above was scraped from the product page URL. You MUST incorporate these brand colors and typography into the prompt to ensure brand consistency in the generated ad.' : ''}
+${scrapedBranding ? '- Use scraped brand colors strategically for product elements, accents, highlights, and brand-specific visual elements' : ''}
+${scrapedBranding ? '- Consider using scraped brand typography for product text, headlines, or brand-specific text elements' : ''}
+${scrapedBranding ? '- Maintain reference color palette for background and overall design structure, but integrate scraped brand colors where appropriate' : ''}
 
 4. **Replace/Adapt product references AND adapt people/actions to match product context (CRITICAL):**
    - Analyze the product image: type, category, purpose, colors, branding, shape, characteristics
@@ -504,7 +513,7 @@ Provide ONLY the final, complete, EXTREMELY DETAILED prompt ready for AI image g
 - Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the NEW product's actual use case and category appropriately
 - **CRITICAL**: Ensure the person in the image is performing actions or in poses that are coherent with how the NEW product is actually used (e.g., exercising for fitness products, applying for beauty products, using for tech products)
 - Feature the NEW product from the provided image in contextually appropriate use
-${scrapedBranding ? '- Integrate product brand colors and typography where appropriate' : ''}
+${scrapedBranding ? '- **CRITICAL**: Integrate the scraped product page branding (colors and typography) into the prompt. These branding elements were extracted from the product page URL and must be included to maintain brand consistency.' : ''}
 - Include the new copywriting (${copywritingProfile?.wordCount || 10} words)
 - Be ready to copy and paste into Nano Banana Pro or similar AI image generators
 - Do NOT include explanations, analysis, or additional text - ONLY the final detailed prompt`;

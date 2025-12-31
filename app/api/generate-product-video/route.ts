@@ -181,6 +181,7 @@ Generate TWO extremely detailed, professional prompts:
    - Follow the sequence the user described
    - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
    - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
+   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.
 
 **Critical Requirements:**
 - Both prompts must be optimized for professional product advertising
