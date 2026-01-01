@@ -80,3 +80,4 @@ Después de cambiar la configuración:
 - Cambios en producción pueden tardar unos minutos en aplicarse
 - Si usas Supabase local, necesitas reiniciar el servicio para que los cambios surtan efecto
 
+

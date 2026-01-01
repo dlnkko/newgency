@@ -32,7 +32,7 @@ const tools = [
   },
   {
     id: 'product-video-generator',
-    name: 'Product Video Generator',
+    name: 'Animator Tool',
     path: '/tools/product-video-generator',
     description: 'Generate professional product video prompts',
     active: true
@@ -42,6 +42,20 @@ const tools = [
     name: 'Viral Script Generator',
     path: '/tools/viral-script-generator',
     description: 'Create viral UGC marketing scripts',
+    active: true
+  },
+  {
+    id: 'video-scene-prompt-generator',
+    name: 'Video Scene Prompt Generator',
+    path: '/tools/video-scene-prompt-generator',
+    description: 'Generate prompts for video scenes',
+    active: true
+  },
+  {
+    id: 'image-prompt-generator',
+    name: 'Image Prompt Generator',
+    path: '/tools/image-prompt-generator',
+    description: 'Generate AI image prompts with different styles',
     active: true
   }
 ];

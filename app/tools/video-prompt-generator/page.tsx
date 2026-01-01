@@ -64,6 +64,8 @@ export default function VideoPromptGenerator() {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
+  const [productImage, setProductImage] = useState<File | null>(null);
+  const [productPreview, setProductPreview] = useState<string | null>(null);
 
   const handleSceneCountChange = (count: number) => {
     setSceneCount(count);
@@ -77,6 +79,27 @@ export default function VideoPromptGenerator() {
     // Si hay escenas, ir a la primera escena
     if (count > 0) {
       setCurrentStep('scene1' as Step);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProductImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProductPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -96,6 +119,12 @@ export default function VideoPromptGenerator() {
     }
 
     try {
+      // Convert product image to base64 if provided
+      let productImageBase64 = null;
+      if (productImage) {
+        productImageBase64 = await fileToBase64(productImage);
+      }
+
       const response = await fetch('/api/enhance-prompt', {
         method: 'POST',
         headers: {
@@ -109,7 +138,8 @@ export default function VideoPromptGenerator() {
           mainStyle,
           productFocus,
           allScenes: allScenes || scenes,
-          currentSceneIndex: currentSceneIndex !== undefined ? currentSceneIndex : (sceneId ? sceneId - 1 : 0)
+          currentSceneIndex: currentSceneIndex !== undefined ? currentSceneIndex : (sceneId ? sceneId - 1 : 0),
+          productImage: productImageBase64
         }),
       });
 
@@ -562,6 +592,81 @@ export default function VideoPromptGenerator() {
                   <span className="text-sm font-medium text-zinc-400">Number of Scenes:</span>
                   <span className="text-sm font-semibold text-amber-300">{sceneCount}</span>
                 </div>
+              </div>
+            </div>
+
+            {/* Product Image Upload */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-amber-300">
+                Product Image (Optional)
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Upload a product image to make the prompt more accurate. The generated prompt will reference this image for better results.
+              </p>
+              <div className="space-y-4">
+                {!productPreview ? (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                    <svg
+                      className="mb-3 h-10 w-10 text-zinc-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium text-zinc-400">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="mt-1 text-xs text-zinc-500">
+                      PNG, JPG, WEBP up to 10MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      onChange={handleProductImageUpload}
+                      className="hidden"
+                      disabled={isGenerating}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                    <div className="relative inline-block">
+                      <img
+                        src={productPreview}
+                        alt="Product preview"
+                        className="max-h-64 rounded-lg object-contain"
+                      />
+                      <button
+                        onClick={() => {
+                          setProductImage(null);
+                          setProductPreview(null);
+                        }}
+                        disabled={isGenerating}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Remove image"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             

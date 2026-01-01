@@ -94,3 +94,4 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 - La verificación en tiempo real garantiza que los cambios en `whop_users` se reflejen inmediatamente
 - No se requiere configuración adicional de Supabase Auth
 
+

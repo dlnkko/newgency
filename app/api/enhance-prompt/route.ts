@@ -44,10 +44,76 @@ export async function POST(request: NextRequest) {
     const ai = getGoogleGenAI();
     
     const body = await request.json();
-    const { actionText, compositions, composition, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex } = body;
+    const { actionText, compositions, composition, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
+
+    // Handle product image upload if provided
+    let productImageFile = null;
+    if (productImage) {
+      try {
+        console.log('Uploading product image to Gemini Files...');
+        const productBuffer = Buffer.from(productImage.split(',')[1], 'base64');
+        let productMime = productImage.split(';')[0].split(':')[1] || 'image/png';
+        
+        // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(productMime.toLowerCase())) {
+          console.log(`Converting unsupported format ${productMime} to PNG`);
+          productMime = 'image/png';
+        }
+        
+        const productUint8Array = new Uint8Array(productBuffer);
+        const productBlob = new Blob([productUint8Array], { type: productMime });
+        productImageFile = await ai.files.upload({
+          file: productBlob,
+          config: { mimeType: productMime }
+        });
+        console.log('Product image uploaded:', productImageFile.uri);
+        
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error(`Timeout waiting for product image to be ready`);
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status for ${fileName}:`, err);
+            }
+          }
+          return file;
+        };
+        
+        const productFileName = productImageFile.name || productImageFile.uri?.split('/').pop() || '';
+        if (productFileName) {
+          productImageFile = await waitForFile(productImageFile, productFileName);
+          if (!productImageFile.uri) {
+            return NextResponse.json(
+              { error: 'Product image file is missing required URI property' },
+              { status: 500 }
+            );
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('Error uploading product image:', uploadError);
+        return NextResponse.json(
+          { error: 'Error uploading product image', details: uploadError.message },
+          { status: 500 }
+        );
+      }
+    }
 
     if (!actionText || !compositionArray || compositionArray.length === 0 || !lighting) {
       return NextResponse.json(
@@ -179,24 +245,54 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
         })()
       : '';
 
+    const productImageInstructions = productImageFile ? `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED:**
+A product image has been attached. You MUST:
+- **Analyze the attached product image** to understand the exact product appearance, colors, materials, textures, design, branding, and all visual details
+- **Base your prompt on the attached product image** - use it as a reference to describe the product accurately in your enhanced prompt
+- **Maintain consistency with the image** - if the image shows specific product details (colors, materials, design elements, branding, etc.), incorporate those exact details into your prompt
+- **Reference the image explicitly** - In your enhanced prompt, explicitly mention that the product should match the attached image, including its appearance, colors, materials, and visual characteristics
+- **Accurate product description** - Ensure the product description in your prompt accurately reflects what is shown in the attached image` : '';
+
     const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
 
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${ugcCloseUpInstructions}${lightingInstructions}
+${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}
 
-**CRITICAL DEFAULT INSTRUCTION - SELF-RECORDED VIDEO (MANDATORY UNLESS EXPLICITLY OVERRIDDEN):**
-The video MUST ALWAYS be generated as if it were **self-recorded (selfie-style)** by default. This means:
-- The same person who performs the actions is the one recording themselves with their phone/camera
+**CRITICAL DEFAULT INSTRUCTION - CAMERA POSITION (PRIORITIZE HYPERREALISM):**
+**DEFAULT BEHAVIOR - HANDHELD SELFIE (PRIORITY):**
+By default, the video should look as if the person is **holding the phone/camera themselves** (selfie-style). This means:
 - The person is holding the camera/phone and recording themselves while doing the actions
 - The person is narrating, talking, and showing things directly to the camera as they perform the actions
 - Everything happens from the first-person perspective of the person recording themselves
 - The camera angle should be as if the person is holding their phone in front of them, showing themselves and the product/actions
+- Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone recording
 - The person is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
 - The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
 
-**ONLY EXCEPTION:** If the user EXPLICITLY states in the action text that the video should NOT be self-recorded (e.g., "third person view", "someone else recording", "external camera", "not selfie", etc.), then you may deviate from this default. Otherwise, ALWAYS assume self-recorded selfie-style by default.
+**ADAPTIVE BEHAVIOR - FIXED CAMERA POSITION (WHEN SITUATION REQUIRES IT):**
+**CRITICAL:** You MUST analyze the action text to determine if the situation requires the person to use BOTH HANDS or be in a position where they CANNOT hold the phone. If the action described requires:
+- Using both hands simultaneously (e.g., cooking, exercising, working with tools, applying products with both hands, etc.)
+- Being in a position where holding a phone is impractical (e.g., lying down, in certain exercises, hands occupied, etc.)
+- Any situation where holding the phone would be unrealistic or interfere with the action
+
+Then you MUST adapt the prompt to reflect a **fixed camera position** while maintaining absolute hyperrealism:
+- Describe the camera as if it's placed on a surface (e.g., "as if the phone was left recording on a counter/shelf/table")
+- Maintain the same first-person perspective and authentic iPhone recording aesthetic
+- Keep all hyperrealistic details (lighting, shadows, textures, movements, gestures)
+- The video should still look like authentic UGC content, just with the phone in a fixed position
+- Natural camera characteristics: authentic iPhone recording, realistic lighting, genuine mobile phone aesthetic
+- The person can still interact with the camera (looking at it, talking to it) but the phone itself is stationary
+
+**PRIORITY: HYPERREALISM FIRST**
+- **ALWAYS prioritize maximum hyperrealism** in movements, lighting, textures, gestures, shadows, and all visual elements
+- Whether handheld or fixed position, the video must look 100% authentic and hyperrealistic
+- Every detail must be photorealistic: natural movements, realistic lighting, authentic textures, genuine gestures
+- The camera position (handheld vs fixed) should serve the hyperrealism and authenticity of the scene, not compromise it
+
+**EXPLICIT OVERRIDES:**
+If the user EXPLICITLY states camera position preferences (e.g., "third person view", "someone else recording", "external camera", "not selfie", "phone on tripod", "phone on table", etc.), follow their explicit instructions while maintaining absolute hyperrealism.
 
 The final output must be strictly a single, continuous paragraph, without line breaks, interweaving the action, product focus, technical composition, and visual aesthetics to create a cohesive and powerful instruction. The prompt's focus must ensure the video looks **100% authentic and hyperrealistic**, as if it were recorded by a real person on their iPhone, emphasizing:
 
@@ -228,16 +324,28 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
     // Llamar a Gemini 3 Flash Preview
     let result;
     try {
+      // Build parts array - include image if provided
+      const parts: any[] = [];
+      
+      if (productImageFile) {
+        parts.push({
+          fileData: {
+            fileUri: productImageFile.uri,
+            mimeType: productImageFile.mimeType
+          }
+        });
+      }
+      
+      parts.push({
+        text: enhancementPrompt
+      });
+
       result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',
-            parts: [
-              {
-                text: enhancementPrompt
-              }
-            ]
+            parts: parts
           }
         ]
       });

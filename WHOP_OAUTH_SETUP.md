@@ -70,3 +70,4 @@ Si en la sección OAuth de tu App no aparece un Client Secret:
 - El Redirect URI en Whop debe ser EXACTAMENTE: `https://newgency.vercel.app/api/auth/callback`
 - Sin barra final, sin espacios, con https://
 
+

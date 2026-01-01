@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const ai = getGoogleGenAI();
     
     const body = await request.json();
-    const { productImage, actionDescription } = body;
+    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC } = body;
 
     if (!productImage || !actionDescription) {
       return NextResponse.json(
@@ -128,7 +128,237 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate both prompts in a single call
+    // If nanoBananaOnly is true, generate only the Nano Banana prompt
+    if (nanoBananaOnly) {
+      const nanoBananaPromptRequest = `You are an expert AI prompt engineer specializing in professional product video animations. You are creating a prompt for Nano Banana Pro to generate a reference image that will be used as the base for video animation.
+
+**Context:**
+- Product: Analyze the provided product image carefully
+- User's Request for Animation: "${actionDescription}"
+
+**CRITICAL INSTRUCTION:**
+You MUST create a prompt that generates the PERFECT frame for the animation the user described. The image must be optimized to support the specific video action requested.
+
+**Your Task:**
+Generate a detailed, cinematic prompt for Nano Banana Pro that:
+1. **Optimizes for the animation**: The image must be framed and composed to support the specific animation described: "${actionDescription}"
+   - If the animation involves rotation: create an image that shows the product in a way that allows for rotation
+   - If the animation involves falling/movement: position the product to support that movement
+   - If the animation involves close-ups: create an image that allows for detailed close-up shots
+   - If the animation involves specific angles: frame the product from the angle that supports the animation
+
+2. **Includes exact product details**: 
+   - Exact appearance, colors, materials, textures from the provided product image
+   - Professional studio-quality composition
+   - High-resolution, hyperrealistic details
+
+3. **Optimal lighting setup**: 
+   - Lighting that supports the specific video animation requested
+   - Background and environment that supports the animation style
+   - Camera angle and perspective that works well for the specific action requested
+
+4. **Frame optimization**:
+   - The image should be the perfect starting frame for the animation
+   - Consider what elements need to be visible for the animation to work
+   - Ensure the composition allows for the movement/action described
+
+**Output Format:**
+Provide your response EXACTLY in this format:
+
+**NANO_BANANA_PROMPT:**
+[Your detailed Nano Banana Pro prompt here - create an asset optimized for the animation: "${actionDescription}"]`;
+
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  fileData: {
+                    fileUri: productFile.uri,
+                    mimeType: productFile.mimeType
+                  }
+                },
+                {
+                  text: nanoBananaPromptRequest
+                }
+              ]
+            }
+          ]
+        });
+
+        let nanoBananaPrompt = '';
+        if (result.candidates && result.candidates[0]?.content?.parts) {
+          const responseText = result.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('')
+            .trim();
+
+          // Extract Nano Banana prompt
+          const nanoBananaMatch = responseText.match(/\*\*NANO_BANANA_PROMPT:\*\*\s*([\s\S]*?)$/i);
+          if (nanoBananaMatch) {
+            nanoBananaPrompt = nanoBananaMatch[1].trim();
+          } else {
+            // Fallback: use the whole response
+            nanoBananaPrompt = responseText;
+          }
+        }
+
+        if (!nanoBananaPrompt) {
+          return NextResponse.json(
+            { error: 'Failed to generate Nano Banana prompt' },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          nanoBananaPrompt: nanoBananaPrompt
+        });
+      } catch (error: any) {
+        console.error('Error generating Nano Banana prompt:', error);
+        return NextResponse.json(
+          { error: 'Error generating Nano Banana prompt', details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // If animateOnly is true, generate only the video animation prompt based on the uploaded image
+    if (animateOnly) {
+      const ugcInstructions = isUGC ? `\n\n**CRITICAL - UGC HYPERREALISTIC ANIMATION (IMAGE IS A HYPERREALISTIC PERSON):**
+The attached image is a hyperrealistic person (UGC style). You MUST create an animation prompt that:
+- **MAXIMUM HYPERREALISM**: The animation must be absolutely hyperrealistic, maintaining the same level of realism as the attached image
+- **FAITHFUL TO IMAGE**: Every detail from the attached image must be preserved - skin texture, facial features, hair, clothing, lighting conditions, shadows, colors, and all visual elements
+- **HYPERREALISTIC MOVEMENT**: All movements must be natural and hyperrealistic - no exaggerated motions, no artificial movements, everything must look completely real
+- **PRESERVE LIGHTING**: Maintain the exact lighting conditions from the attached image - light direction, intensity, color temperature, shadows, highlights, and all lighting details
+- **PRESERVE SHADOWS**: Maintain all shadows exactly as they appear in the attached image - shadow positions, softness, darkness, and any shadow details
+- **PRESERVE TEXTURES**: Maintain all textures exactly - skin texture, fabric textures, any material textures visible in the image
+- **PRESERVE COLORS**: Maintain the exact color palette, color temperature, and color grading from the attached image
+- **NO CAMERA MOVEMENT UNLESS REQUESTED**: You MUST NOT include ANY camera movement (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requests it in their description. The camera must remain static and fixed in position. Only animate the person/subject in the frame.
+- **CAMERA MOVEMENT EXCEPTION**: If the user explicitly mentions camera movements (e.g., "camera zooms in", "camera moves", "camera follows", "pan", "tilt", etc.), then you may include those specific camera movements the user requested. Otherwise, NO camera movement.
+- **NATURAL ANIMATION**: Focus on natural, realistic movements of the person - facial expressions, body movements, gestures, etc. - all must be hyperrealistic and natural
+- **PRESERVE VISUAL FIDELITY**: The animated result must look exactly like the attached image came to life, with no visual changes except for the natural movements described` : '';
+
+      const animationPromptRequest = `You are an expert AI prompt engineer specializing in professional product video animations. You are creating a video animation prompt that will animate an uploaded image.
+
+**Context:**
+- Product Image: Analyze the provided product image carefully - this image will be attached to the video AI model
+- User's Original Request: "${actionDescription}" - This is the original description the user provided. The animation MUST follow this description exactly.${ugcInstructions}
+
+**CRITICAL INSTRUCTION:**
+You MUST respect and follow EXACTLY what the user requested. Your job is to:
+1. Analyze the attached product image to understand what elements need to be animated
+2. Take the user's description and enhance it with professional cinematography details
+3. Add technical details (camera movements, lighting, physics) to make it executable${isUGC ? ' (BUT: NO camera movements unless explicitly requested by user)' : ''}
+4. BUT keep the core action, pacing, and style that the user described
+5. Ensure the animation prompt correctly animates the elements visible in the attached image
+6. If the user mentions "quick cuts" or "different shots", include those
+7. If the user mentions "slow rotation" or "slow movement", keep it slow
+8. If the user wants "detailed close-ups", include detailed close-up shots
+9. Don't add actions the user didn't request
+10. Don't change the pacing the user described (fast cuts stay fast, slow movements stay slow)${isUGC ? '\n11. **CRITICAL**: Do NOT add any camera movements unless the user explicitly requests them. The camera must remain static.' : ''}
+
+**Your Task:**
+Generate ONE extremely detailed video animation prompt that:
+
+**CRITICAL - IMAGE WILL BE ATTACHED:**
+- The product image provided will be attached to the video AI model when this prompt is used
+- You MUST explicitly mention in the prompt that the animation should be based on the attached image
+- The prompt must describe how to animate the elements visible in the attached image
+- Ensure the prompt correctly identifies what should be animated from the image (product, background, lighting, etc.)
+- The animation should respect the visual elements, colors, composition, and style of the attached image
+
+**Video Animation Prompt Requirements:**
+- **MUST be EXACTLY ONE continuous paragraph** (no line breaks, no bullet points)
+- **MUST be UNDER 999 characters** (strictly enforced - count characters including spaces)
+- **MUST maintain maximum detail and precision** despite the character limit
+- **FAITHFULLY FOLLOW** the user's request: "${actionDescription}"
+- **ENHANCE** the user's description by adding professional cinematography and technical details${isUGC ? ' (BUT preserve all hyperrealistic details from the attached image)' : ''}
+- **ANIMATE THE ATTACHED IMAGE**: Explicitly state that the animation should be based on the attached product image${isUGC ? '. The animation must preserve ALL hyperrealistic details - lighting, shadows, textures, colors - exactly as shown in the attached image' : ''}
+- **FOLLOW THE ORIGINAL DESCRIPTION**: The animation MUST follow the user's original request: "${actionDescription}". This description was provided at the beginning and must be respected.
+- **RESPECT** the pacing, cuts, and movements the user described:
+  * If user says "quick cuts" or "different shots" → include quick cuts between shots
+  * If user says "slow rotation" or "slowly" → keep it slow and detailed
+  * If user says "detailed close-ups" → include detailed close-up shots
+  * If user says "show front part" → make sure to show the front part clearly${isUGC ? '\n  * **CRITICAL**: If user does NOT mention camera movements → DO NOT include any camera movements. Camera must remain static.' : ''}
+- Use dense, efficient language: combine details into single phrases, use compound adjectives, merge related concepts
+- Include essential technical details:${isUGC ? ' lighting (preserved from image), physics (if applicable),' : ' camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques'}${isUGC ? ' BUT NO camera movements unless explicitly requested' : ''}
+- Describe physical movements concisely but precisely (gravity, rotation speed, impact effects)${isUGC ? ', maintaining hyperrealistic natural motion' : ''}
+- Include visual effects, depth of field, motion blur where appropriate${isUGC ? ', all hyperrealistic and matching the attached image' : ''}
+- Specify color grading and aesthetic matching the attached image${isUGC ? ' EXACTLY - preserve all colors, lighting, and visual characteristics' : ''}
+- Follow the sequence the user described
+- **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
+- **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
+- **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n- **CRITICAL - NO CAMERA MOVEMENT**: You MUST NOT include ANY camera movements (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requested camera movements in their description. The camera must remain static and fixed.' : ''}
+
+**Output Format:**
+Provide your response EXACTLY in this format:
+
+**VIDEO_ANIMATION_PROMPT:**
+[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. The prompt MUST explicitly mention that the animation should be based on the attached product image. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.]`;
+
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  fileData: {
+                    fileUri: productFile.uri,
+                    mimeType: productFile.mimeType
+                  }
+                },
+                {
+                  text: animationPromptRequest
+                }
+              ]
+            }
+          ]
+        });
+
+        let videoPrompt = '';
+        if (result.candidates && result.candidates[0]?.content?.parts) {
+          const responseText = result.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('')
+            .trim();
+
+          // Extract video animation prompt
+          const videoPromptMatch = responseText.match(/\*\*VIDEO_ANIMATION_PROMPT:\*\*\s*([\s\S]*?)$/i);
+          if (videoPromptMatch) {
+            videoPrompt = videoPromptMatch[1].trim();
+          } else {
+            // Fallback: use the whole response
+            videoPrompt = responseText;
+          }
+        }
+
+        if (!videoPrompt) {
+          return NextResponse.json(
+            { error: 'Failed to generate animation prompt' },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          videoPrompt: videoPrompt
+        });
+      } catch (error: any) {
+        console.error('Error generating animation prompt:', error);
+        return NextResponse.json(
+          { error: 'Error generating animation prompt', details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Generate both prompts in a single call (original behavior)
     const promptGenerationRequest = `You are an expert AI prompt engineer specializing in professional product video animations. You are creating prompts for animating a product video.
 
 **Context:**

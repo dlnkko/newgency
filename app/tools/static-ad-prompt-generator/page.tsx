@@ -345,36 +345,6 @@ export default function StaticAdPromptGenerator() {
               </pre>
             </div>
 
-            {/* Cost Info */}
-            {costInfo && costInfo.total && (
-              <div className="rounded-2xl border border-purple-500/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
-                <h3 className="mb-4 text-lg font-bold text-purple-300">Cost Breakdown</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {costInfo.step1 && (
-                    <div className="rounded-xl border border-purple-800/50 bg-zinc-950/70 p-4">
-                      <h4 className="mb-2 text-sm font-semibold text-purple-400">Step 1: Static Ad Analysis</h4>
-                      <p className="text-xs text-zinc-300">
-                        <span className="text-zinc-500">Cost:</span> {costInfo.step1.totalCostFormatted}
-                      </p>
-                    </div>
-                  )}
-                  {costInfo.step2 && (
-                    <div className="rounded-xl border border-purple-800/50 bg-zinc-950/70 p-4">
-                      <h4 className="mb-2 text-sm font-semibold text-purple-400">Step 2: Product Adaptation</h4>
-                      <p className="text-xs text-zinc-300">
-                        <span className="text-zinc-500">Cost:</span> {costInfo.step2.totalCostFormatted}
-                      </p>
-                    </div>
-                  )}
-                  <div className="rounded-xl border-2 border-purple-500/70 bg-purple-500/10 p-4">
-                    <h4 className="mb-2 text-sm font-semibold text-purple-300">Total Cost</h4>
-                    <p className="text-lg font-bold text-purple-200">
-                      {costInfo.total.totalCostFormatted}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>

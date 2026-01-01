@@ -72,3 +72,4 @@ WHOP_API_KEY=apik_tu_api_key_aqui
 - El App ID es para OAuth (login)
 - El Product ID es para verificar acceso a tu comunidad
 
+
