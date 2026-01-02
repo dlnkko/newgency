@@ -1001,7 +1001,7 @@ Format: Brief analysis first, then creative angles section.`;
 
     // If no clear split, try to find creative angles section
     if (!creativeAngles) {
-      const creativeMatch = fullAnalysisText.match(/(##?\s*(?:Creative|Angles|Creative Angles).*)/is);
+      const creativeMatch = fullAnalysisText.match(/(##?\s*(?:Creative|Angles|Creative Angles)[\s\S]*)/i);
       if (creativeMatch) {
         creativeAngles = creativeMatch[1];
         psychologicalAnalysis = fullAnalysisText.substring(0, creativeMatch.index);
