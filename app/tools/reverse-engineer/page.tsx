@@ -4,8 +4,6 @@ import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
 
-type AnalysisType = 'psychological' | 'storytelling' | 'production' | null;
-
 // Helper to format analysis text into simple HTML
 function formatAnalysisText(text: string): string {
   if (!text) return '';
@@ -115,39 +113,16 @@ function formatAnalysisText(text: string): string {
 }
 
 export default function ReverseEngineer() {
-  const [url, setUrl] = useState('');
-  const [selectedType, setSelectedType] = useState<AnalysisType>(null);
+  const [metaAdUrl, setMetaAdUrl] = useState('');
+  const [socialMediaUrl, setSocialMediaUrl] = useState('');
   const [productService, setProductService] = useState('');
-  const [productImage, setProductImage] = useState<File | null>(null);
-  const [productImagePreview, setProductImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
-  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setProductImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProductImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    if (!url || !selectedType) {
-      setError('Please paste a valid ad URL and choose a focus before analyzing.');
+  const handleGenerate = async () => {
+    if ((!metaAdUrl.trim() && !socialMediaUrl.trim()) || !productService.trim()) {
+      setError('Please provide either a Meta Ad URL or Instagram/TikTok URL, and describe your product or service.');
       return;
     }
 
@@ -156,37 +131,30 @@ export default function ReverseEngineer() {
     setResult(null);
 
     try {
-      // Convert product image to base64 if provided
-      let productImageBase64 = null;
-      if (productImage) {
-        productImageBase64 = await fileToBase64(productImage);
-      }
-
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url,
-          type: selectedType,
-          productService: selectedType === 'production' ? productService.trim() : undefined,
-          productImage: selectedType === 'production' ? productImageBase64 : undefined,
+          metaAdUrl: metaAdUrl.trim() || undefined,
+          socialMediaUrl: socialMediaUrl.trim() || undefined,
+          productService: productService.trim(),
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        const errorMessage = data.error || data.details || 'Failed to analyze the ad';
+        const errorMessage = data.error || data.details || 'Failed to analyze the content';
         const fullError = data.details ? `${errorMessage}: ${data.details}` : errorMessage;
         throw new Error(fullError);
       }
 
       setResult(data);
     } catch (error: any) {
-      console.error('Error analyzing ad:', error);
-      const errorMessage = error.message || 'Failed to analyze the ad';
+      console.error('Error analyzing content:', error);
+      const errorMessage = error.message || 'Failed to analyze the content';
       setError(errorMessage);
     } finally {
       setIsAnalyzing(false);
@@ -194,6 +162,7 @@ export default function ReverseEngineer() {
   };
 
   const isValidUrl = (string: string) => {
+    if (!string.trim()) return false;
     try {
       new URL(string);
       return true;
@@ -202,7 +171,13 @@ export default function ReverseEngineer() {
     }
   };
 
-  const canAnalyze = url.trim() !== '' && selectedType !== null && isValidUrl(url);
+  const isInstagram = socialMediaUrl.includes('instagram.com/reel') || socialMediaUrl.includes('instagram.com/p/');
+  const isTikTok = socialMediaUrl.includes('tiktok.com');
+  const isMetaAd = metaAdUrl.includes('facebook.com/ads/library');
+
+  const canGenerate = 
+    (isValidUrl(metaAdUrl) || (isValidUrl(socialMediaUrl) && (isInstagram || isTikTok))) && 
+    productService.trim() !== '';
 
   return (
     <DashboardLayout>
@@ -214,145 +189,86 @@ export default function ReverseEngineer() {
           Deconstruct high‑performing ads like an innovation lab
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-          Paste a Facebook Ad Library URL and let the system break down the psychology, narrative and production craft behind the creative.
+          Paste a Meta Ad URL or Instagram/TikTok URL, describe your product, and get a psychological analysis with creative angles and copywriting proposals.
         </p>
       </div>
 
       <div className="rounded-3xl border border-zinc-800/80 bg-zinc-950/80 p-8 shadow-[0_0_60px_rgba(0,0,0,0.9)] backdrop-blur-2xl sm:p-10">
-        {/* URL Input */}
-        <div className="mb-8">
+        {/* Meta Ad URL Input */}
+        <div className="mb-6">
           <label
-            htmlFor="url"
+            htmlFor="metaAdUrl"
             className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
           >
-            Ad URL (Facebook Ad Library)
+            Meta Ad URL (Optional)
           </label>
           <input
-            id="url"
+            id="metaAdUrl"
             type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            value={metaAdUrl}
+            onChange={(e) => setMetaAdUrl(e.target.value)}
             placeholder="https://www.facebook.com/ads/library/?id=869163755461256"
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black"
+            disabled={isAnalyzing}
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {metaAdUrl && (
+            <p className="mt-2 text-xs text-zinc-500">
+              {isMetaAd ? '✓ Meta Ad URL detected' : '⚠ Please enter a valid Meta Ad Library URL'}
+            </p>
+          )}
+        </div>
+
+        {/* Social Media URL Input */}
+        <div className="mb-6">
+          <label
+            htmlFor="socialMediaUrl"
+            className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
+          >
+            Instagram or TikTok URL (Optional)
+          </label>
+          <input
+            id="socialMediaUrl"
+            type="url"
+            value={socialMediaUrl}
+            onChange={(e) => setSocialMediaUrl(e.target.value)}
+            placeholder="https://www.instagram.com/reel/... or https://www.tiktok.com/..."
+            disabled={isAnalyzing}
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {socialMediaUrl && (
+            <p className="mt-2 text-xs text-zinc-500">
+              {isInstagram && '✓ Instagram Reel detected'}
+              {isTikTok && '✓ TikTok video detected'}
+              {!isInstagram && !isTikTok && socialMediaUrl && '⚠ Please enter a valid Instagram Reel or TikTok URL'}
+            </p>
+          )}
+        </div>
+
+        {/* Product/Service Input */}
+        <div className="mb-8">
+          <label
+            htmlFor="productService"
+            className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
+          >
+            Describe Your Product or Service
+          </label>
+          <textarea
+            id="productService"
+            value={productService}
+            onChange={(e) => setProductService(e.target.value)}
+            placeholder="Describe your product or service in detail..."
+            rows={4}
+            disabled={isAnalyzing}
+            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed resize-none"
           />
         </div>
 
-        {/* Analysis Type Buttons */}
-        <div className="mb-8">
-          <label className="mb-3 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">
-            Analysis focus
-          </label>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <button
-              onClick={() => setSelectedType('psychological')}
-              className={`rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${
-                selectedType === 'psychological'
-                  ? 'border-amber-400/80 bg-amber-400 text-zinc-950 shadow-[0_0_30px_rgba(250,204,21,0.35)]'
-                  : 'border-zinc-800 bg-zinc-900/60 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900'
-              }`}
-            >
-              Psychological
-            </button>
-            <button
-              onClick={() => setSelectedType('storytelling')}
-              className={`rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${
-                selectedType === 'storytelling'
-                  ? 'border-amber-400/80 bg-amber-400 text-zinc-950 shadow-[0_0_30px_rgba(250,204,21,0.35)]'
-                  : 'border-zinc-800 bg-zinc-900/60 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900'
-              }`}
-            >
-              Storytelling
-            </button>
-            <button
-              onClick={() => setSelectedType('production')}
-              className={`rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${
-                selectedType === 'production'
-                  ? 'border-amber-400/80 bg-amber-400 text-zinc-950 shadow-[0_0_30px_rgba(250,204,21,0.35)]'
-                  : 'border-zinc-800 bg-zinc-900/60 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900'
-              }`}
-            >
-              Production
-            </button>
-          </div>
-        </div>
-
-        {/* Product/Service Input - Only shown when Production is selected */}
-        {selectedType === 'production' && (
-          <div className="mb-8 space-y-4">
-            <div>
-              <label
-                htmlFor="productService"
-                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
-              >
-                Describe your product or service
-              </label>
-              <input
-                id="productService"
-                type="text"
-                value={productService}
-                onChange={(e) => setProductService(e.target.value)}
-                placeholder="e.g., earplugs that lets you control the noises in the street"
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black"
-              />
-            </div>
-            
-            <div>
-              <label
-                htmlFor="productImage"
-                className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
-              >
-                Product/Service Image (Optional)
-              </label>
-              <div className="flex items-center gap-4">
-                <label className="flex-1 cursor-pointer">
-                  <div className="rounded-xl border-2 border-dashed border-zinc-700/70 bg-zinc-950/50 p-6 text-center hover:border-amber-500/40 transition-colors">
-                    {productImagePreview ? (
-                      <img
-                        src={productImagePreview}
-                        alt="Product preview"
-                        className="max-h-32 mx-auto rounded-lg"
-                      />
-                    ) : (
-                      <div className="text-zinc-500">
-                        <svg
-                          className="mx-auto h-10 w-10 mb-2"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                          />
-                        </svg>
-                        <p className="text-xs">Click to upload product image</p>
-                      </div>
-                    )}
-                  </div>
-                  <input
-                    id="productImage"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProductImageUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-              <p className="mt-2 text-xs text-zinc-500">
-                Upload an image of your product/service to make the adapted prompt more accurate and faithful to your product.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Analyze Button */}
+        {/* Generate Button */}
         <button
-          onClick={handleAnalyze}
-          disabled={!canAnalyze || isAnalyzing}
+          onClick={handleGenerate}
+          disabled={!canGenerate || isAnalyzing}
           className={`w-full rounded-lg px-6 py-4 text-base font-semibold text-white transition-all ${
-            canAnalyze && !isAnalyzing
+            canGenerate && !isAnalyzing
               ? 'bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-zinc-950 shadow-[0_0_35px_rgba(250,204,21,0.4)] hover:brightness-110 active:scale-[0.98]'
               : 'cursor-not-allowed bg-zinc-700 text-zinc-400'
           }`}
@@ -382,7 +298,7 @@ export default function ReverseEngineer() {
               Analyzing...
             </span>
           ) : (
-            'Analyze ad'
+            'Generate'
           )}
         </button>
 
@@ -398,9 +314,51 @@ export default function ReverseEngineer() {
         {/* Results */}
         {result && (
           <div className="mt-6 space-y-6">
-            {/* Show Adapted Prompt if available, otherwise show original */}
-            {result.adaptedPrompt ? (
-              // Adapted Prompt (when productService is provided)
+            {/* Psychological Analysis */}
+            {result.psychologicalAnalysis && (
+              <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(250,204,21,0.22)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <svg
+                    className="h-5 w-5 text-amber-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    />
+                  </svg>
+                  <h3 className="text-xl font-semibold text-zinc-50">
+                    Psychological Analysis
+                  </h3>
+                </div>
+                <div className="mb-4 flex justify-end">
+                  <CopyButton 
+                    text={result.psychologicalAnalysis} 
+                    label="Copy Analysis"
+                    copiedLabel="Copied!"
+                  />
+                </div>
+                <div className="prose prose-sm max-w-none text-zinc-200/90">
+                  <div
+                    className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-amber-100/5"
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word',
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: formatAnalysisText(result.psychologicalAnalysis),
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Creative Angles */}
+            {result.creativeAngles && (
               <div className="rounded-2xl border border-emerald-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(16,185,129,0.22)]">
                 <div className="mb-3 flex items-center gap-2">
                   <svg
@@ -417,13 +375,16 @@ export default function ReverseEngineer() {
                     />
                   </svg>
                   <h3 className="text-xl font-semibold text-zinc-50">
-                    Adapted Production Prompt
+                    Creative Angles
                   </h3>
                 </div>
-                <div className="mb-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 px-4 py-2">
-                  <p className="text-xs font-medium text-emerald-300">
-                    Product/Service: <span className="text-emerald-200">{productService}</span>
-                  </p>
+                <div className="mb-4 flex justify-end">
+                  <CopyButton 
+                    text={result.creativeAngles} 
+                    label="Copy Creative Angles"
+                    copiedLabel="Copied!"
+                    className="bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 hover:border-emerald-500/70"
+                  />
                 </div>
                 <div className="prose prose-sm max-w-none text-zinc-200/90">
                   <div
@@ -432,64 +393,56 @@ export default function ReverseEngineer() {
                       whiteSpace: 'pre-wrap',
                       wordWrap: 'break-word',
                     }}
-                  >
-                    <p className="mb-3 leading-relaxed">{result.adaptedPrompt}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <CopyButton 
-                    text={result.adaptedPrompt} 
-                    label="Copy Prompt"
-                    copiedLabel="Copied!"
-                    className="bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 hover:border-emerald-500/70"
+                    dangerouslySetInnerHTML={{
+                      __html: formatAnalysisText(result.creativeAngles),
+                    }}
                   />
                 </div>
               </div>
-            ) : (
-              // Original Prompt (when no productService provided)
-              result.geminiAnalysis && (
-                <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(250,204,21,0.22)]">
-                  <div className="mb-3 flex items-center gap-2">
-                    <svg
-                      className="h-5 w-5 text-amber-300"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                      />
-                    </svg>
-                    <h3 className="text-xl font-semibold text-zinc-50">
-                      {result.type === 'production' ? 'Production Prompt' : result.type === 'psychological' ? 'Psychological Analysis' : result.type === 'storytelling' ? 'Storytelling Analysis' : 'Analysis'}
-                    </h3>
-                  </div>
-                  <div className="mb-4 flex justify-end">
-                    <CopyButton 
-                      text={result.geminiAnalysis.text} 
-                      label="Copy Analysis"
-                      copiedLabel="Copied!"
+            )}
+
+            {/* Copywriting/Script */}
+            {result.copywriting && (
+              <div className="rounded-2xl border border-blue-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(59,130,246,0.22)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <svg
+                    className="h-5 w-5 text-blue-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                     />
-                  </div>
-                  <div className="prose prose-sm max-w-none text-zinc-200/90">
-                    <div
-                      className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-amber-100/5"
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        wordWrap: 'break-word',
-                      }}
-                      dangerouslySetInnerHTML={{
-                        __html: result.type === 'production' 
-                          ? `<p class="mb-3 leading-relaxed">${result.geminiAnalysis.text.replace(/\n/g, '<br />')}</p>`
-                          : formatAnalysisText(result.geminiAnalysis.text),
-                      }}
-                    />
-                  </div>
+                  </svg>
+                  <h3 className="text-xl font-semibold text-zinc-50">
+                    Copywriting / Script Proposal
+                  </h3>
                 </div>
-              )
+                <div className="mb-4 flex justify-end">
+                  <CopyButton 
+                    text={result.copywriting} 
+                    label="Copy Copywriting"
+                    copiedLabel="Copied!"
+                    className="bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 hover:border-blue-500/70"
+                  />
+                </div>
+                <div className="prose prose-sm max-w-none text-zinc-200/90">
+                  <div
+                    className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-blue-100/5"
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word',
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: formatAnalysisText(result.copywriting),
+                    }}
+                  />
+                </div>
+              </div>
             )}
           </div>
         )}

@@ -45,13 +45,6 @@ const tools = [
     active: true
   },
   {
-    id: 'video-scene-prompt-generator',
-    name: 'Video Scene Prompt Generator',
-    path: '/tools/video-scene-prompt-generator',
-    description: 'Generate prompts for video scenes',
-    active: true
-  },
-  {
     id: 'image-prompt-generator',
     name: 'Image Prompt Generator',
     path: '/tools/image-prompt-generator',

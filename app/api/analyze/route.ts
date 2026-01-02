@@ -83,37 +83,289 @@ export async function POST(request: NextRequest) {
     
     const ai = getGoogleGenAI();
     const body = await request.json();
-    const { url, type, productService, productImage } = body;
+    const { metaAdUrl, socialMediaUrl, productService } = body;
 
-    if (!url || !type) {
+    if ((!metaAdUrl || !metaAdUrl.trim()) && (!socialMediaUrl || !socialMediaUrl.trim())) {
       return NextResponse.json(
-        { error: 'URL and analysis type are required' },
+        { error: 'Either Meta Ad URL or Instagram/TikTok URL is required' },
         { status: 400 }
       );
     }
 
-    // Extraer el ID de la URL de Facebook Ads Library
-    // Formato esperado: https://www.facebook.com/ads/library/?id=869163755461256
-    let adId: string | null = null;
-    try {
-      const urlObj = new URL(url);
-      adId = urlObj.searchParams.get('id');
-    } catch (urlError) {
-      // Si falla el parsing, intentar extraer el ID con regex
-      const idMatch = url.match(/[?&]id=(\d+)/);
-      if (idMatch) {
-        adId = idMatch[1];
+    if (!productService || !productService.trim()) {
+      return NextResponse.json(
+        { error: 'Product or service description is required' },
+        { status: 400 }
+      );
+    }
+
+    let videoFile: any = null;
+    let contentType: 'metaAd' | 'socialMedia' = metaAdUrl ? 'metaAd' : 'socialMedia';
+
+    // Handle Social Media URL (Instagram/TikTok)
+    if (socialMediaUrl && socialMediaUrl.trim()) {
+      const isInstagram = socialMediaUrl.includes('instagram.com/reel') || socialMediaUrl.includes('instagram.com/p/');
+      const isTikTok = socialMediaUrl.includes('tiktok.com');
+
+      if (!isInstagram && !isTikTok) {
+        return NextResponse.json(
+          { error: 'Invalid URL. Please provide an Instagram Reel or TikTok URL.' },
+          { status: 400 }
+        );
+      }
+
+      // Extract video URL using scrapecreators
+      try {
+        const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
+        let videoUrl: string | null = null;
+        
+        if (isTikTok) {
+          // TikTok: usar v2 API
+          const response = await axios.get(
+            `https://api.scrapecreators.com/v2/tiktok/video?url=${encodeURIComponent(socialMediaUrl)}&trim=true`,
+            {
+              headers: { 'x-api-key': scrapeCreatorsApiKey }
+            }
+          );
+          
+          const data = response.data;
+          // Extraer URL del video desde aweme_detail -> video -> play_addr -> url_list[0]
+          if (data?.aweme_detail?.video?.play_addr?.url_list && Array.isArray(data.aweme_detail.video.play_addr.url_list) && data.aweme_detail.video.play_addr.url_list.length > 0) {
+            // Buscar el URL que empieza con https://v16-webapp-prime...
+            videoUrl = data.aweme_detail.video.play_addr.url_list.find((url: string) => url.startsWith('https://v16-webapp-prime.tiktok.com')) || data.aweme_detail.video.play_addr.url_list[0];
+          }
+          
+          if (!videoUrl) {
+            return NextResponse.json(
+              { error: 'Could not extract video URL from TikTok. The video may not be available.' },
+              { status: 400 }
+            );
+          }
+        } else if (isInstagram) {
+          // Instagram: usar v1 API
+          const response = await axios.get(
+            `https://api.scrapecreators.com/v1/instagram/post?url=${encodeURIComponent(socialMediaUrl)}&trim=true`,
+            {
+              headers: { 'x-api-key': scrapeCreatorsApiKey }
+            }
+          );
+          
+          const data = response.data;
+          // Extraer video_url desde xdt_shortcode_media.video_url
+          if (data?.xdt_shortcode_media?.video_url) {
+            videoUrl = data.xdt_shortcode_media.video_url;
+          }
+          
+          if (!videoUrl) {
+            return NextResponse.json(
+              { error: 'Could not extract video URL from Instagram. The post may not be a video or may not be available.' },
+              { status: 400 }
+            );
+          }
+        }
+
+        console.log('Video URL extracted:', videoUrl.substring(0, 100) + '...');
+
+        // Validar y limpiar la URL del video
+        let cleanVideoUrl = videoUrl;
+        try {
+          const testUrl = new URL(videoUrl);
+          cleanVideoUrl = testUrl.toString();
+        } catch (urlError) {
+          console.error('Error al parsear URL del video:', urlError);
+          return NextResponse.json(
+            { 
+              error: 'Video URL is not valid',
+              details: 'Could not parse the video URL correctly'
+            },
+            { status: 400 }
+          );
+        }
+
+        // Descargar el video y subirlo a Gemini Files
+        console.log('Descargando video desde URL:', cleanVideoUrl);
+        let myfile;
+        let videoBuffer: Buffer | null = null;
+        
+        try {
+          // Primero, hacer HEAD request para obtener el tamaño del video (opcional, para logging)
+          try {
+            const headResponse = await axios.head(cleanVideoUrl, {
+              timeout: 10000,
+              maxRedirects: 5
+            });
+            const contentLength = headResponse.headers['content-length'];
+            if (contentLength) {
+              const sizeMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
+              console.log(`Tamaño del video: ${sizeMB} MB`);
+            }
+          } catch (headError) {
+            // Si falla el HEAD, continuar igual
+            console.log('No se pudo obtener el tamaño del video (HEAD request falló), continuando...');
+          }
+          
+          // Descargar el video en memoria (RAM temporal, se libera después de subir)
+          const videoResponse = await axios.get(cleanVideoUrl, {
+            responseType: 'arraybuffer',
+            timeout: 120000, // 120 segundos para videos más largos
+            maxRedirects: 5,
+            maxContentLength: Infinity, // Sin límite de tamaño
+            maxBodyLength: Infinity
+          });
+          
+          videoBuffer = Buffer.from(videoResponse.data);
+          console.log('Video descargado en RAM:', videoBuffer.length, 'bytes (', (videoBuffer.length / (1024 * 1024)).toFixed(2), 'MB)');
+          
+          if (videoBuffer.length === 0) {
+            return NextResponse.json(
+              { 
+                error: 'Downloaded video is empty',
+                details: 'El video no tiene contenido'
+              },
+              { status: 500 }
+            );
+          }
+          
+          // Convertir buffer a Blob para subirlo a Gemini Files
+          const videoUint8Array = new Uint8Array(videoBuffer);
+          const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
+          
+          // Subir el video a Gemini Files
+          console.log('Subiendo video a Gemini Files...');
+          myfile = await ai.files.upload({
+            file: videoBlob,
+            config: { mimeType: 'video/mp4' }
+          });
+          
+          console.log('Video subido a Gemini:', myfile.uri);
+          console.log('Estado inicial del archivo:', myfile.state);
+          
+          // Liberar la memoria explícitamente (aunque JavaScript lo hará automáticamente)
+          videoBuffer = null;
+          
+        } catch (videoError: any) {
+          // Asegurarse de liberar la memoria en caso de error
+          videoBuffer = null;
+          
+          console.error('Error al descargar o subir el video:', videoError);
+          
+          // Manejar específicamente errores de API key inválida
+          if (videoError.message?.includes('API key not valid') || 
+              videoError.message?.includes('API_KEY_INVALID') ||
+              videoError.status === 400 && videoError.message?.includes('API key')) {
+            console.error('❌ Error: API key de Google Gemini no es válida');
+            console.error('API key usada (primeros 10 chars):', googleApiKey ? `${googleApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
+            
+            return NextResponse.json(
+              { 
+                error: 'Google Gemini API key is not valid',
+                details: 'The Google Gemini API key is not valid or has expired. Please verify your API key in the .env.local file and restart the server. Get a new API key at: https://aistudio.google.com/apikey'
+              },
+              { status: 401 }
+            );
+          }
+          
+          return NextResponse.json(
+            { 
+              error: 'Error processing video',
+              details: videoError.message || 'Could not download or upload the video. The video may be too large or the URL is not accessible.'
+            },
+            { status: 500 }
+          );
+        }
+
+        // Esperar a que el archivo esté en estado ACTIVE
+        console.log('Esperando a que el archivo esté listo...');
+        const maxWaitTime = 60000; // 60 segundos máximo
+        const checkInterval = 2000; // Verificar cada 2 segundos
+        const startTime = Date.now();
+        
+        // Obtener el nombre del archivo (puede estar en name o extraerse del URI)
+        let fileName = myfile.name;
+        if (!fileName && myfile.uri) {
+          // Extraer el nombre del URI: files/dew0643ff2jn -> dew0643ff2jn
+          const uriParts = myfile.uri.split('/');
+          fileName = uriParts[uriParts.length - 1];
+        }
+        
+        // Si el archivo ya está ACTIVE, no necesitamos esperar
+        if (myfile.state === 'ACTIVE') {
+          console.log('Archivo ya está en estado ACTIVE, procediendo con el análisis...');
+        } else {
+          console.log(`Estado inicial: ${myfile.state}, esperando ACTIVE...`);
+          
+          while (myfile.state !== 'ACTIVE') {
+            // Verificar timeout
+            if (Date.now() - startTime > maxWaitTime) {
+              return NextResponse.json(
+                { 
+                  error: 'Timeout waiting for file to be ready',
+                  details: `El archivo no alcanzó el estado ACTIVE después de ${maxWaitTime / 1000} segundos. Estado actual: ${myfile.state}`
+                },
+                { status: 500 }
+              );
+            }
+
+            // Esperar antes de verificar de nuevo
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            // Obtener el estado actual del archivo
+            try {
+              if (fileName) {
+                const fileInfo = await ai.files.get({ name: fileName });
+                myfile = fileInfo;
+                console.log(`Estado del archivo: ${myfile.state} (esperando ACTIVE)...`);
+              } else {
+                console.warn('No se pudo obtener el nombre del archivo para verificar el estado');
+                // Esperar un poco más y asumir que está listo
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                break;
+              }
+            } catch (checkError: any) {
+              console.error('Error al verificar estado del archivo:', checkError);
+              // Continuar intentando
+            }
+          }
+          
+          console.log('Archivo listo en estado ACTIVE, procediendo con el análisis...');
+        }
+        
+        videoFile = myfile;
+        console.log('Video file ready for analysis:', videoFile.uri);
+      } catch (scrapeError: any) {
+        console.error('Error extracting video URL:', scrapeError);
+        return NextResponse.json(
+          { 
+            error: 'Failed to extract video URL',
+            details: scrapeError.response?.data?.message || scrapeError.message || 'Could not access video data'
+          },
+          { status: 500 }
+        );
       }
     }
 
-    if (!adId) {
-      return NextResponse.json(
-        { error: 'Could not extract ad ID from URL. Make sure the URL has the correct format: https://www.facebook.com/ads/library/?id=XXXXX' },
-        { status: 400 }
-      );
-    }
+    // Handle Meta Ad URL
+    if (metaAdUrl && metaAdUrl.trim()) {
+      // Extraer el ID de la URL de Facebook Ads Library
+      let adId: string | null = null;
+      try {
+        const urlObj = new URL(metaAdUrl);
+        adId = urlObj.searchParams.get('id');
+      } catch (urlError) {
+        const idMatch = metaAdUrl.match(/[?&]id=(\d+)/);
+        if (idMatch) {
+          adId = idMatch[1];
+        }
+      }
 
-    // Llamar a la API de scrapecreators con el ID y get_transcript: true
+      if (!adId) {
+        return NextResponse.json(
+          { error: 'Could not extract ad ID from URL. Make sure the URL has the correct format: https://www.facebook.com/ads/library/?id=XXXXX' },
+          { status: 400 }
+        );
+      }
+
+      // Llamar a la API de scrapecreators con el ID y get_transcript: true
     let data;
     try {
       const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
@@ -420,8 +672,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: 'No video found in ad',
         details: 'The ad does not contain a video or the data structure is different than expected. Verify that the ad has a video and that the ID is correct.',
-        adId,
-        type,
         dataStructure: {
           hasSnapshot: !!data?.snapshot,
           snapshotKeys: data?.snapshot ? Object.keys(data.snapshot) : [],
@@ -595,56 +845,105 @@ export async function POST(request: NextRequest) {
       }
       
       console.log('Archivo listo en estado ACTIVE, procediendo con el análisis...');
+      videoFile = myfile;
     }
+    } // Cerrar el bloque if (metaAdUrl && metaAdUrl.trim())
 
-    // Detectar idioma del usuario si hay productService
-    let userLanguage = 'en'; // default
-    if (productService && productService.trim()) {
-      userLanguage = detectLanguage(productService);
-    }
+    // Detectar idioma del usuario
+    const userLanguage = detectLanguage(productService);
 
-    // Crear prompt según el tipo de análisis
-    let analysisPrompt = '';
-    switch (type) {
-      case 'psychological':
-        analysisPrompt = 'You are an expert Meta Ads psychologist. Analyze this Facebook/Instagram ad focusing on psychological triggers. Provide a concise but powerful analysis covering: 1) **Emotional Journey** - second-by-second emotional arc (curiosity, fear, desire, urgency), 2) **Psychological Triggers** - Cialdini principles (social proof, scarcity, authority), cognitive biases (loss aversion, FOMO, anchoring), 3) **Hook Analysis** (first 3s) - pattern interrupt strength, scroll-stop potential, 4) **Desire Architecture** - problem-agitation-solution flow, pain points, aspirations, 5) **Subconscious Elements** - music tempo/mood, color psychology, editing pace, visual hierarchy to CTA, 6) **Target Audience** - psychographic profile, pain points, desires, identity signals, 7) **Decision Triggers** - System 1 vs System 2 ratio, impulse vs considered purchase, 8) **Friction Reduction** - removed friction points (pricing clarity, social proof, risk reversal), 9) **Key Scenes** - psychological purpose of major frames, 10) **Replication Blueprint** - critical elements for AI video recreation (Sora/Veo), timing recommendations. Be concise, use timestamps, explain WHY each element works. Format with clear sections and bold headers.';
-        break;
-      case 'storytelling':
-        analysisPrompt = 'You are an expert narrative designer. Analyze this Facebook/Instagram ad through a storytelling lens. Provide a concise but powerful analysis covering: 1) **Narrative Structure** - story framework (Hero\'s Journey, Before/After, Problem/Solution, Testimonial, Day-in-life), three-act structure with timestamps (setup/confrontation/resolution), inciting incident, 2) **Character** - protagonist type (customer, founder, hero), relatability triggers, transformation arc, antagonist/obstacle, 3) **Conflict & Stakes** - core tension, emotional stakes, urgency, peak dramatic moment, 4) **Story Beats** - major beats with timestamps, rhythm/tempo, plot points, information reveal strategy, 5) **Voice** - narrative voice (1st/2nd/3rd person, VO style), dialogue authenticity, memorable phrases, text overlay contribution, 6) **Visual Storytelling** - symbolic imagery, color grading shifts, camera angles, visual motifs, transitions, 7) **Themes** - underlying message (empowerment, transformation, belonging), universal truths, cultural context, 8) **Emotional Arc** - emotional journey (hope/struggle/breakthrough vs fear/discovery/relief), cathartic moments, vulnerability usage, 9) **Authenticity** - polished vs raw balance, genuine vs manufactured markers, production quality role, 10) **Story-to-CTA** - narrative-to-CTA bridge, earned vs forced CTA, organic product integration, 11) **Replication Blueprint** - shot list with narrative purpose, essential beats, timing per act, visual metaphors to maintain, voice/tone requirements, dialogue structure, non-negotiable vs adaptable elements. Be concise, use timestamps, explain WHY each choice works. Format with clear sections and bold headers.';
-        break;
-      case 'production':
-        const langInstruction = userLanguage === 'es' 
-          ? 'Genera el prompt en ESPAÑOL.' 
-          : 'Generate the prompt in ENGLISH.';
-        analysisPrompt = `Analyze this ad video and generate a detailed prompt in a single paragraph that describes exactly how to recreate this video. The prompt must include: all visual actions and scenes in chronological order, lighting configuration (natural, artificial, hyperrealistic), camera movements and angles, visual quality and hyperrealism requirements, and format and aspect ratio. **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video in the generated prompt. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND. Generate ONLY the prompt as ONE continuous paragraph without headers, sections, bullet points, or labels. Integrate all information naturally and fluidly. ${langInstruction}`;
-        break;
-      default:
-        analysisPrompt = 'Analiza este video de anuncio publicitario en detalle.';
-    }
+    // Create unified analysis prompt
+    const contentDescription = contentType === 'metaAd' 
+      ? 'this video ad' 
+      : 'this social media video post';
+    
+    const contentInput = videoFile
+      ? `You have access to a video file. Analyze the video visually and any audio/transcript available.`
+      : `Analyze the content based on the available information.`;
 
-    // Analizar el video con Gemini
-    console.log('Analizando video con Gemini...');
-    let result;
+    const analysisPrompt = `You are an expert marketing psychologist and creative strategist. Analyze ${contentDescription} to understand why it worked and how to apply those psychological principles to a new product/service.
+
+${contentInput}
+
+**Product/Service to Apply Analysis To:**
+"${productService}"
+
+**Your Task - Provide a BRIEF Psychological Analysis:**
+
+Analyze the psychological background of this successful content. Focus on:
+1. **Pain Points Identified** - What specific problems, frustrations, or desires did this content identify and address?
+2. **The Hook** - What made the opening compelling? Why did it stop the scroll?
+3. **Why the Solution Worked** - What psychological mechanisms made the solution presented in the post effective?
+4. **Connection Strategy** - How did the content connect emotionally with the audience and offer value?
+
+Keep this analysis BRIEF and focused on the psychological insights. Use clear sections with headers.
+
+**Then Provide Creative Angles:**
+
+Based on your psychological analysis, propose 3-5 creative angles specifically for "${productService}". For each angle:
+- Identify relevant pain points that "${productService}" can address (based on what worked in the original)
+- Explain how this angle would work psychologically (why it would resonate)
+- Connect it to the successful elements you identified in the original content
+
+Format: Brief analysis first, then creative angles section.`;
+
+    // Analyze with Gemini
+    console.log('Analyzing content with Gemini...');
+    let analysisResult;
     try {
-      result = await ai.models.generateContent({
+      const analysisParts: any[] = [];
+      
+      // Add video file if available (Meta Ad or Social Media)
+      if (videoFile && videoFile.uri) {
+        analysisParts.push({
+          fileData: {
+            fileUri: videoFile.uri,
+            mimeType: videoFile.mimeType
+          }
+        });
+      }
+      
+      // Add text prompt
+      analysisParts.push({
+        text: analysisPrompt
+      });
+
+      analysisResult = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [
           {
             role: 'user',
-            parts: [
-              {
-                fileData: {
-                  fileUri: myfile.uri,
-                  mimeType: myfile.mimeType
-                }
-              },
-              {
-                text: analysisPrompt
-              }
-            ]
+            parts: analysisParts
           }
         ]
       });
+
+      // Calcular y mostrar costos del análisis psicológico (solo en terminal)
+      try {
+        const usageMetadata = (analysisResult as any).usageMetadata;
+        if (usageMetadata) {
+          const promptTokenCount = usageMetadata.promptTokenCount || 0;
+          const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
+          const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
+
+          // Precios de Gemini 3 Flash Preview (por millón de tokens)
+          // Input: $0.50 por millón de tokens
+          // Output: $3.00 por millón de tokens
+          const inputCostPerMillion = 0.5;
+          const outputCostPerMillion = 3.0;
+
+          const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
+          const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
+          const totalCost = inputCost + outputCost;
+
+          console.log('\n=== COSTO ANÁLISIS PSICOLÓGICO (Gemini 3 Flash Preview) ===');
+          console.log(`Input tokens: ${promptTokenCount.toLocaleString()}, Costo: $${inputCost.toFixed(6)}`);
+          console.log(`Output tokens: ${candidatesTokenCount.toLocaleString()}, Costo: $${outputCost.toFixed(6)}`);
+          console.log(`Total tokens: ${totalTokenCount.toLocaleString()}, Costo total: $${totalCost.toFixed(6)}`);
+        }
+      } catch (costError) {
+        console.error('Error calculando costos del análisis:', costError);
+      }
     } catch (geminiError: any) {
       console.error('Error al llamar a Gemini:', geminiError);
       return NextResponse.json(
@@ -657,324 +956,166 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Obtener el texto de la respuesta
-    let analysisText = 'Could not get analysis';
-    let analysisError = null;
+    // Extract analysis text
+    let fullAnalysisText = '';
     try {
-      // La respuesta de Gemini tiene la estructura: result.candidates[0].content.parts[0].text
-      if (result.candidates && result.candidates[0]?.content?.parts) {
-        const textParts = result.candidates[0].content.parts
+      if (analysisResult.candidates && analysisResult.candidates[0]?.content?.parts) {
+        fullAnalysisText = analysisResult.candidates[0].content.parts
           .map((part: any) => part.text || '')
           .join('');
-        if (textParts && textParts.trim().length > 0) {
-          analysisText = textParts;
-        } else {
-          analysisError = 'Response has empty text parts';
-          console.error('Response has empty text parts. Full result:', JSON.stringify(result, null, 2));
-        }
-      } else if ((result as any).text) {
-        const text = (result as any).text;
-        if (text && text.trim().length > 0) {
-          analysisText = text;
-        } else {
-          analysisError = 'Response text is empty';
-          console.error('Response text is empty. Full result:', JSON.stringify(result, null, 2));
-        }
-      } else {
-        analysisError = 'Unexpected response structure';
-        console.error('Estructura inesperada de la respuesta de Gemini:', JSON.stringify(result, null, 2));
+      } else if ((analysisResult as any).text) {
+        fullAnalysisText = (analysisResult as any).text;
       }
     } catch (err) {
-      analysisError = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Error al extraer texto de la respuesta:', err);
-      console.error('Estructura de result:', JSON.stringify(result, null, 2));
-    }
-    
-    // If analysis failed, return error early
-    if (!analysisText || analysisText === 'Could not get analysis' || analysisText.trim().length === 0) {
+      console.error('Error extracting analysis text:', err);
       return NextResponse.json(
         {
-          error: 'Failed to generate production prompt',
-          details: analysisError || 'Could not extract analysis text from Gemini response',
-          geminiResponse: process.env.NODE_ENV === 'development' ? result : undefined
+          error: 'Failed to extract analysis',
+          details: 'Could not extract analysis text from AI response'
         },
         { status: 500 }
       );
     }
     
-    // Extraer información de uso y calcular costo
-    let usageInfo = null;
-    let costInfo = null;
+    if (!fullAnalysisText || !fullAnalysisText.trim()) {
+      return NextResponse.json(
+        {
+          error: 'Failed to generate analysis',
+          details: 'AI response was empty'
+        },
+        { status: 500 }
+      );
+    }
+
+    // Split analysis into psychological analysis and creative angles
+    const analysisParts = fullAnalysisText.split(/(?=##?\s*(?:Creative|Angles|Creative Angles))/i);
+    let psychologicalAnalysis = analysisParts[0] || fullAnalysisText;
+    let creativeAngles = analysisParts[1] || '';
+
+    // If no clear split, try to find creative angles section
+    if (!creativeAngles) {
+      const creativeMatch = fullAnalysisText.match(/(##?\s*(?:Creative|Angles|Creative Angles).*)/is);
+      if (creativeMatch) {
+        creativeAngles = creativeMatch[1];
+        psychologicalAnalysis = fullAnalysisText.substring(0, creativeMatch.index);
+      } else {
+        // If no creative angles section found, use the full text as analysis
+        psychologicalAnalysis = fullAnalysisText;
+      }
+    }
+
+    // Generate copywriting/script proposal
+    console.log('Generating copywriting/script proposal...');
+    let copywriting = '';
     try {
-      // La respuesta de Gemini incluye usageMetadata
-      const usageMetadata = (result as any).usageMetadata;
-      if (usageMetadata) {
-        const promptTokenCount = usageMetadata.promptTokenCount || 0;
-        const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
-        const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
+      const copywritingPrompt = `Based on the psychological analysis and creative angles provided, generate specific copywriting or script proposals for "${productService}".
 
-        // Precios de Gemini 3 Flash Preview (por millón de tokens)
-        // Input: $0.50 por millón de tokens
-        // Output: $3 por millón de tokens
-        const inputCostPerMillion = 0.5;
-        const outputCostPerMillion = 3.0;
+**Psychological Analysis:**
+${psychologicalAnalysis}
 
-        const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
-        const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
-        const totalCost = inputCost + outputCost;
+**Creative Angles:**
+${creativeAngles}
 
-        usageInfo = {
-          promptTokenCount,
-          candidatesTokenCount,
-          totalTokenCount
-        };
+**Your Task:**
+Identify whether the original content was:
+- A carousel post (multiple images with text overlays)
+- A video with image overlays and text
+- A spoken video/voiceover
 
-        costInfo = {
-          inputCost: inputCost,
-          outputCost: outputCost,
-          totalCost: totalCost,
-          inputCostFormatted: `$${inputCost.toFixed(6)}`,
-          outputCostFormatted: `$${outputCost.toFixed(6)}`,
-          totalCostFormatted: `$${totalCost.toFixed(6)}`
-        };
+Then propose:
+1. **For carousel/video with images**: Specific text to use for each image/slide, including:
+   - Hook text for the first image
+   - Body text for each subsequent image
+   - CTA text
+   - Overlay text suggestions
 
-        // Log para debugging
-        console.log('Token Usage:', usageInfo);
-        console.log('Cost:', costInfo);
-      }
-    } catch (err) {
-      console.error('Error extracting usage information:', err);
-    }
-    
-    // If production type and productService is provided, generate adapted prompt
-    // BUT only if we successfully got the original analysis
-    let adaptedPrompt = null;
-    const hasValidAnalysis = analysisText && 
-                             analysisText !== 'Could not get analysis' && 
-                             analysisText.trim().length > 0;
-    
-    if (type === 'production' && productService && productService.trim() && hasValidAnalysis) {
-      console.log('Generating adapted prompt for product/service:', productService);
-      console.log('Original prompt length:', analysisText.length);
-      console.log('Has product image:', !!productImage);
-      
-      try {
-        // Upload product image if provided
-        let productImageFile = null;
-        if (productImage) {
-          try {
-            console.log('Uploading product image to Gemini Files...');
-            const productBuffer = Buffer.from(productImage.split(',')[1], 'base64');
-            let productMime = productImage.split(';')[0].split(':')[1] || 'image/png';
-            
-            // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
-            const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-            if (!supportedFormats.includes(productMime.toLowerCase())) {
-              console.log(`Converting unsupported format ${productMime} to PNG`);
-              productMime = 'image/png';
-            }
-            
-            const productUint8Array = new Uint8Array(productBuffer);
-            const productBlob = new Blob([productUint8Array], { type: productMime });
-            productImageFile = await ai.files.upload({
-              file: productBlob,
-              config: { mimeType: productMime }
-            });
-            console.log('Product image uploaded:', productImageFile.uri);
-            
-            // Wait for file to be ACTIVE
-            const maxWaitTime = 60000;
-            const checkInterval = 2000;
-            const startTime = Date.now();
-            
-            const waitForFile = async (file: any, fileName: string) => {
-              if (file.state === 'ACTIVE') return file;
-              
-              while (file.state !== 'ACTIVE') {
-                if (Date.now() - startTime > maxWaitTime) {
-                  throw new Error(`Timeout waiting for ${fileName} to be ready`);
-                }
-                await new Promise(resolve => setTimeout(resolve, checkInterval));
-                
-                try {
-                  const fileInfo = await ai.files.get({ name: fileName });
-                  file = fileInfo;
-                } catch (err) {
-                  console.error(`Error checking file status for ${fileName}:`, err);
-                }
-              }
-              return file;
-            };
-            
-            const productFileName = productImageFile.name || productImageFile.uri?.split('/').pop() || '';
-            if (productFileName) {
-              productImageFile = await waitForFile(productImageFile, productFileName);
-            }
-            
-            if (!productImageFile.uri) {
-              console.warn('Product image file missing URI, continuing without image');
-              productImageFile = null;
-            }
-          } catch (imageError: any) {
-            console.error('Error uploading product image:', imageError);
-            console.warn('Continuing with text-only adaptation');
-            productImageFile = null;
+2. **For spoken video/voiceover**: A complete script including:
+   - Opening hook (first 3 seconds)
+   - Body content with key points
+   - Closing CTA
+
+Base your proposals on the psychological insights and creative angles identified. Make the copywriting compelling, authentic, and aligned with what made the original content successful.
+
+Format: Clearly indicate the content type (carousel/video with images OR spoken video), then provide the specific texts or script.`;
+
+      const copywritingParts: any[] = [];
+      if (videoFile && videoFile.uri) {
+        copywritingParts.push({
+          fileData: {
+            fileUri: videoFile.uri,
+            mimeType: videoFile.mimeType
           }
-        }
-        
-        const targetLanguage = detectLanguage(productService);
-        const langText = targetLanguage === 'es' ? 'español' : 'english';
-        const langInstructions = targetLanguage === 'es' 
-          ? {
-              intro: 'Tienes un prompt detallado que describe un video de un anuncio publicitario. Adapta ese prompt al producto o servicio del usuario, manteniendo la misma estructura técnica (iluminación, cámara, cortes, transiciones, estilo visual) pero transformando todas las acciones y visuales para que sean coherentes con el producto/servicio del usuario.',
-              original: 'PROMPT ORIGINAL DEL VIDEO:',
-              product: 'PRODUCTO/SERVICIO A ADAPTAR:',
-              image: 'IMAGEN DEL PRODUCTO: Tienes una imagen del producto. Úsala para describir con precisión su apariencia, colores, materiales, texturas, forma, tamaño y branding en el prompt adaptado.',
-              instructions: 'Transforma todas las acciones para que muestren cómo se usa',
-              output: 'Genera ÚNICAMENTE el prompt adaptado en ESPAÑOL, en UN SOLO párrafo continuo sin saltos de línea, encabezados ni formato adicional.'
-            }
-          : {
-              intro: 'You have a detailed prompt that describes an ad video. Adapt that prompt to the user\'s product/service, maintaining the same technical structure (lighting, camera, cuts, transitions, visual style) but transforming all actions and visuals to be coherent with the user\'s product/service.',
-              original: 'ORIGINAL VIDEO PROMPT:',
-              product: 'PRODUCT/SERVICE TO ADAPT TO:',
-              image: 'PRODUCT IMAGE: You have access to a product image. Use it to accurately describe its appearance, colors, materials, textures, shape, size, and branding in the adapted prompt.',
-              instructions: 'Transform all actions to show how',
-              output: 'Generate ONLY the adapted prompt in ENGLISH, as ONE continuous paragraph without line breaks, headers, or additional formatting.'
-            };
-        
-        const adaptationPrompt = `${langInstructions.intro}
-
-${langInstructions.original}
-${analysisText}
-
-${langInstructions.product}
-"${productService}"
-${productImageFile ? `${langInstructions.image}` : ''}
-
-INSTRUCTIONS:
-${langInstructions.instructions} "${productService}" in a logical and coherent way. Adapt all visual descriptions to show "${productService}" instead of the original product. **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video in the generated prompt. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND. Preserve the same lighting, camera movements, angles, cuts, transitions, pacing, format, and aspect ratio from the original.
-
-${langInstructions.output}`;
-
-        const adaptationParts: any[] = [
-          {
-            text: adaptationPrompt
-          }
-        ];
-        
-        // Add product image if available
-        if (productImageFile && productImageFile.uri) {
-          adaptationParts.unshift({
-            fileData: {
-              fileUri: productImageFile.uri,
-              mimeType: productImageFile.mimeType
-            }
-          });
-        }
-
-        const adaptationResult = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [
-            {
-              role: 'user',
-              parts: adaptationParts
-            }
-          ]
         });
-
-        let adaptationText = '';
-        if (adaptationResult.candidates && adaptationResult.candidates[0]?.content?.parts) {
-          adaptationText = adaptationResult.candidates[0].content.parts
-            .map((part: any) => part.text || '')
-            .join('');
-        } else if ((adaptationResult as any).text) {
-          adaptationText = (adaptationResult as any).text;
-        }
-
-        if (adaptationText && adaptationText.trim().length > 0) {
-          adaptedPrompt = adaptationText.trim();
-          console.log('Adapted prompt generated successfully, length:', adaptedPrompt.length);
-          console.log('Adapted prompt preview:', adaptedPrompt.substring(0, 200));
-          
-          // Calculate costs for adaptation (server-side only)
-          try {
-            const adaptationUsageMetadata = (adaptationResult as any).usageMetadata;
-            if (adaptationUsageMetadata) {
-              const adaptPromptTokens = adaptationUsageMetadata.promptTokenCount || 0;
-              const adaptCandidatesTokens = adaptationUsageMetadata.candidatesTokenCount || 0;
-              const adaptTotalTokens = adaptationUsageMetadata.totalTokenCount || (adaptPromptTokens + adaptCandidatesTokens);
-
-              const inputCostPerMillion = 0.5;
-              const outputCostPerMillion = 3.0;
-
-              const adaptInputCost = (adaptPromptTokens / 1_000_000) * inputCostPerMillion;
-              const adaptOutputCost = (adaptCandidatesTokens / 1_000_000) * outputCostPerMillion;
-              const adaptTotalCost = adaptInputCost + adaptOutputCost;
-
-              console.log('\n=== ADAPTED PROMPT GENERATION COST ===');
-              console.log(`Input tokens: ${adaptPromptTokens.toLocaleString()}, Cost: $${adaptInputCost.toFixed(6)}`);
-              console.log(`Output tokens: ${adaptCandidatesTokens.toLocaleString()}, Cost: $${adaptOutputCost.toFixed(6)}`);
-              console.log(`Total tokens: ${adaptTotalTokens.toLocaleString()}, Total cost: $${adaptTotalCost.toFixed(6)}`);
-            }
-          } catch (adaptCostError) {
-            console.error('Error calculating adaptation costs:', adaptCostError);
-          }
-        } else {
-          console.warn('Adapted prompt text is empty or invalid');
-          adaptedPrompt = null;
-        }
-      } catch (adaptationError: any) {
-        console.error('Error generating adapted prompt:', adaptationError);
-        console.error('Error details:', adaptationError.message);
-        adaptedPrompt = null;
-        // Don't fail the whole request if adaptation fails, just log it
       }
-    } else if (type === 'production' && productService && productService.trim() && !hasValidAnalysis) {
-      console.warn('Cannot generate adapted prompt: original analysis was not obtained successfully');
-      console.warn('Analysis text:', analysisText);
-      adaptedPrompt = null;
-    } else if (type === 'production' && (!productService || !productService.trim())) {
-      console.log('No product/service provided, skipping adapted prompt generation');
-      adaptedPrompt = null;
+      copywritingParts.push({ text: copywritingPrompt });
+
+      const copywritingResult = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            role: 'user',
+            parts: copywritingParts
+          }
+        ]
+      });
+
+      // Calcular y mostrar costos del copywriting (solo en terminal)
+      try {
+        const usageMetadata = (copywritingResult as any).usageMetadata;
+        if (usageMetadata) {
+          const promptTokenCount = usageMetadata.promptTokenCount || 0;
+          const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
+          const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
+
+          // Precios de Gemini 3 Flash Preview (por millón de tokens)
+          // Input: $0.50 por millón de tokens
+          // Output: $3.00 por millón de tokens
+          const inputCostPerMillion = 0.5;
+          const outputCostPerMillion = 3.0;
+
+          const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
+          const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
+          const totalCost = inputCost + outputCost;
+
+          console.log('\n=== COSTO COPYWRITING (Gemini 3 Flash Preview) ===');
+          console.log(`Input tokens: ${promptTokenCount.toLocaleString()}, Costo: $${inputCost.toFixed(6)}`);
+          console.log(`Output tokens: ${candidatesTokenCount.toLocaleString()}, Costo: $${outputCost.toFixed(6)}`);
+          console.log(`Total tokens: ${totalTokenCount.toLocaleString()}, Costo total: $${totalCost.toFixed(6)}`);
+        }
+      } catch (costError) {
+        console.error('Error calculando costos del copywriting:', costError);
+      }
+
+      if (copywritingResult.candidates && copywritingResult.candidates[0]?.content?.parts) {
+        copywriting = copywritingResult.candidates[0].content.parts
+          .map((part: any) => part.text || '')
+          .join('');
+      } else if ((copywritingResult as any).text) {
+        copywriting = (copywritingResult as any).text;
+      }
+    } catch (copyError: any) {
+      console.error('Error generating copywriting:', copyError);
+      // Don't fail the whole request if copywriting generation fails
+      copywriting = 'Could not generate copywriting proposal.';
     }
     
-    console.log('Análisis completado');
-    console.log('Adapted prompt final value:', adaptedPrompt ? `Present (${adaptedPrompt.length} chars)` : 'null');
+    console.log('\n=== ANÁLISIS COMPLETADO ===');
+    console.log('Psychological analysis length:', psychologicalAnalysis.length);
+    console.log('Creative angles length:', creativeAngles.length);
+    console.log('Copywriting length:', copywriting.length);
 
-    // Si hay productService y adaptedPrompt, solo devolver el adapted prompt
-    // Si no hay productService o no se generó adaptedPrompt, devolver el análisis original
-    if (type === 'production' && productService && productService.trim() && adaptedPrompt) {
-      // Solo devolver adapted prompt cuando hay productService
-      return NextResponse.json({
-        success: true,
-        adId,
-        type,
-        data,
-        geminiAnalysis: {
-          text: adaptedPrompt,
-          fileUri: myfile.uri
-        },
-        adaptedPrompt: adaptedPrompt,
-        usage: usageInfo
-      });
-    } else {
-      // Devolver análisis original
-      return NextResponse.json({
-        success: true,
-        adId,
-        type,
-        data,
-        geminiAnalysis: {
-          text: analysisText,
-          fileUri: myfile.uri
-        },
-        adaptedPrompt: null,
-        usage: usageInfo
-      });
-    }
+    // Return the results
+    return NextResponse.json({
+      success: true,
+      contentType,
+      psychologicalAnalysis: psychologicalAnalysis.trim(),
+      creativeAngles: creativeAngles.trim(),
+      copywriting: copywriting.trim(),
+      productService: productService.trim()
+    });
 
   } catch (error: any) {
-    console.error('Error al analizar el anuncio:', error);
+    console.error('Error al analizar el contenido:', error);
     console.error('Stack trace:', error.stack);
     
     // Manejar diferentes tipos de errores
@@ -992,7 +1133,7 @@ ${langInstructions.output}`;
       
       return NextResponse.json(
         { 
-          error: 'Error getting ad data',
+          error: 'Error getting content data',
           details: errorData 
             ? (typeof errorData === 'string' ? errorData : JSON.stringify(errorData))
             : errorMessage,
@@ -1016,4 +1157,3 @@ ${langInstructions.output}`;
     );
   }
 }
-

@@ -95,6 +95,11 @@ function getRateLimiter() {
         limiter: Ratelimit.slidingWindow(25, '1 h'), // 25 requests per hour
         analytics: true,
       }),
+      generateImagePrompt: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
+        analytics: true,
+      }),
     };
   } else {
     // Use in-memory rate limiting for development
@@ -118,6 +123,9 @@ function getRateLimiter() {
       generateViralScript: {
         limit: (identifier: string) => inMemory.limit(identifier, 25, 3600), // 25 per hour
       },
+      generateImagePrompt: {
+        limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
+      },
     };
   }
 
@@ -139,7 +147,7 @@ function getIdentifier(request: Request | NextRequest): string {
 
 // Rate limit middleware
 export async function checkRateLimit(
-  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript',
+  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt',
   request: Request | NextRequest
 ): Promise<{ success: boolean; limit?: number; remaining?: number; reset?: number; error?: string }> {
   try {

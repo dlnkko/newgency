@@ -69,13 +69,6 @@ export default function DashboardPage() {
               icon: '🚀',
             },
             {
-              id: 'video-scene-prompt-generator',
-              name: 'Video Scene Prompt Generator',
-              path: '/tools/video-scene-prompt-generator',
-              description: 'Analyze video and generate scene prompts',
-              icon: '🎞️',
-            },
-            {
               id: 'image-prompt-generator',
               name: 'Image Prompt Generator',
               path: '/tools/image-prompt-generator',
