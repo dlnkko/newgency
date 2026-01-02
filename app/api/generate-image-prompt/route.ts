@@ -141,27 +141,44 @@ A reference image has been attached. You MUST:
 - **Hyperrealistic adaptation**: Ensure the person looks exactly the same as in the reference, but naturally adapted to the new situation with hyperrealistic details - same person, different moment/action/environment` : '';
 
       styleInstructions = `**HYPERREALISTIC STYLE REQUIREMENTS (CRITICAL):**
-You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM. The image must be indistinguishable from reality:
+You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo:
 
-- **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source
-- **Hyperrealistic lighting**: Natural light behavior, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
-- **Photorealistic textures**: Every surface must show realistic material properties - skin texture with pores and natural imperfections, fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real
-- **Authentic colors**: Natural color science, realistic color temperature, genuine color reproduction as seen in real life
-- **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field
-- **Maximum realism**: If the description mentions a person, environment, object, or anything - it must look 100% real, as if photographed in real life
-- **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world${referenceImageNote}
+- **iPhone photography aesthetic**: The image must look exactly like it was captured with an iPhone camera - authentic iPhone color science, iPhone's characteristic depth of field, iPhone's natural image processing, iPhone's realistic skin tones and color reproduction
+- **First-person or third-person perspective**: The image can be taken by the same person (first-person POV) or by someone else (third-person), but it must always look like an iPhone photo - natural, authentic, and realistic
+- **iPhone camera characteristics**: 
+  - Natural iPhone depth of field (slight background blur when appropriate)
+  - iPhone's authentic color science and white balance
+  - iPhone's realistic skin tone rendering
+  - iPhone's natural sharpness and detail capture
+  - iPhone's characteristic dynamic range
+- **Flash photography when contextually appropriate**: If the scene requires it (low light, night scenes, indoor dark environments), include iPhone flash photography - the characteristic iPhone flash look with proper flash shadows, flash highlights, and flash color temperature
+- **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source (natural light or iPhone flash)
+- **Hyperrealistic lighting**: Natural light behavior or iPhone flash lighting, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
+- **Photorealistic textures**: Every surface must show realistic material properties - skin texture with pores and natural imperfections (as captured by iPhone), fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real
+- **Authentic colors**: iPhone's natural color science, realistic color temperature, genuine color reproduction as seen in real iPhone photos
+- **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field (iPhone-style)
+- **Maximum realism**: If the description mentions a person, environment, object, or anything - it must look 100% real, as if photographed with an iPhone in real life
+- **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone${referenceImageNote}
 
 **CRITICAL DEFAULT - UGC STYLE (FRONTAL CAMERA ANGLE):**
 - **DEFAULT BEHAVIOR**: If the user's description does NOT explicitly specify a camera angle (e.g., "side view", "profile", "from behind", "45-degree angle", "three-quarter view", "back view", "lateral view", etc.), you MUST default to UGC (User-Generated Content) style:
   - Person looking directly at the camera (direct eye contact with camera lens)
   - Frontal camera angle (camera positioned directly in front of the person)
-  - As if the person is recording themselves or taking a selfie
-  - Natural, authentic selfie/frontal recording aesthetic
+  - As if the person is recording themselves or taking a selfie with their iPhone
+  - Natural, authentic iPhone selfie/frontal recording aesthetic
   - Direct engagement with the viewer through eye contact
-- **OVERRIDE BEHAVIOR**: If the user's description DOES explicitly specify a camera angle or view (e.g., "side view", "profile", "from the side", "45-degree angle", "three-quarter view", "from behind", "back view", etc.), then follow the user's specified camera angle instead of the default
-- **PERSON PRESENCE**: This default applies when the description includes a person. If the description doesn't involve a person, apply standard hyperrealistic requirements
+  - iPhone camera quality and characteristics
+- **OVERRIDE BEHAVIOR**: If the user's description DOES explicitly specify a camera angle or view (e.g., "side view", "profile", "from the side", "45-degree angle", "three-quarter view", "from behind", "back view", etc.), then follow the user's specified camera angle instead of the default, but still maintain iPhone photography quality
+- **PERSON PRESENCE**: This default applies when the description includes a person. If the description doesn't involve a person, apply standard hyperrealistic requirements with iPhone quality
 
-The goal is absolute photorealism - the image should be impossible to distinguish from a real photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic.`;
+**iPhone Photography Quality Requirements:**
+- Always specify "iPhone photography", "taken with iPhone", or "iPhone camera quality" in the prompt
+- Include iPhone's characteristic image processing look
+- Maintain iPhone's natural color science and white balance
+- If flash is needed, specify "iPhone flash" or "iPhone camera flash"
+- The image should look like it was taken by someone with an iPhone, either in first-person (selfie/POV) or third-person (someone else taking the photo)
+
+The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it.`;
     } else if (style === 'studio-quality') {
       const referenceImageNote = referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
 A reference image has been attached. You MUST:
