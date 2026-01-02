@@ -164,6 +164,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        if (!videoUrl) {
+          return NextResponse.json(
+            { error: 'Could not extract video URL from social media post. The video may not be available.' },
+            { status: 400 }
+          );
+        }
+
         console.log('Video URL extracted:', videoUrl.substring(0, 100) + '...');
 
         // Validar y limpiar la URL del video
