@@ -118,9 +118,34 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (uploadError: any) {
-        console.error('Error uploading reference image:', uploadError);
+        console.error('Error uploading reference image:', {
+          message: uploadError.message,
+          status: uploadError.status,
+          code: uploadError.code,
+          response: uploadError.response?.data,
+          stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+        });
+        
+        // Check for API key errors
+        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          return NextResponse.json(
+            { 
+              error: 'Google Gemini API key is not valid', 
+              details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+            },
+            { status: 401 }
+          );
+        }
+        
         return NextResponse.json(
-          { error: 'Error uploading reference image', details: uploadError.message },
+          { 
+            error: 'Error uploading reference image', 
+            details: uploadError.message || 'Could not upload the reference image to Gemini Files',
+            ...(process.env.NODE_ENV === 'development' && {
+              fullError: uploadError.toString(),
+              stack: uploadError.stack
+            })
+          },
           { status: 500 }
         );
       }
@@ -259,6 +284,20 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       const parts: any[] = [];
       
       if (referenceImageFile) {
+        console.log('Adding reference image to prompt:', {
+          uri: referenceImageFile.uri?.substring(0, 50) + '...',
+          mimeType: referenceImageFile.mimeType,
+          state: referenceImageFile.state
+        });
+        
+        if (!referenceImageFile.uri) {
+          console.error('Reference image file missing URI');
+          return NextResponse.json(
+            { error: 'Reference image file is missing URI property', details: 'The uploaded image file does not have a valid URI' },
+            { status: 500 }
+          );
+        }
+        
         parts.push({
           fileData: {
             fileUri: referenceImageFile.uri,
@@ -271,6 +310,12 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
         text: promptGenerationRequest
       });
 
+      console.log('Calling Gemini API with:', {
+        model: 'gemini-3-flash-preview',
+        hasImage: !!referenceImageFile,
+        promptLength: promptGenerationRequest.length
+      });
+
       result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [
@@ -280,11 +325,51 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
           }
         ]
       });
+      
+      console.log('Gemini API call successful');
     } catch (error: any) {
-      console.error('Error generating prompt:', error);
+      console.error('Error generating prompt:', {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        response: error.response?.data,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+      
+      // Handle specific error types
+      let errorMessage = 'Error generating prompt';
+      let errorDetails = error.message || 'Unknown error';
+      let statusCode = 500;
+      
+      // Check for API key errors
+      if (error.message?.includes('API key') || error.message?.includes('API_KEY') || error.status === 401) {
+        errorMessage = 'Google Gemini API key is not valid or missing';
+        errorDetails = 'Please verify your GOOGLE_GENAI_API_KEY environment variable is set correctly in production';
+        statusCode = 401;
+      }
+      // Check for rate limit errors
+      else if (error.status === 429 || error.message?.includes('rate limit')) {
+        errorMessage = 'Rate limit exceeded';
+        errorDetails = 'Too many requests to Google Gemini API. Please try again later.';
+        statusCode = 429;
+      }
+      // Check for file errors
+      else if (error.message?.includes('file') || error.message?.includes('File')) {
+        errorMessage = 'Error processing reference image';
+        errorDetails = error.message;
+        statusCode = 500;
+      }
+      
       return NextResponse.json(
-        { error: 'Error generating prompt', details: error.message },
-        { status: 500 }
+        { 
+          error: errorMessage, 
+          details: errorDetails,
+          ...(process.env.NODE_ENV === 'development' && {
+            fullError: error.toString(),
+            stack: error.stack
+          })
+        },
+        { status: statusCode }
       );
     }
 
@@ -356,11 +441,33 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
     });
 
   } catch (error: any) {
-    console.error('Error generating image prompt:', error);
+    console.error('Error generating image prompt (outer catch):', {
+      message: error.message,
+      name: error.name,
+      status: error.status,
+      code: error.code,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+    
+    // Check for API key initialization errors
+    if (error.message?.includes('GOOGLE_GENAI_API_KEY') || error.message?.includes('API key')) {
+      return NextResponse.json(
+        {
+          error: 'Google Gemini API key is not configured',
+          details: 'The GOOGLE_GENAI_API_KEY environment variable is missing or invalid. Please configure it in your production environment (Vercel dashboard → Settings → Environment Variables).'
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       {
         error: 'Internal server error',
-        details: error.message || 'Unknown error'
+        details: error.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && {
+          fullError: error.toString(),
+          stack: error.stack
+        })
       },
       { status: 500 }
     );

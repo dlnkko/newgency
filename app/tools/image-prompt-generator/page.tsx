@@ -16,6 +16,65 @@ export default function ImagePromptGenerator() {
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
 
+  // Compress and resize image to reduce file size
+  const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.85): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to compress image'));
+                return;
+              }
+              const compressedFile = new File([blob], file.name, {
+                type: file.type,
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
+            file.type,
+            quality
+          );
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -57,7 +116,41 @@ export default function ImagePromptGenerator() {
       // Convert reference image to base64 if provided
       let referenceImageBase64 = null;
       if (referenceImage) {
-        referenceImageBase64 = await fileToBase64(referenceImage);
+        // Check file size (Vercel limit is ~4.5MB for request body)
+        // Base64 encoding increases size by ~33%, so we limit original to ~3MB
+        const maxSizeBytes = 3 * 1024 * 1024; // 3MB
+        
+        let imageToProcess = referenceImage;
+        
+        // If image is too large, compress it
+        if (referenceImage.size > maxSizeBytes) {
+          console.log(`Image size (${(referenceImage.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          try {
+            imageToProcess = await compressImage(referenceImage, 1920, 1920, 0.85);
+            console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            
+            // If still too large after compression, compress more aggressively
+            if (imageToProcess.size > maxSizeBytes) {
+              console.log('Still too large, compressing more aggressively...');
+              imageToProcess = await compressImage(referenceImage, 1280, 1280, 0.75);
+              console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            }
+          } catch (compressError) {
+            console.error('Error compressing image:', compressError);
+            setError('Failed to compress image. Please try a smaller image file.');
+            return;
+          }
+        }
+        
+        // Convert to base64
+        referenceImageBase64 = await fileToBase64(imageToProcess);
+        
+        // Check final base64 size (should be ~33% larger than original)
+        const base64Size = new Blob([referenceImageBase64]).size;
+        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
+          setError('Image is too large even after compression. Please use an image smaller than 3MB.');
+          return;
+        }
       }
 
       const response = await fetch('/api/generate-image-prompt', {
@@ -78,7 +171,10 @@ export default function ImagePromptGenerator() {
         if (response.status === 429) {
           setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
         } else {
-          setError(data.error || 'Failed to generate prompt');
+          // Show detailed error message if available
+          const errorMessage = data.error || 'Failed to generate prompt';
+          const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+          setError(`${errorMessage}${errorDetails}`);
         }
         return;
       }
