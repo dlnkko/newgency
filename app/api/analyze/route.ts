@@ -868,31 +868,67 @@ export async function POST(request: NextRequest) {
       ? `You have access to a video file. Analyze the video visually and any audio/transcript available.`
       : `Analyze the content based on the available information.`;
 
-    const analysisPrompt = `You are an expert marketing psychologist and creative strategist. Analyze ${contentDescription} to understand why it worked and how to apply those psychological principles to a new product/service.
+    const analysisPrompt = `You are an expert marketing psychologist and creative strategist specializing in Wundt's psychological principles. Analyze ${contentDescription} to understand why it worked and how to apply those psychological principles to a new product/service.
 
 ${contentInput}
 
 **Product/Service to Apply Analysis To:**
 "${productService}"
 
-**Your Task - Provide a BRIEF Psychological Analysis:**
+**Your Task - Provide a Psychological Analysis Using Wundt's Principles:**
 
-Analyze the psychological background of this successful content. Focus on:
-1. **Pain Points Identified** - What specific problems, frustrations, or desires did this content identify and address?
-2. **The Hook** - What made the opening compelling? Why did it stop the scroll?
-3. **Why the Solution Worked** - What psychological mechanisms made the solution presented in the post effective?
-4. **Connection Strategy** - How did the content connect emotionally with the audience and offer value?
+**PART 1: Analysis Using Wundt's Psychological Principles**
 
-Keep this analysis BRIEF and focused on the psychological insights. Use clear sections with headers.
+Analyze this video using Wundt's psychological principles and explain what elements likely drive a strong emotional response. Focus on:
 
-**Then Provide Creative Angles:**
+1. **Structural Elements (Wundt's Elemental Psychology)**:
+   - What are the basic sensory elements (visual, auditory, emotional) that compose the experience?
+   - How do these elements combine to create a complex emotional experience?
+   - Which specific visual, auditory, or narrative elements trigger immediate attention?
 
-Based on your psychological analysis, propose 3-5 creative angles specifically for "${productService}". For each angle:
-- Identify relevant pain points that "${productService}" can address (based on what worked in the original)
-- Explain how this angle would work psychologically (why it would resonate)
-- Connect it to the successful elements you identified in the original content
+2. **Emotional Response Mechanisms (Wundt's Three-Dimensional Theory of Feeling)**:
+   - **Pleasure-Displeasure**: What elements create pleasure or relieve displeasure in the viewer?
+   - **Arousal-Calm**: What elements create excitement, tension, or calm?
+   - **Strain-Relaxation**: What elements create tension and release, building emotional engagement?
+   - Explain which specific elements likely drive the strongest emotional response and why
 
-Format: Brief analysis first, then creative angles section.`;
+3. **Attention and Perception (Wundt's Principles)**:
+   - How does the content capture and maintain attention?
+   - What perceptual elements (contrast, movement, novelty) create immediate engagement?
+   - How does the structure guide the viewer's attention through the experience?
+
+4. **Pain Points and Emotional Triggers**:
+   - What specific problems, frustrations, or desires did this content identify and address?
+   - What emotional states does it target (fear, desire, hope, relief, etc.)?
+   - How do these emotional triggers connect to the product/solution presented?
+
+5. **The Hook - Why It Stopped the Scroll**:
+   - What made the opening compelling from a psychological perspective?
+   - Which Wundtian principles (attention, emotion, perception) were activated in the hook?
+
+6. **Why the Solution Worked**:
+   - What psychological mechanisms made the solution presented effective?
+   - How did the content create a satisfying emotional resolution?
+
+7. **Connection Strategy**:
+   - How did the content connect emotionally with the audience?
+   - What value did it offer that created emotional resonance?
+
+Keep this analysis focused on Wundt's psychological principles and the emotional response mechanisms. Use clear sections with headers.
+
+**PART 2: Creative Angles Based on Wundt's Analysis**
+
+Based on your Wundtian psychological analysis above, propose 3-5 creative angles specifically for "${productService}". For each angle:
+
+- **Base it on the Wundtian analysis**: Explain which specific emotional response mechanisms (pleasure-displeasure, arousal-calm, strain-relaxation) this angle would activate
+- **Identify relevant pain points**: What pain points that "${productService}" can address (based on what worked in the original)
+- **Emotional response elements**: Explain what specific elements (visual, auditory, narrative) would drive a strong emotional response, based on Wundt's principles
+- **Psychological mechanisms**: Explain how this angle would work psychologically (why it would resonate) using Wundt's framework
+- **Connection to original**: Connect it to the successful emotional elements you identified in the original content using Wundt's principles
+
+Each creative angle must be grounded in the Wundtian psychological analysis you provided in Part 1.
+
+Format: Wundtian psychological analysis first, then creative angles section based on that analysis.`;
 
     // Analyze with Gemini
     console.log('Analyzing content with Gemini...');
