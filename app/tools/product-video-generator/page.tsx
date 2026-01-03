@@ -36,6 +36,65 @@ export default function ProductVideoGenerator() {
     }
   };
 
+  // Compress and resize image to reduce file size
+  const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.85): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to compress image'));
+                return;
+              }
+              const compressedFile = new File([blob], file.name, {
+                type: file.type,
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
+            file.type,
+            quality
+          );
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -43,6 +102,45 @@ export default function ProductVideoGenerator() {
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = (error) => reject(error);
     });
+  };
+
+  // Helper function to compress and convert image to base64
+  const compressAndConvertToBase64 = async (file: File): Promise<string> => {
+    // Check file size (Vercel limit is ~4.5MB for request body)
+    // Base64 encoding increases size by ~33%, so we limit original to ~3MB
+    const maxSizeBytes = 3 * 1024 * 1024; // 3MB
+    
+    let imageToProcess = file;
+    
+    // If image is too large, compress it
+    if (file.size > maxSizeBytes) {
+      console.log(`Image size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+      try {
+        imageToProcess = await compressImage(file, 1920, 1920, 0.85);
+        console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+        
+        // If still too large after compression, compress more aggressively
+        if (imageToProcess.size > maxSizeBytes) {
+          console.log('Still too large, compressing more aggressively...');
+          imageToProcess = await compressImage(file, 1280, 1280, 0.75);
+          console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+        }
+      } catch (compressError) {
+        console.error('Error compressing image:', compressError);
+        throw new Error('Failed to compress image. Please try a smaller image file.');
+      }
+    }
+    
+    // Convert to base64
+    const base64 = await fileToBase64(imageToProcess);
+    
+    // Check final base64 size (should be ~33% larger than original)
+    const base64Size = new Blob([base64]).size;
+    if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
+      throw new Error('Image is too large even after compression. Please use an image smaller than 3MB.');
+    }
+
+    return base64;
   };
 
   const handleGenerate = async () => {
@@ -59,7 +157,7 @@ export default function ProductVideoGenerator() {
     setGeneratedImagePreview(null);
 
     try {
-      const productBase64 = await fileToBase64(productImage);
+      const productBase64 = await compressAndConvertToBase64(productImage);
 
       const response = await fetch('/api/generate-product-video', {
         method: 'POST',
@@ -111,7 +209,7 @@ export default function ProductVideoGenerator() {
     setVideoAnimationPrompt(null);
 
     try {
-      const generatedImageBase64 = await fileToBase64(generatedImage);
+      const generatedImageBase64 = await compressAndConvertToBase64(generatedImage);
 
       const response = await fetch('/api/generate-product-video', {
         method: 'POST',
@@ -152,7 +250,7 @@ export default function ProductVideoGenerator() {
     setAnimationPrompt(null);
 
     try {
-      const productBase64 = await fileToBase64(productImage);
+      const productBase64 = await compressAndConvertToBase64(productImage);
 
       const response = await fetch('/api/generate-product-video', {
         method: 'POST',
