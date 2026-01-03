@@ -250,26 +250,61 @@ A reference image has been provided and analyzed. Below is a detailed prompt tha
 "${referenceImagePrompt}"
 
 **Your Task:**
-You MUST use the reference image prompt above as a guide to incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality into your generated prompt. Specifically:
+You MUST use the reference image prompt above to create a prompt that generates an image as CLOSE AS POSSIBLE to how the reference image looks. The reference image prompt describes EXACTLY how the reference image appears. Your job is to:
 
-- **Mimic the lighting style**: Use the same type of lighting described in the reference prompt (natural, studio, flash, etc.), same direction, intensity, color temperature, shadows, and highlights
-- **Match the texture quality**: Incorporate the same texture characteristics - if the reference is hyperrealistic with detailed textures, maintain that level of detail
-- **Match the color palette**: Use similar color temperature, saturation, contrast, and color harmony as described in the reference
-- **Match the composition style**: Use similar camera angles, framing, perspective, depth of field as the reference
-- **Match the overall aesthetic**: If the reference is hyperrealistic, maintain hyperrealism; if it's studio-quality, maintain studio quality; match the overall visual style
-- **Apply to user's description**: While using the reference as style guide, create a prompt for what the user described: "${description}"
-- **Combine both**: The final prompt should describe the user's request but with the visual style, lighting, textures, and aesthetic of the reference image
+- **RESPECT THE REFERENCE IMAGE EXACTLY**: The reference image prompt describes the exact visual appearance of the reference image. You MUST respect and match:
+  - **EXACT camera angle and perspective** from the reference (frontal, side, three-quarter, from above, from below, etc.)
+  - **EXACT composition and framing** (close-up, medium shot, wide shot, etc.)
+  - **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights)
+  - **EXACT texture quality and appearance** (same level of detail, same material appearance)
+  - **EXACT color palette** (same color temperature, saturation, contrast, color harmony)
+  - **EXACT depth of field and focus** (same blur/sharpness characteristics)
+  - **EXACT overall aesthetic and visual style** (same look and feel)
+  
+- **Apply to user's description**: While respecting the EXACT visual characteristics of the reference image, adapt the CONTENT to match what the user described: "${description}"
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the reference
+  - Change only the CONTENT/SUBJECT to match the user's description
+  - The result should look like the reference image but with the content/subject the user requested
 
-**Important**: The reference prompt describes the STYLE and VISUAL CHARACTERISTICS of the reference image. Use these characteristics to style the user's description, not to copy the reference image's content.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (SAME PERSON, NEW ACTION/ENVIRONMENT):**
+- **CRITICAL**: The generated prompt must describe an image that looks EXACTLY like the reference image in terms of:
+  - Camera angle and perspective
+  - Composition and framing
+  - Lighting style and characteristics
+  - Texture quality and appearance
+  - Color palette and color characteristics
+  - Overall aesthetic and visual style
+  - But with the content/subject from the user's description
+
+**Example**: If the reference image is a side view of a person with natural lighting, and the user describes "person exercising", the prompt should describe a side view of a person exercising with the EXACT same natural lighting, camera angle, composition, and aesthetic as the reference image.
+
+**Important**: Match the reference image's visual characteristics EXACTLY - camera angle, composition, lighting, textures, colors, and aesthetic. Only adapt the content/subject to the user's description.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
 A reference image has been attached. You MUST:
-- **Analyze the attached reference image** to understand the person's appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
-- **Base your prompt on the reference image** - use it as a foundation to maintain the SAME PERSON in your generated prompt
-- **Maintain the same person**: The person in your generated prompt MUST be the same person from the reference image - same appearance, same facial features, same physical characteristics, same visual identity
-- **Adapt to new situation**: While maintaining the same person, adapt them to the NEW action, sequence, or environment described by the user
-- **Preserve visual consistency**: Maintain the person's visual identity (appearance, style, characteristics) while placing them in the new context described
-- **New action/environment**: The user's description likely involves a different action, sequence, or environment than what's in the reference image - incorporate that new context while keeping the same person
-- **Mention the reference explicitly**: In your generated prompt, explicitly state that the person should match the attached reference image in appearance, while performing the new action or being in the new environment described
-- **Hyperrealistic adaptation**: Ensure the person looks exactly the same as in the reference, but naturally adapted to the new situation with hyperrealistic details - same person, different moment/action/environment` : '';
+- **Analyze the attached reference image** to understand EXACTLY how it looks:
+  - Camera angle and perspective (frontal, side, three-quarter, from above, from below, etc.)
+  - Composition and framing (close-up, medium shot, wide shot, etc.)
+  - Lighting style (type, direction, intensity, color temperature, shadows, highlights)
+  - Texture quality and appearance
+  - Color palette (color temperature, saturation, contrast, color harmony)
+  - Depth of field and focus characteristics
+  - Overall aesthetic and visual style
+  - If there's a person: their appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
+
+- **RESPECT THE REFERENCE IMAGE EXACTLY**: Your generated prompt must describe an image that looks EXACTLY like the reference image in terms of:
+  - **EXACT camera angle and perspective** - match the reference image's camera angle precisely
+  - **EXACT composition and framing** - match the reference image's framing and composition
+  - **EXACT lighting style** - match the reference image's lighting characteristics
+  - **EXACT texture quality** - match the reference image's texture appearance
+  - **EXACT color palette** - match the reference image's colors
+  - **EXACT depth of field** - match the reference image's focus/blur characteristics
+  - **EXACT overall aesthetic** - match the reference image's visual style and look
+
+- **Apply to user's description**: While respecting the EXACT visual characteristics of the reference image, adapt the CONTENT to match what the user described: "${description}"
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the reference
+  - Change only the CONTENT/SUBJECT to match the user's description
+  - If the reference has a person and the user's description also involves a person: maintain the same person's appearance from the reference, but adapt them to the new action/environment described
+  - The result should look like the reference image but with the content/subject the user requested
+
+- **CRITICAL**: The generated prompt must create an image that looks EXACTLY like the reference image visually (angle, composition, lighting, textures, colors, aesthetic), but with the content/subject from the user's description.` : '';
 
       styleInstructions = `**HYPERREALISTIC STYLE REQUIREMENTS (CRITICAL):**
 You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo:
@@ -325,15 +360,22 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
     - **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone
   - iPhone camera quality and characteristics - the image must look exactly like it was taken with an iPhone, with all the hyperrealistic qualities of iPhone photography
 
-- **UGC STYLE (PEOPLE MENTIONED)**: If the description DOES mention people/persons:
-  - **DEFAULT BEHAVIOR**: If the user's description does NOT explicitly specify a camera angle (e.g., "side view", "profile", "from behind", "45-degree angle", "three-quarter view", "back view", "lateral view", etc.), you MUST default to UGC (User-Generated Content) style:
-    - Person looking directly at the camera (direct eye contact with camera lens)
-    - Frontal camera angle (camera positioned directly in front of the person)
-    - As if the person is recording themselves or taking a selfie with their iPhone
-    - Natural, authentic iPhone selfie/frontal recording aesthetic
-    - Direct engagement with the viewer through eye contact
-    - iPhone camera quality and characteristics
-  - **OVERRIDE BEHAVIOR**: If the user's description DOES explicitly specify a camera angle or view (e.g., "side view", "profile", "from the side", "45-degree angle", "three-quarter view", "from behind", "back view", etc.), then follow the user's specified camera angle instead of the default, but still maintain iPhone photography quality
+- **CASUAL/AMATEUR STYLE (PEOPLE MENTIONED)**: If the description DOES mention people/persons:
+  - **IMPORTANT**: The image should look like a casual, amateur, homemade photo taken with an iPhone - NOT always frontal/selfie style
+  - **Camera angles**: Can be ANY angle or perspective that feels natural and casual:
+    - Can be frontal (selfie style) if it fits naturally
+    - Can be side view, profile, three-quarter view, from behind, from above, from below, or any other natural angle
+    - Can be close-up, medium shot, wide shot, or any framing that feels natural
+    - The angle should feel spontaneous and casual, like someone casually taking a photo with their iPhone
+  - **Natural, casual aesthetic**: 
+    - Should look like a real, casual photo taken by someone with their iPhone
+    - Not overly posed or professional-looking
+    - Natural, authentic, amateur/homemade quality
+    - As if someone is casually documenting or capturing a moment
+  - **User description priority**: Follow the user's description for the specific scene/action, and choose the most natural camera angle and framing that fits that scene
+  - **No forced frontal**: Do NOT default to frontal/selfie style unless it naturally fits the description or the user explicitly requests it
+  - **Reference image priority**: ${referenceImageFile && referenceImagePrompt ? 'If a reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the reference image. The reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description.' : 'Choose the most natural camera angle and framing that fits the scene described.'}
+  - iPhone camera quality and characteristics - must look like a real iPhone photo taken casually
 
 **iPhone Photography Quality Requirements:**
 - Always specify "iPhone photography", "taken with iPhone", or "iPhone camera quality" in the prompt
@@ -341,8 +383,9 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
 - Maintain iPhone's natural color science and white balance
 - If flash is needed, specify "iPhone flash" or "iPhone camera flash"
 - **Perspective clarification**:
-  - If description mentions people: The image should look like it was taken by someone with an iPhone, either in first-person (selfie/POV when person is recording themselves) or third-person (someone else taking the photo of the person)
+  - If description mentions people: The image should look like a casual, amateur photo taken with an iPhone - can be ANY angle (frontal, side, three-quarter, from above, from below, etc.) that feels natural and casual. NOT always frontal/selfie style. Should feel like someone casually taking a photo with their iPhone.
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
+  - **Reference image priority**: ${referenceImageFile && referenceImagePrompt ? 'If a reference image is provided, match the EXACT camera angle and perspective from the reference image. The reference image prompt describes exactly how the reference looks - respect that EXACTLY.' : 'Choose the most natural camera angle that fits the scene.'}
 
 The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it.`;
     } else if (style === 'studio-quality') {
