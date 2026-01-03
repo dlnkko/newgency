@@ -258,12 +258,19 @@ A product image has been attached. You MUST:
 
     const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
 
-**CRITICAL REQUIREMENT - YOU MUST ENHANCE THE PROMPT:**
-- You MUST enhance, expand, and enrich the [ACTION TEXT TO ENHANCE] - DO NOT return it unchanged
-- You MUST incorporate all technical details, visual descriptions, and requirements
-- You MUST create a comprehensive, detailed prompt that is significantly more detailed than the original action text
-- If you return the original action text unchanged or with minimal changes, you have FAILED the task
-- The enhanced prompt must be a complete, professional prompt ready for AI video generation
+**CRITICAL REQUIREMENT - YOU MUST ENHANCE THE PROMPT (MANDATORY):**
+- **ABSOLUTE PROHIBITION**: You are FORBIDDEN from returning the original action text unchanged or with minimal modifications
+- **MANDATORY ENHANCEMENT**: You MUST transform the basic action text into a comprehensive, detailed, professional prompt
+- **EXPANSION REQUIRED**: The enhanced prompt MUST be significantly longer and more detailed than the original action text
+- **TECHNICAL DETAILS REQUIRED**: You MUST incorporate all camera movements, lighting details, composition details, hyperrealism requirements, and visual descriptions
+- **PRODUCT DETAILS REQUIRED**: ${productImageFile ? 'You MUST analyze the attached product image and include detailed product descriptions (colors, materials, textures, design, appearance) in your enhanced prompt. The product details from the image are MANDATORY.' : 'If product details are mentioned, include them in detail.'}
+- **FAILURE CONDITION**: If your response is similar to or identical to the original action text, you have COMPLETELY FAILED the task
+- **SUCCESS CONDITION**: Your response must be a complete, professional, detailed prompt that is ready for AI video generation - it should be 3-5x longer than the original action text and include all technical and visual details
+
+**EXAMPLE OF WHAT NOT TO DO:**
+- Original: "mujer muestra sus gomitas de creatina"
+- WRONG: "mujer muestra sus gomitas de creatina y dice que las ha estado esperando" (too similar to original)
+- CORRECT: A detailed, comprehensive prompt with camera movements, lighting, composition, product details, hyperrealism requirements, etc.
 
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
@@ -329,7 +336,13 @@ The goal is to simulate the maximum authenticity and credibility of real-life, n
 - Lighting/Ambience: ${lighting}
 ${duration ? `- Scene Duration: ${duration} seconds` : ''}
 
-Respond ONLY with the enhanced text as a single continuous paragraph, without line breaks, without additional explanations or special formatting.`;
+**FINAL OUTPUT REQUIREMENTS:**
+- Respond ONLY with the enhanced text as a single continuous paragraph
+- NO line breaks, NO additional explanations, NO special formatting
+- The enhanced text MUST be significantly different from and more detailed than: "${actionText}"
+- If your response is too similar to the original action text above, you have FAILED
+- The enhanced prompt must include: camera movements, lighting details, composition details, product descriptions (if image provided), hyperrealism requirements, visual aesthetics, and all technical specifications
+- Minimum length: The enhanced prompt should be at least 3-5x longer than the original action text`;
 
     // Llamar a Gemini 3 Flash Preview
     let result;
@@ -386,6 +399,7 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
       console.log('Enhanced text extracted:', {
         hasText: !!enhancedText,
         textLength: enhancedText?.length || 0,
+        originalLength: actionText.length,
         textPreview: enhancedText?.substring(0, 100) || 'N/A',
         hasProductImage: !!productImageFile
       });
@@ -406,16 +420,61 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
         }
         // Solo usar fallback si NO hay imagen de referencia
         enhancedText = actionText;
-      } else if (productImageFile && enhancedText === actionText) {
-        // Si hay imagen de referencia pero el texto es idéntico al original, es un error
-        console.error('CRITICAL: Product image provided but enhanced text is identical to original');
-        return NextResponse.json(
-          { 
-            error: 'Failed to enhance prompt with reference image',
-            details: 'The AI returned the original text instead of an enhanced prompt. Please try again.'
-          },
-          { status: 500 }
-        );
+      } else {
+        // Validar que el texto mejorado sea significativamente diferente y más largo
+        const originalLength = actionText.length;
+        const enhancedLength = enhancedText.length;
+        const similarityThreshold = 0.7; // Si más del 70% del texto original está en el mejorado, es demasiado similar
+        
+        // Calcular similitud simple (cuánto del texto original está contenido en el mejorado)
+        const originalWords = actionText.toLowerCase().split(/\s+/);
+        const enhancedWords = enhancedText.toLowerCase().split(/\s+/);
+        const matchingWords = originalWords.filter(word => enhancedWords.includes(word));
+        const similarity = matchingWords.length / originalWords.length;
+        
+        console.log('Text validation:', {
+          originalLength,
+          enhancedLength,
+          similarity,
+          isTooSimilar: similarity > similarityThreshold,
+          isTooShort: enhancedLength < originalLength * 1.5
+        });
+        
+        // Validaciones estrictas cuando hay imagen de referencia
+        if (productImageFile) {
+          if (enhancedText === actionText || enhancedText.trim() === actionText.trim()) {
+            console.error('CRITICAL: Product image provided but enhanced text is identical to original');
+            return NextResponse.json(
+              { 
+                error: 'Failed to enhance prompt with reference image',
+                details: 'The AI returned the original text instead of an enhanced prompt. Please try again.'
+              },
+              { status: 500 }
+            );
+          }
+          
+          if (similarity > similarityThreshold && enhancedLength < originalLength * 2) {
+            console.error('CRITICAL: Product image provided but enhanced text is too similar to original');
+            return NextResponse.json(
+              { 
+                error: 'Failed to enhance prompt with reference image',
+                details: 'The AI returned text that is too similar to the original. The enhanced prompt must be significantly more detailed. Please try again.'
+              },
+              { status: 500 }
+            );
+          }
+          
+          if (enhancedLength < originalLength * 1.5) {
+            console.error('CRITICAL: Product image provided but enhanced text is too short');
+            return NextResponse.json(
+              { 
+                error: 'Failed to enhance prompt with reference image',
+                details: 'The enhanced prompt is too short. It must be significantly longer and more detailed than the original. Please try again.'
+              },
+              { status: 500 }
+            );
+          }
+        }
       }
     } catch (err) {
       console.error('Error extracting text from response:', err);
