@@ -276,12 +276,14 @@ export default function ImagePromptGenerator() {
         {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-              Reference Image (Optional)
+              Imagen de Referencia (Opcional)
             </label>
             <p className="mb-3 text-xs text-zinc-400">
               {selectedStyle === 'hyperrealistic' 
-                ? 'Upload a reference image of a person. The generated prompt will maintain the same person but adapt them to the new action or environment you describe.'
-                : 'Upload a reference image to help guide the prompt generation. The generated prompt will reference this image for better results.'}
+                ? 'Sube una imagen de referencia (por ejemplo, una imagen hiperrealista). La IA analizará la imagen y creará un prompt detallado que describe su estilo, luz, textura y estética. Luego usará ese prompt como referencia para crear el prompt final basado en tu descripción, incorporando el mismo nivel de hiperrealismo, iluminación y calidad de texturas.'
+                : selectedStyle === 'studio-quality'
+                ? 'Sube una imagen de referencia (por ejemplo, una foto de estudio profesional). La IA analizará la imagen y creará un prompt detallado que describe su estilo, iluminación, composición y estética. Luego usará ese prompt como referencia para crear el prompt final basado en tu descripción, incorporando el mismo estilo de iluminación, composición y calidad profesional.'
+                : 'Sube una imagen de referencia (por ejemplo, un diseño o infografía). La IA analizará la imagen y creará un prompt detallado que describe su estilo de diseño, colores, tipografía y composición. Luego usará ese prompt como referencia para crear el prompt final basado en tu descripción, incorporando el mismo estilo de diseño, paleta de colores y estética visual.'}
             </p>
             <div className="space-y-4">
               {!referenceImagePreview ? (

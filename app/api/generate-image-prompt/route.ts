@@ -151,10 +151,116 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If reference image is provided, first generate a detailed prompt of the reference image
+    let referenceImagePrompt = '';
+    if (referenceImageFile) {
+      console.log('Reference image file available:', {
+        hasUri: !!referenceImageFile.uri,
+        mimeType: referenceImageFile.mimeType,
+        state: referenceImageFile.state
+      });
+      
+      // Verify the file is ready before using it
+      if (referenceImageFile.uri) {
+        console.log('Generating detailed prompt for reference image...');
+        try {
+          const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image and create a detailed, comprehensive prompt that would generate this exact image. 
+
+**Your Task:**
+Create an extremely detailed prompt that describes:
+1. **Visual Style**: Is it hyperrealistic, studio-quality, design, illustration, etc.? Describe the exact aesthetic
+2. **Lighting**: Type of lighting (natural, studio, artificial, flash, etc.), direction, intensity, color temperature, shadows, highlights
+3. **Textures**: All surface textures visible (skin, fabric, materials, surfaces) - describe their appearance, quality, and characteristics
+4. **Colors**: Color palette, color temperature, saturation, contrast, color harmony
+5. **Composition**: Camera angle, framing, perspective, depth of field, focus
+6. **Technical Details**: Image quality, resolution appearance, sharpness, grain/noise, post-processing style
+7. **Atmosphere/Mood**: Overall feeling, mood, aesthetic quality
+8. **All Visual Elements**: Every detail that makes this image unique - style, technique, visual characteristics
+
+**Critical Requirements:**
+- The prompt must be extremely detailed and comprehensive
+- Describe the image as if you were going to generate this exact same image
+- Include all technical and aesthetic details
+- Be specific about lighting, textures, colors, composition, and style
+- The prompt should capture everything that makes this image visually distinctive
+
+**Output Format:**
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image.`;
+
+          const referenceParts: any[] = [
+            {
+              fileData: {
+                fileUri: referenceImageFile.uri,
+                mimeType: referenceImageFile.mimeType || 'image/png'
+              }
+            },
+            {
+              text: referenceImageAnalysisRequest
+            }
+          ];
+
+          const referenceResult = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: [
+              {
+                role: 'user',
+                parts: referenceParts
+              }
+            ]
+          });
+
+          // Extract the reference image prompt
+          if (referenceResult.candidates && referenceResult.candidates[0]?.content?.parts) {
+            referenceImagePrompt = referenceResult.candidates[0].content.parts
+              .map((part: any) => part.text || '')
+              .join('')
+              .trim();
+          } else if ((referenceResult as any).text) {
+            referenceImagePrompt = (referenceResult as any).text.trim();
+          }
+
+          if (referenceImagePrompt && referenceImagePrompt.length > 0) {
+            console.log('Reference image prompt generated, length:', referenceImagePrompt.length);
+          } else {
+            console.warn('Reference image prompt generation returned empty result');
+            referenceImagePrompt = '';
+          }
+        } catch (refError: any) {
+          console.error('Error generating reference image prompt:', {
+            message: refError.message,
+            status: refError.status,
+            code: refError.code,
+            stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
+          });
+          // Continue without reference prompt if it fails - will use image directly as fallback
+          referenceImagePrompt = '';
+        }
+      } else {
+        console.warn('Reference image file URI is missing, skipping reference prompt generation');
+      }
+    }
+
     // Build style-specific instructions
     let styleInstructions = '';
     if (style === 'hyperrealistic') {
-      const referenceImageNote = referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (SAME PERSON, NEW ACTION/ENVIRONMENT):**
+      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
+A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+
+**Reference Image Prompt (use this as style reference):**
+"${referenceImagePrompt}"
+
+**Your Task:**
+You MUST use the reference image prompt above as a guide to incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality into your generated prompt. Specifically:
+
+- **Mimic the lighting style**: Use the same type of lighting described in the reference prompt (natural, studio, flash, etc.), same direction, intensity, color temperature, shadows, and highlights
+- **Match the texture quality**: Incorporate the same texture characteristics - if the reference is hyperrealistic with detailed textures, maintain that level of detail
+- **Match the color palette**: Use similar color temperature, saturation, contrast, and color harmony as described in the reference
+- **Match the composition style**: Use similar camera angles, framing, perspective, depth of field as the reference
+- **Match the overall aesthetic**: If the reference is hyperrealistic, maintain hyperrealism; if it's studio-quality, maintain studio quality; match the overall visual style
+- **Apply to user's description**: While using the reference as style guide, create a prompt for what the user described: "${description}"
+- **Combine both**: The final prompt should describe the user's request but with the visual style, lighting, textures, and aesthetic of the reference image
+
+**Important**: The reference prompt describes the STYLE and VISUAL CHARACTERISTICS of the reference image. Use these characteristics to style the user's description, not to copy the reference image's content.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (SAME PERSON, NEW ACTION/ENVIRONMENT):**
 A reference image has been attached. You MUST:
 - **Analyze the attached reference image** to understand the person's appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
 - **Base your prompt on the reference image** - use it as a foundation to maintain the SAME PERSON in your generated prompt
@@ -180,32 +286,84 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
 - **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source (natural light or iPhone flash)
 - **Hyperrealistic lighting**: Natural light behavior or iPhone flash lighting, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
 - **Photorealistic textures**: Every surface must show realistic material properties - skin texture with pores and natural imperfections (as captured by iPhone), fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real
+- **Human facial features (CRITICAL)**: If the image includes human faces, facial features MUST be:
+  - **Soft and realistic**: Facial features must look soft and natural, exactly as real human faces appear - not harsh, not overly sharp, not artificial
+  - **Natural skin texture**: Skin must have soft, natural texture - smooth but not uniform, with subtle variations, natural pores, and realistic skin quality as seen in real people
+  - **Realistic facial structure**: Facial features (eyes, nose, mouth, cheeks, jawline) must have the natural softness and subtlety of real human faces - not overly defined, not plastic-looking, not uniform
+  - **Natural variations**: Skin texture must be non-uniform with natural variations in tone, texture, and detail - exactly as real human skin appears
+  - **Hyperrealistic but natural**: Maximum realism while maintaining the natural softness and organic quality of real human faces
+  - **Avoid artificial sharpness**: Facial features should NOT be overly sharp or uniform - they must look like real human faces with natural softness and realistic texture variations
 - **Authentic colors**: iPhone's natural color science, realistic color temperature, genuine color reproduction as seen in real iPhone photos
 - **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field (iPhone-style)
 - **Maximum realism**: If the description mentions a person, environment, object, or anything - it must look 100% real, as if photographed with an iPhone in real life
 - **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone${referenceImageNote}
 
-**CRITICAL DEFAULT - UGC STYLE (FRONTAL CAMERA ANGLE):**
-- **DEFAULT BEHAVIOR**: If the user's description does NOT explicitly specify a camera angle (e.g., "side view", "profile", "from behind", "45-degree angle", "three-quarter view", "back view", "lateral view", etc.), you MUST default to UGC (User-Generated Content) style:
-  - Person looking directly at the camera (direct eye contact with camera lens)
-  - Frontal camera angle (camera positioned directly in front of the person)
-  - As if the person is recording themselves or taking a selfie with their iPhone
-  - Natural, authentic iPhone selfie/frontal recording aesthetic
-  - Direct engagement with the viewer through eye contact
-  - iPhone camera quality and characteristics
-- **OVERRIDE BEHAVIOR**: If the user's description DOES explicitly specify a camera angle or view (e.g., "side view", "profile", "from the side", "45-degree angle", "three-quarter view", "from behind", "back view", etc.), then follow the user's specified camera angle instead of the default, but still maintain iPhone photography quality
-- **PERSON PRESENCE**: This default applies when the description includes a person. If the description doesn't involve a person, apply standard hyperrealistic requirements with iPhone quality
+**CRITICAL - PERSON DETECTION AND CAMERA PERSPECTIVE:**
+- **FIRST: Check if description mentions people/persons**: Analyze the user's description: "${description}"
+  - If the description explicitly mentions people, persons, humans, individuals, or any human subjects (e.g., "person", "people", "man", "woman", "someone", "individual", etc.), then proceed with UGC style (see below)
+  - If the description does NOT mention people/persons at all, then use THIRD-PERSON PERSPECTIVE WITHOUT PEOPLE (see below)
+
+- **THIRD-PERSON PERSPECTIVE (NO PEOPLE MENTIONED)**: If the description does NOT mention people/persons:
+  - The image must be taken from a third-person perspective (as if someone is photographing the scene/subject)
+  - NO people should be visible in the image - only the subject/scene described
+  - Natural iPhone photography angle - as if someone is taking a photo of the subject/scene
+  - Example: "meal prep in kitchen" → Photo of meal prep in kitchen, taken by someone (third-person), but no people visible in the frame
+  - Example: "product on table" → Photo of product on table, taken by someone (third-person), but no people visible
+  - The perspective should feel natural, as if someone is documenting or photographing the subject
+  - **CRITICAL - MUST MAINTAIN ALL HYPERREALISTIC REQUIREMENTS**:
+    - **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source (natural light or iPhone flash)
+    - **Hyperrealistic lighting**: Natural light behavior or iPhone flash lighting, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights - exactly as an iPhone would capture it
+    - **Photorealistic textures**: Every surface must show realistic material properties - fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real and hyperrealistic
+    - **iPhone camera characteristics**: 
+      - Natural iPhone depth of field (slight background blur when appropriate)
+      - iPhone's authentic color science and white balance
+      - iPhone's natural sharpness and detail capture
+      - iPhone's characteristic dynamic range
+    - **Authentic colors**: iPhone's natural color science, realistic color temperature, genuine color reproduction as seen in real iPhone photos
+    - **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field (iPhone-style)
+    - **Maximum realism**: Everything must look 100% real, as if photographed with an iPhone in real life - indistinguishable from a real iPhone photo
+    - **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone
+  - iPhone camera quality and characteristics - the image must look exactly like it was taken with an iPhone, with all the hyperrealistic qualities of iPhone photography
+
+- **UGC STYLE (PEOPLE MENTIONED)**: If the description DOES mention people/persons:
+  - **DEFAULT BEHAVIOR**: If the user's description does NOT explicitly specify a camera angle (e.g., "side view", "profile", "from behind", "45-degree angle", "three-quarter view", "back view", "lateral view", etc.), you MUST default to UGC (User-Generated Content) style:
+    - Person looking directly at the camera (direct eye contact with camera lens)
+    - Frontal camera angle (camera positioned directly in front of the person)
+    - As if the person is recording themselves or taking a selfie with their iPhone
+    - Natural, authentic iPhone selfie/frontal recording aesthetic
+    - Direct engagement with the viewer through eye contact
+    - iPhone camera quality and characteristics
+  - **OVERRIDE BEHAVIOR**: If the user's description DOES explicitly specify a camera angle or view (e.g., "side view", "profile", "from the side", "45-degree angle", "three-quarter view", "from behind", "back view", etc.), then follow the user's specified camera angle instead of the default, but still maintain iPhone photography quality
 
 **iPhone Photography Quality Requirements:**
 - Always specify "iPhone photography", "taken with iPhone", or "iPhone camera quality" in the prompt
 - Include iPhone's characteristic image processing look
 - Maintain iPhone's natural color science and white balance
 - If flash is needed, specify "iPhone flash" or "iPhone camera flash"
-- The image should look like it was taken by someone with an iPhone, either in first-person (selfie/POV) or third-person (someone else taking the photo)
+- **Perspective clarification**:
+  - If description mentions people: The image should look like it was taken by someone with an iPhone, either in first-person (selfie/POV when person is recording themselves) or third-person (someone else taking the photo of the person)
+  - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
 
 The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it.`;
     } else if (style === 'studio-quality') {
-      const referenceImageNote = referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
+      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
+A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+
+**Reference Image Prompt (use this as style reference):**
+"${referenceImagePrompt}"
+
+**Your Task:**
+You MUST use the reference image prompt above as a guide to incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality into your generated prompt. Specifically:
+
+- **Mimic the lighting style**: Use the same type of lighting described in the reference prompt (studio, natural, artificial, etc.), same direction, intensity, color temperature, shadows, and highlights
+- **Match the texture quality**: Incorporate the same texture characteristics and material appearance as described in the reference
+- **Match the color palette**: Use similar color temperature, saturation, contrast, and color harmony as described in the reference
+- **Match the composition style**: Use similar camera angles, framing, perspective, depth of field as the reference
+- **Match the overall aesthetic**: If the reference is studio-quality, maintain studio quality; match the overall visual style and professional photography approach
+- **Apply to user's description**: While using the reference as style guide, create a prompt for what the user described: "${description}"
+- **Combine both**: The final prompt should describe the user's request but with the visual style, lighting, textures, and aesthetic of the reference image
+
+**Important**: The reference prompt describes the STYLE and VISUAL CHARACTERISTICS of the reference image. Use these characteristics to style the user's description, not to copy the reference image's content.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
 A reference image has been attached. You MUST:
 - **Analyze the attached reference image** to understand its composition, colors, style, lighting, and aesthetic
 - **Base your prompt on the reference image** - use it as a guide for composition, colors, lighting style, and overall aesthetic
@@ -228,7 +386,25 @@ You MUST generate a prompt that creates professional studio photography quality:
 
 The image should look like a professional studio photograph - hyperrealistic but with the controlled, polished aesthetic of professional photography. Everything should be perfectly lit, composed, and detailed as if shot in a professional photography studio.`;
     } else if (style === 'design') {
-      const referenceImageNote = referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
+      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
+A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+
+**Reference Image Prompt (use this as style reference):**
+"${referenceImagePrompt}"
+
+**Your Task:**
+You MUST use the reference image prompt above as a guide to incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality into your generated prompt. Specifically:
+
+- **Mimic the design style**: Use the same design approach, layout style, visual hierarchy, and design language as described in the reference prompt
+- **Match the color palette**: Use similar color schemes, color harmony, saturation, and contrast as described in the reference
+- **Match the typography style**: If the reference mentions typography, use similar typography choices, font styles, and text treatment
+- **Match the composition**: Use similar layout structure, element placement, and composition principles as the reference
+- **Match the overall aesthetic**: If the reference is a design/infographic style, maintain that design aesthetic; match the overall visual style
+- **Match lighting and textures**: If applicable, use similar lighting effects, texture treatments, and material appearances as described in the reference
+- **Apply to user's description**: While using the reference as style guide, create a prompt for what the user described: "${description}"
+- **Combine both**: The final prompt should describe the user's request but with the design style, colors, layout, typography, and aesthetic of the reference image
+
+**Important**: The reference prompt describes the STYLE and VISUAL CHARACTERISTICS of the reference image. Use these characteristics to style the user's description, not to copy the reference image's content.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
 A reference image has been attached. You MUST:
 - **Analyze the attached reference image** to understand its design style, layout, colors, typography, and visual elements
 - **Base your prompt on the reference image** - use it as a guide for design style, composition, color palette, typography choices, and overall aesthetic
@@ -280,11 +456,13 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
 
     let result;
     try {
-      // Build parts array - include image if provided
+      // Build parts array - include image if provided and we don't have a reference prompt
+      // If we have a reference prompt, we don't need to include the image again
       const parts: any[] = [];
       
-      if (referenceImageFile) {
-        console.log('Adding reference image to prompt:', {
+      // Only include the image if we don't have a reference prompt (fallback case)
+      if (referenceImageFile && !referenceImagePrompt) {
+        console.log('Adding reference image to prompt (no reference prompt available):', {
           uri: referenceImageFile.uri?.substring(0, 50) + '...',
           mimeType: referenceImageFile.mimeType,
           state: referenceImageFile.state
@@ -304,6 +482,8 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
             mimeType: referenceImageFile.mimeType
           }
         });
+      } else if (referenceImagePrompt) {
+        console.log('Using reference image prompt instead of image (length:', referenceImagePrompt.length, ')');
       }
       
       parts.push({
