@@ -429,7 +429,7 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         // Calcular similitud simple (cuánto del texto original está contenido en el mejorado)
         const originalWords = actionText.toLowerCase().split(/\s+/);
         const enhancedWords = enhancedText.toLowerCase().split(/\s+/);
-        const matchingWords = originalWords.filter(word => enhancedWords.includes(word));
+        const matchingWords = originalWords.filter((word: string) => enhancedWords.includes(word));
         const similarity = matchingWords.length / originalWords.length;
         
         console.log('Text validation:', {
