@@ -245,15 +245,25 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
         })()
       : '';
 
-    const productImageInstructions = productImageFile ? `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED:**
+    const productImageInstructions = productImageFile ? `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
 A product image has been attached. You MUST:
+- **CRITICAL: You MUST generate an ENHANCED prompt, NOT return the original action text**
 - **Analyze the attached product image** to understand the exact product appearance, colors, materials, textures, design, branding, and all visual details
 - **Base your prompt on the attached product image** - use it as a reference to describe the product accurately in your enhanced prompt
 - **Maintain consistency with the image** - if the image shows specific product details (colors, materials, design elements, branding, etc.), incorporate those exact details into your prompt
 - **Reference the image explicitly** - In your enhanced prompt, explicitly mention that the product should match the attached image, including its appearance, colors, materials, and visual characteristics
-- **Accurate product description** - Ensure the product description in your prompt accurately reflects what is shown in the attached image` : '';
+- **Accurate product description** - Ensure the product description in your prompt accurately reflects what is shown in the attached image
+- **MANDATORY: You MUST enhance and expand the action text with detailed product descriptions based on the image. DO NOT simply return the original action text. You MUST create a comprehensive, detailed prompt that incorporates product details from the image.**
+- **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**` : '';
 
     const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
+
+**CRITICAL REQUIREMENT - YOU MUST ENHANCE THE PROMPT:**
+- You MUST enhance, expand, and enrich the [ACTION TEXT TO ENHANCE] - DO NOT return it unchanged
+- You MUST incorporate all technical details, visual descriptions, and requirements
+- You MUST create a comprehensive, detailed prompt that is significantly more detailed than the original action text
+- If you return the original action text unchanged or with minimal changes, you have FAILED the task
+- The enhanced prompt must be a complete, professional prompt ready for AI video generation
 
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
@@ -361,7 +371,7 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
     }
 
     // Extraer el texto mejorado
-    let enhancedText = actionText; // Fallback al texto original
+    let enhancedText = null;
     try {
       if (result.candidates && result.candidates[0]?.content?.parts) {
         enhancedText = result.candidates[0].content.parts
@@ -372,13 +382,54 @@ Respond ONLY with the enhanced text as a single continuous paragraph, without li
         enhancedText = (result as any).text.trim();
       }
       
-      // Si no se obtuvo texto, usar el original
+      // Log para debugging
+      console.log('Enhanced text extracted:', {
+        hasText: !!enhancedText,
+        textLength: enhancedText?.length || 0,
+        textPreview: enhancedText?.substring(0, 100) || 'N/A',
+        hasProductImage: !!productImageFile
+      });
+      
+      // Si no se obtuvo texto mejorado
       if (!enhancedText || enhancedText === '') {
+        console.warn('No enhanced text extracted from Gemini response');
+        if (productImageFile) {
+          // Si hay imagen de referencia, esto es un error crítico
+          console.error('CRITICAL: Product image provided but no enhanced text returned');
+          return NextResponse.json(
+            { 
+              error: 'Failed to enhance prompt with reference image',
+              details: 'The AI did not return an enhanced prompt. Please try again.'
+            },
+            { status: 500 }
+          );
+        }
+        // Solo usar fallback si NO hay imagen de referencia
         enhancedText = actionText;
+      } else if (productImageFile && enhancedText === actionText) {
+        // Si hay imagen de referencia pero el texto es idéntico al original, es un error
+        console.error('CRITICAL: Product image provided but enhanced text is identical to original');
+        return NextResponse.json(
+          { 
+            error: 'Failed to enhance prompt with reference image',
+            details: 'The AI returned the original text instead of an enhanced prompt. Please try again.'
+          },
+          { status: 500 }
+        );
       }
     } catch (err) {
       console.error('Error extracting text from response:', err);
-      enhancedText = actionText; // Fallback to original text
+      if (productImageFile) {
+        // Si hay imagen de referencia, no usar fallback
+        return NextResponse.json(
+          { 
+            error: 'Error processing enhanced prompt with reference image',
+            details: (err as Error).message || 'Could not extract enhanced text from AI response'
+          },
+          { status: 500 }
+        );
+      }
+      enhancedText = actionText; // Fallback to original text only if no image
     }
 
     // Extraer información de uso y calcular costo
