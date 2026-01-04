@@ -914,6 +914,18 @@ Analyze this video using Wundt's psychological principles and explain what eleme
    - How did the content connect emotionally with the audience?
    - What value did it offer that created emotional resonance?
 
+8. **Product/Service Promotion Identification (CRITICAL)**:
+   - **Does this video promote or feature a specific product or service?** (YES/NO)
+   - If YES, describe in detail:
+     - What product/service is being promoted?
+     - How is the product/service presented? (visually shown, mentioned in text/audio, demonstrated, etc.)
+     - When in the video does the promotion occur? (at the beginning, middle, end, throughout)
+     - How is the promotion integrated? (direct call-to-action, subtle integration, storytelling approach, testimonial, demonstration, etc.)
+     - What promotional elements are used? (discounts, special offers, features/benefits, social proof, urgency, etc.)
+     - What is the promotional messaging/style? (enthusiastic, educational, problem-solving, aspirational, etc.)
+   - If NO, note that this video does not feature a product/service promotion
+   - **IMPORTANT**: This information will be used to adapt the promotion structure to "${productService}" in the creative angles and copywriting
+
 Keep this analysis focused on Wundt's psychological principles and the emotional response mechanisms. Use clear sections with headers.
 
 **PART 2: Creative Angles Based on Wundt's Analysis**
@@ -925,10 +937,16 @@ Based on your Wundtian psychological analysis above, propose 3-5 creative angles
 - **Emotional response elements**: Explain what specific elements (visual, auditory, narrative) would drive a strong emotional response, based on Wundt's principles
 - **Psychological mechanisms**: Explain how this angle would work psychologically (why it would resonate) using Wundt's framework
 - **Connection to original**: Connect it to the successful emotional elements you identified in the original content using Wundt's principles
+- **Product/Service Promotion Adaptation (CRITICAL)**: 
+  - If the original video featured a product/service promotion, you MUST adapt that promotional structure to "${productService}"
+  - Describe how "${productService}" would be promoted in this creative angle, following the same promotional approach/style/structure from the original video
+  - Include: when the promotion would appear, how it would be integrated, what promotional elements would be used, and what the promotional messaging/style would be
+  - Adapt the promotional elements (discounts, offers, features/benefits, etc.) to be relevant for "${productService}" while maintaining the same promotional structure/style from the original
+  - The copywriting for this angle should also follow the same promotional structure and style from the original video, adapted to "${productService}"
 
-Each creative angle must be grounded in the Wundtian psychological analysis you provided in Part 1.
+Each creative angle must be grounded in the Wundtian psychological analysis you provided in Part 1, and if the original video featured a promotion, each angle MUST adapt that promotional structure to "${productService}".
 
-Format: Wundtian psychological analysis first, then creative angles section based on that analysis.`;
+Format: Wundtian psychological analysis first (including product/service promotion identification), then creative angles section based on that analysis (with promotional adaptation if applicable).`;
 
     // Analyze with Gemini
     console.log('Analyzing content with Gemini...');
