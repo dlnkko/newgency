@@ -115,14 +115,13 @@ function formatAnalysisText(text: string): string {
 export default function ReverseEngineer() {
   const [metaAdUrl, setMetaAdUrl] = useState('');
   const [socialMediaUrl, setSocialMediaUrl] = useState('');
-  const [productService, setProductService] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
-    if ((!metaAdUrl.trim() && !socialMediaUrl.trim()) || !productService.trim()) {
-      setError('Please provide either a Meta Ad URL or Instagram/TikTok URL, and describe your product or service.');
+    if (!metaAdUrl.trim() && !socialMediaUrl.trim()) {
+      setError('Please provide either a Meta Ad URL or Instagram/TikTok URL.');
       return;
     }
 
@@ -139,7 +138,6 @@ export default function ReverseEngineer() {
         body: JSON.stringify({
           metaAdUrl: metaAdUrl.trim() || undefined,
           socialMediaUrl: socialMediaUrl.trim() || undefined,
-          productService: productService.trim(),
         }),
       });
 
@@ -176,8 +174,7 @@ export default function ReverseEngineer() {
   const isMetaAd = metaAdUrl.includes('facebook.com/ads/library');
 
   const canGenerate = 
-    (isValidUrl(metaAdUrl) || (isValidUrl(socialMediaUrl) && (isInstagram || isTikTok))) && 
-    productService.trim() !== '';
+    isValidUrl(metaAdUrl) || (isValidUrl(socialMediaUrl) && (isInstagram || isTikTok));
 
   return (
     <DashboardLayout>
@@ -189,7 +186,7 @@ export default function ReverseEngineer() {
           Deconstruct high‑performing ads like an innovation lab
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-          Paste a Meta Ad URL or Instagram/TikTok URL, describe your product, and get a psychological analysis with creative angles and copywriting proposals.
+          Paste a Meta Ad URL or Instagram/TikTok URL and get deep psychological insights about why the video worked, what connected with the audience, and what you can replicate.
         </p>
       </div>
 
@@ -244,24 +241,6 @@ export default function ReverseEngineer() {
           )}
         </div>
 
-        {/* Product/Service Input */}
-        <div className="mb-8">
-          <label
-            htmlFor="productService"
-            className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
-          >
-            Describe Your Product or Service
-          </label>
-          <textarea
-            id="productService"
-            value={productService}
-            onChange={(e) => setProductService(e.target.value)}
-            placeholder="Describe your product or service in detail..."
-            rows={4}
-            disabled={isAnalyzing}
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-all focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed resize-none"
-          />
-        </div>
 
         {/* Generate Button */}
         <button
@@ -314,8 +293,8 @@ export default function ReverseEngineer() {
         {/* Results */}
         {result && (
           <div className="mt-6 space-y-6">
-            {/* Psychological Analysis */}
-            {result.psychologicalAnalysis && (
+            {/* Insights Originales */}
+            {result.insights && (
               <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(250,204,21,0.22)]">
                 <div className="mb-3 flex items-center gap-2">
                   <svg
@@ -332,13 +311,13 @@ export default function ReverseEngineer() {
                     />
                   </svg>
                   <h3 className="text-xl font-semibold text-zinc-50">
-                    Psychological Analysis
+                    Análisis Completo (Gemini)
                   </h3>
                 </div>
                 <div className="mb-4 flex justify-end">
                   <CopyButton 
-                    text={result.psychologicalAnalysis} 
-                    label="Copy Analysis"
+                    text={result.insights} 
+                    label="Copy Insights"
                     copiedLabel="Copied!"
                   />
                 </div>
@@ -350,63 +329,19 @@ export default function ReverseEngineer() {
                       wordWrap: 'break-word',
                     }}
                     dangerouslySetInnerHTML={{
-                      __html: formatAnalysisText(result.psychologicalAnalysis),
+                      __html: formatAnalysisText(result.insights),
                     }}
                   />
                 </div>
               </div>
             )}
 
-            {/* Creative Angles */}
-            {result.creativeAngles && (
-              <div className="rounded-2xl border border-emerald-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(16,185,129,0.22)]">
-                <div className="mb-3 flex items-center gap-2">
-                  <svg
-                    className="h-5 w-5 text-emerald-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                    />
-                  </svg>
-                  <h3 className="text-xl font-semibold text-zinc-50">
-                    Creative Angles
-                  </h3>
-                </div>
-                <div className="mb-4 flex justify-end">
-                  <CopyButton 
-                    text={result.creativeAngles} 
-                    label="Copy Creative Angles"
-                    copiedLabel="Copied!"
-                    className="bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 hover:border-emerald-500/70"
-                  />
-                </div>
-                <div className="prose prose-sm max-w-none text-zinc-200/90">
-                  <div
-                    className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-emerald-100/5"
-                    style={{
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: formatAnalysisText(result.creativeAngles),
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Copywriting/Script */}
-            {result.copywriting && (
+            {/* Insights Verificados con Perplexity */}
+            {result.verifiedInsights && result.verifiedInsights.length > 0 && (
               <div className="rounded-2xl border border-blue-500/60 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-[0_0_45px_rgba(59,130,246,0.22)]">
-                <div className="mb-3 flex items-center gap-2">
+                <div className="mb-4 flex items-center gap-2">
                   <svg
-                    className="h-5 w-5 text-blue-300"
+                    className="h-5 w-5 text-blue-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -415,32 +350,108 @@ export default function ReverseEngineer() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
                   <h3 className="text-xl font-semibold text-zinc-50">
-                    Copywriting / Script Proposal
+                    Insights Verified with Perplexity Sonar Pro
                   </h3>
+                  <span className="ml-2 rounded-full bg-blue-500/20 px-2 py-1 text-xs font-medium text-blue-300">
+                    Web Research
+                  </span>
                 </div>
-                <div className="mb-4 flex justify-end">
-                  <CopyButton 
-                    text={result.copywriting} 
-                    label="Copy Copywriting"
-                    copiedLabel="Copied!"
-                    className="bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 hover:border-blue-500/70"
-                  />
-                </div>
-                <div className="prose prose-sm max-w-none text-zinc-200/90">
-                  <div
-                    className="rounded-xl bg-zinc-950/80 p-6 text-sm leading-relaxed shadow-inner ring-1 ring-blue-100/5"
-                    style={{
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: formatAnalysisText(result.copywriting),
-                    }}
-                  />
+
+                {/* Show estimated audience if available */}
+                {result.estimatedAudience && (
+                  <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-amber-400 mb-1">
+                      Estimated Audience
+                    </p>
+                    <p className="text-sm text-amber-200">{result.estimatedAudience}</p>
+                  </div>
+                )}
+
+                <div className="space-y-6">
+                  {result.verifiedInsights.map((verified: any, index: number) => (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6"
+                    >
+                      {/* Header del Insight */}
+                      <div className="mb-4 flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20 text-sm font-bold text-blue-300">
+                            {verified.number}
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-semibold text-zinc-50">
+                              Insight {verified.number}
+                            </h4>
+                            {verified.deeperAnalysis?.verified && (
+                              <span className="mt-1 inline-flex items-center gap-1 text-xs text-green-400">
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                                Verified
+                              </span>
+                            )}
+                            {verified.deeperAnalysis?.error && (
+                              <span className="mt-1 inline-flex items-center gap-1 text-xs text-red-400">
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                                Error
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <CopyButton 
+                          text={verified.insight} 
+                          label="Copy"
+                          copiedLabel="✓"
+                        />
+                      </div>
+
+                      {/* Insight Original */}
+                      <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                        <p className="text-sm font-medium text-zinc-400 mb-2">Original Insight:</p>
+                        <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
+                          {verified.insight}
+                        </p>
+                      </div>
+
+                      {/* Deeper Analysis with Perplexity */}
+                      {verified.deeperAnalysis?.verified && verified.deeperAnalysis?.content && (
+                        <div className="rounded-lg border border-blue-500/30 bg-blue-950/20 p-4">
+                          <div className="mb-3 flex items-center gap-2">
+                            <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <p className="text-sm font-semibold text-blue-300">
+                              Deeper Analysis (Perplexity Sonar Pro)
+                            </p>
+                          </div>
+                          <div className="mb-4">
+                            <div
+                              className="text-sm text-zinc-200 leading-relaxed prose prose-sm max-w-none"
+                              dangerouslySetInnerHTML={{
+                                __html: formatAnalysisText(verified.deeperAnalysis.content),
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error en verificación */}
+                      {verified.deeperAnalysis?.error && (
+                        <div className="rounded-lg border border-red-500/30 bg-red-950/20 p-4">
+                          <p className="text-sm text-red-300">
+                            <strong>Error:</strong> {verified.deeperAnalysis.error}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -27,6 +27,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    # Used for extracting transcripts from Instagram Reels and TikTok videos
    SCRAPECREATORS_API_KEY=your_scrapecreators_api_key_here
 
+   # Perplexity API Key (Para usar Sonar Pro)
+   # Get your API key from: https://www.perplexity.ai/settings/api
+   # Usado para investigación avanzada y generación de contenido con Sonar Pro
+   PERPLEXITY_API_KEY=your_perplexity_api_key_here
+
    # Upstash Redis (OPCIONAL - Recomendado solo para producción seria)
    # Si NO lo configuras: el rate limiting funciona pero se resetea en cada deploy
    # Si SÍ lo configuras: rate limiting persistente que sobrevive a reinicios
@@ -49,6 +54,7 @@ When deploying to Vercel, you need to add the environment variables in the Verce
    - `GOOGLE_GENAI_API_KEY` = your Google Gemini API key
    - `FIRECRAWL_API_KEY` = your Firecrawl API key (with `fc-` prefix)
    - `SCRAPECREATORS_API_KEY` = your ScrapeCreators API key (for Instagram Reel and TikTok transcript extraction)
+   - `PERPLEXITY_API_KEY` = your Perplexity API key (OPCIONAL - para usar Sonar Pro en investigación y generación)
    - `UPSTASH_REDIS_REST_URL` = your Upstash Redis URL (OPCIONAL - solo si quieres rate limiting persistente)
    - `UPSTASH_REDIS_REST_TOKEN` = your Upstash Redis token (OPCIONAL - solo si quieres rate limiting persistente)
    
@@ -96,6 +102,97 @@ The application includes rate limiting to protect against abuse and control API 
 **Conclusión:** Puedes lanzar a producción sin configurar Upstash. El rate limiting funcionará, pero se reseteará en cada deploy. Para producción seria, configúralo.
 
 When a rate limit is exceeded, the API returns a `429` status code with details about when to retry.
+
+## Perplexity Sonar Pro Integration
+
+Esta aplicación incluye integración con **Perplexity Sonar Pro**, un modelo avanzado de IA diseñado para investigación profunda y análisis complejos.
+
+### Características de Sonar Pro
+
+- **Modelo avanzado**: Optimizado para tareas de preguntas y respuestas complejas de múltiples pasos
+- **Contexto extenso**: Hasta 200,000 tokens de contexto
+- **Búsqueda mejorada**: El doble de resultados de búsqueda comparado con el modelo estándar
+- **Citas incluidas**: Genera respuestas con citas a fuentes para verificación
+
+### Endpoints disponibles con Perplexity
+
+#### 1. `/api/research-perplexity`
+Endpoint de investigación con Perplexity Sonar Pro que incluye citas a fuentes.
+
+**Ejemplo de uso:**
+```javascript
+const response = await fetch('/api/research-perplexity', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    query: 'Analiza las tendencias de marketing en redes sociales para 2024',
+    includeCitations: true, // Opcional, por defecto true
+    model: 'sonar-pro' // Opcional, por defecto 'sonar-pro'
+  })
+});
+
+const data = await response.json();
+console.log(data.content); // Respuesta detallada
+console.log(data.citations); // Array de URLs citadas
+```
+
+#### 2. `/api/generate-viral-script-perplexity`
+Versión alternativa del generador de scripts virales que usa Perplexity Sonar Pro en lugar de Gemini.
+
+**Ejemplo de uso:**
+```javascript
+const response = await fetch('/api/generate-viral-script-perplexity', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    videoUrl: 'https://www.instagram.com/reel/...',
+    productDescription: 'Descripción de tu producto'
+  })
+});
+
+const data = await response.json();
+console.log(data.script); // Script generado con Sonar Pro
+```
+
+### Uso en tu código
+
+También puedes usar las funciones helper directamente:
+
+```typescript
+import { generateTextWithSonarPro, generateWithCitations } from '@/lib/perplexity';
+
+// Generar texto simple
+const text = await generateTextWithSonarPro(
+  'Explica las ventajas del marketing en TikTok',
+  'Eres un experto en marketing digital',
+  { temperature: 0.7, max_tokens: 2048 }
+);
+
+// Generar con citas (para investigación)
+const research = await generateWithCitations(
+  '¿Cuáles son las últimas tendencias en IA?'
+);
+console.log(research.content);
+console.log(research.citations);
+```
+
+### Modelos disponibles
+
+- `sonar-pro`: Modelo avanzado para tareas complejas (recomendado)
+- `sonar`: Modelo estándar
+- `sonar-pro-online`: Con búsqueda en tiempo real
+- `sonar-online`: Con búsqueda en tiempo real (estándar)
+
+### Precios aproximados
+
+- **Input**: $3 por millón de tokens
+- **Output**: $15 por millón de tokens
+
+### Configuración
+
+1. Obtén tu API key en [Perplexity Settings](https://www.perplexity.ai/settings/api)
+2. Agrega `PERPLEXITY_API_KEY` a tu `.env.local` o en Vercel
+3. ¡Listo! Ya puedes usar los endpoints o funciones helper
 
 ### Running the Development Server
 

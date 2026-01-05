@@ -2,6 +2,7 @@ import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { generateWithCitations, callPerplexitySonarPro } from '@/lib/perplexity';
 
 // Helper function to get and validate API key at runtime
 function getGoogleGenAI() {
@@ -83,18 +84,11 @@ export async function POST(request: NextRequest) {
     
     const ai = getGoogleGenAI();
     const body = await request.json();
-    const { metaAdUrl, socialMediaUrl, productService } = body;
+    const { metaAdUrl, socialMediaUrl } = body;
 
     if ((!metaAdUrl || !metaAdUrl.trim()) && (!socialMediaUrl || !socialMediaUrl.trim())) {
       return NextResponse.json(
         { error: 'Either Meta Ad URL or Instagram/TikTok URL is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!productService || !productService.trim()) {
-      return NextResponse.json(
-        { error: 'Product or service description is required' },
         { status: 400 }
       );
     }
@@ -856,8 +850,8 @@ export async function POST(request: NextRequest) {
     }
     } // Cerrar el bloque if (metaAdUrl && metaAdUrl.trim())
 
-    // Detectar idioma del usuario
-    const userLanguage = detectLanguage(productService);
+    // Detectar idioma del análisis (usar inglés por defecto ya que no tenemos input del usuario)
+    const userLanguage = 'en';
 
     // Create unified analysis prompt
     const contentDescription = contentType === 'metaAd' 
@@ -868,89 +862,98 @@ export async function POST(request: NextRequest) {
       ? `You have access to a video file. Analyze the video visually and any audio/transcript available.`
       : `Analyze the content based on the available information.`;
 
-    const analysisPrompt = `You are an expert marketing psychologist and creative strategist specializing in Wundt's psychological principles. Analyze ${contentDescription} to understand why it worked and how to apply those psychological principles to a new product/service.
+    const analysisPrompt = `You are an expert marketing psychologist and creative strategist specializing in Wundt's psychological principles. Analyze ${contentDescription} to provide comprehensive insights about why it worked and deep truths about the audience.
 
 ${contentInput}
 
-**Product/Service to Apply Analysis To:**
-"${productService}"
+**YOUR COMPREHENSIVE ANALYSIS:**
 
-**Your Task - Provide a Psychological Analysis Using Wundt's Principles:**
+**Part 1: Deep Psychological Analysis**
 
-**PART 1: Analysis Using Wundt's Psychological Principles**
+Provide a comprehensive psychological analysis using Wundt's principles. Analyze:
 
-Analyze this video using Wundt's psychological principles and explain what elements likely drive a strong emotional response. Focus on:
+**1. Why the Hook Worked:**
+   - What made the opening compelling from a psychological perspective?
+   - Which Wundtian principles (attention, emotion, perception) were activated in the hook?
+   - What specific elements (visual, auditory, narrative) made people stop scrolling?
+   - What psychological mechanisms captured immediate attention?
 
-1. **Structural Elements (Wundt's Elemental Psychology)**:
+**2. Why the Video Had Engagement:**
+   - What elements drove viewers to engage (like, comment, share, watch until the end)?
+   - How did the content maintain attention throughout?
+   - What psychological triggers kept viewers engaged?
+   - What made the content shareable or worth commenting on?
+
+**3. Why This Content Connected with This Audience:**
+   - What specific things did the content say or show that resonated with the audience?
+   - What hidden truths or unspoken thoughts did it touch upon?
+   - What did the audience identify with? (values, beliefs, experiences, desires, fears, aspirations)
+   - What made the audience feel understood or seen?
+   - What emotional connection was established and how?
+
+**4. Pain Points and Emotional Triggers:**
+   - What specific problems, frustrations, or desires did this content identify and address?
+   - What pain points did it touch that the audience experiences?
+   - What emotional states does it target (fear, desire, hope, relief, validation, belonging, etc.)?
+   - How did it address these pain points in a way that resonated?
+
+**5. Structural Elements (Wundt's Elemental Psychology):**
    - What are the basic sensory elements (visual, auditory, emotional) that compose the experience?
    - How do these elements combine to create a complex emotional experience?
    - Which specific visual, auditory, or narrative elements trigger immediate attention?
 
-2. **Emotional Response Mechanisms (Wundt's Three-Dimensional Theory of Feeling)**:
+**6. Emotional Response Mechanisms (Wundt's Three-Dimensional Theory of Feeling):**
    - **Pleasure-Displeasure**: What elements create pleasure or relieve displeasure in the viewer?
    - **Arousal-Calm**: What elements create excitement, tension, or calm?
    - **Strain-Relaxation**: What elements create tension and release, building emotional engagement?
    - Explain which specific elements likely drive the strongest emotional response and why
 
-3. **Attention and Perception (Wundt's Principles)**:
+**7. Attention and Perception (Wundt's Principles):**
    - How does the content capture and maintain attention?
    - What perceptual elements (contrast, movement, novelty) create immediate engagement?
    - How does the structure guide the viewer's attention through the experience?
 
-4. **Pain Points and Emotional Triggers**:
-   - What specific problems, frustrations, or desires did this content identify and address?
-   - What emotional states does it target (fear, desire, hope, relief, etc.)?
-   - How do these emotional triggers connect to the product/solution presented?
+**8. What You Can Replicate:**
+   - Based on all the insights above, what specific elements, strategies, or approaches can be replicated?
+   - What psychological principles can be applied to other content?
+   - What structural elements worked and why?
+   - What emotional triggers were most effective?
 
-5. **The Hook - Why It Stopped the Scroll**:
-   - What made the opening compelling from a psychological perspective?
-   - Which Wundtian principles (attention, emotion, perception) were activated in the hook?
+**Part 2: Audience Insights**
 
-6. **Why the Solution Worked**:
-   - What psychological mechanisms made the solution presented effective?
-   - How did the content create a satisfying emotional resolution?
+After the comprehensive analysis above, provide:
 
-7. **Connection Strategy**:
-   - How did the content connect emotionally with the audience?
-   - What value did it offer that created emotional resonance?
+AUDIENCE: [Estimate the target audience that engaged with this video. Example: "Men aged 19-25 who are fitness enthusiasts and active on social media" or "Working mothers aged 28-40 seeking work-life balance"]
 
-8. **Product/Service Promotion Identification (CRITICAL)**:
-   - **Does this video promote or feature a specific product or service?** (YES/NO)
-   - If YES, describe in detail:
-     - What product/service is being promoted?
-     - How is the product/service presented? (visually shown, mentioned in text/audio, demonstrated, etc.)
-     - When in the video does the promotion occur? (at the beginning, middle, end, throughout)
-     - How is the promotion integrated? (direct call-to-action, subtle integration, storytelling approach, testimonial, demonstration, etc.)
-     - What promotional elements are used? (discounts, special offers, features/benefits, social proof, urgency, etc.)
-     - What is the promotional messaging/style? (enthusiastic, educational, problem-solving, aspirational, etc.)
-   - If NO, note that this video does not feature a product/service promotion
-   - **IMPORTANT**: This information will be used to adapt the promotion structure to "${productService}" in the creative angles and copywriting
+---
 
-Keep this analysis focused on Wundt's psychological principles and the emotional response mechanisms. Use clear sections with headers.
+INSIGHT 1: [One clear, deep hidden truth about this audience]
 
-**PART 2: Creative Angles Based on Wundt's Analysis**
+[Brief context: What in the video revealed this insight. What this tells us about the audience's psychology, needs, pain points, or hidden truths. Keep it focused - 2-3 sentences max.]
 
-Based on your Wundtian psychological analysis above, propose 3-5 creative angles specifically for "${productService}". For each angle:
+---
 
-- **Base it on the Wundtian analysis**: Explain which specific emotional response mechanisms (pleasure-displeasure, arousal-calm, strain-relaxation) this angle would activate
-- **Identify relevant pain points**: What pain points that "${productService}" can address (based on what worked in the original)
-- **Emotional response elements**: Explain what specific elements (visual, auditory, narrative) would drive a strong emotional response, based on Wundt's principles
-- **Psychological mechanisms**: Explain how this angle would work psychologically (why it would resonate) using Wundt's framework
-- **Connection to original**: Connect it to the successful emotional elements you identified in the original content using Wundt's principles
-- **Product/Service Promotion Adaptation (CRITICAL)**: 
-  - If the original video featured a product/service promotion, you MUST adapt that promotional structure to "${productService}"
-  - Describe how "${productService}" would be promoted in this creative angle, following the same promotional approach/style/structure from the original video
-  - Include: when the promotion would appear, how it would be integrated, what promotional elements would be used, and what the promotional messaging/style would be
-  - Adapt the promotional elements (discounts, offers, features/benefits, etc.) to be relevant for "${productService}" while maintaining the same promotional structure/style from the original
-  - The copywriting for this angle should also follow the same promotional structure and style from the original video, adapted to "${productService}"
+INSIGHT 2: [Another deep hidden truth about this audience]
 
-Each creative angle must be grounded in the Wundtian psychological analysis you provided in Part 1, and if the original video featured a promotion, each angle MUST adapt that promotional structure to "${productService}".
+[Brief context: What in the video revealed this insight. What this tells us about the audience's psychology, needs, pain points, or hidden truths. Keep it focused - 2-3 sentences max.]
 
-Format: Wundtian psychological analysis first (including product/service promotion identification), then creative angles section based on that analysis (with promotional adaptation if applicable).`;
+---
+
+INSIGHT 3: [Another deep hidden truth about this audience]
+
+[Brief context: What in the video revealed this insight. What this tells us about the audience's psychology, needs, pain points, or hidden truths. Keep it focused - 2-3 sentences max.]
+
+**OUTPUT FORMAT:**
+1. Start with the comprehensive psychological analysis (sections 1-8 above)
+2. Then provide "AUDIENCE:" estimation
+3. Then provide exactly 3 insights labeled "INSIGHT 1:", "INSIGHT 2:", "INSIGHT 3:"
+4. Separate the audience section and insights with "---" on its own line
+5. All content must be in English`;
 
     // Analyze with Gemini
     console.log('Analyzing content with Gemini...');
     let analysisResult;
+    let geminiCost = 0; // Declarar al inicio para que esté disponible en todo el scope
     try {
       const analysisParts: any[] = [];
       
@@ -979,28 +982,24 @@ Format: Wundtian psychological analysis first (including product/service promoti
         ]
       });
 
-      // Calcular y mostrar costos del análisis psicológico (solo en terminal)
+      // Calcular costos de Gemini
       try {
         const usageMetadata = (analysisResult as any).usageMetadata;
         if (usageMetadata) {
           const promptTokenCount = usageMetadata.promptTokenCount || 0;
           const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
-          const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
 
           // Precios de Gemini 3 Flash Preview (por millón de tokens)
           // Input: $0.50 por millón de tokens
           // Output: $3.00 por millón de tokens
-          const inputCostPerMillion = 0.5;
-          const outputCostPerMillion = 3.0;
+          const inputCost = (promptTokenCount / 1_000_000) * 0.5;
+          const outputCost = (candidatesTokenCount / 1_000_000) * 3.0;
+          geminiCost = inputCost + outputCost;
 
-          const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
-          const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
-          const totalCost = inputCost + outputCost;
-
-          console.log('\n=== COSTO ANÁLISIS PSICOLÓGICO (Gemini 3 Flash Preview) ===');
+          console.log('\n=== COSTO GEMINI (Análisis de Video) ===');
           console.log(`Input tokens: ${promptTokenCount.toLocaleString()}, Costo: $${inputCost.toFixed(6)}`);
           console.log(`Output tokens: ${candidatesTokenCount.toLocaleString()}, Costo: $${outputCost.toFixed(6)}`);
-          console.log(`Total tokens: ${totalTokenCount.toLocaleString()}, Costo total: $${totalCost.toFixed(6)}`);
+          console.log(`Costo total Gemini: $${geminiCost.toFixed(6)}`);
         }
       } catch (costError) {
         console.error('Error calculando costos del análisis:', costError);
@@ -1048,131 +1047,208 @@ Format: Wundtian psychological analysis first (including product/service promoti
       );
     }
 
-    // Split analysis into psychological analysis and creative angles
-    const analysisParts = fullAnalysisText.split(/(?=##?\s*(?:Creative|Angles|Creative Angles))/i);
-    let psychologicalAnalysis = analysisParts[0] || fullAnalysisText;
-    let creativeAngles = analysisParts[1] || '';
+    console.log('\n=== ANÁLISIS CON GEMINI COMPLETADO ===');
+    console.log('Insights length:', fullAnalysisText.length);
 
-    // If no clear split, try to find creative angles section
-    if (!creativeAngles) {
-      const creativeMatch = fullAnalysisText.match(/(##?\s*(?:Creative|Angles|Creative Angles)[\s\S]*)/i);
-      if (creativeMatch) {
-        creativeAngles = creativeMatch[1];
-        psychologicalAnalysis = fullAnalysisText.substring(0, creativeMatch.index);
-      } else {
-        // If no creative angles section found, use the full text as analysis
-        psychologicalAnalysis = fullAnalysisText;
+    // Extract audience estimation and 3 insights from the text
+    let estimatedAudience = '';
+    const audienceMatch = fullAnalysisText.match(/AUDIENCE:\s*([^\n\r]+)/i);
+    if (audienceMatch && audienceMatch[1]) {
+      estimatedAudience = audienceMatch[1].trim();
+      console.log('Estimated audience:', estimatedAudience);
+    }
+
+    const insightsArray: string[] = [];
+    const insightRegex = /INSIGHT\s+(\d+):\s*([\s\S]*?)(?=---|INSIGHT\s+\d+:|$)/gi;
+    let match;
+    
+    while ((match = insightRegex.exec(fullAnalysisText)) !== null) {
+      const insightNumber = parseInt(match[1]);
+      const insightContent = match[2].trim();
+      if (insightContent) {
+        insightsArray[insightNumber - 1] = insightContent;
       }
     }
 
-    // Generate copywriting/script proposal
-    console.log('Generating copywriting/script proposal...');
-    let copywriting = '';
-    try {
-      const copywritingPrompt = `Based on the psychological analysis and creative angles provided, generate specific copywriting or script proposals for "${productService}".
-
-**Psychological Analysis:**
-${psychologicalAnalysis}
-
-**Creative Angles:**
-${creativeAngles}
-
-**Your Task:**
-Identify whether the original content was:
-- A carousel post (multiple images with text overlays)
-- A video with image overlays and text
-- A spoken video/voiceover
-
-Then propose:
-1. **For carousel/video with images**: Specific text to use for each image/slide, including:
-   - Hook text for the first image
-   - Body text for each subsequent image
-   - CTA text
-   - Overlay text suggestions
-
-2. **For spoken video/voiceover**: A complete script including:
-   - Opening hook (first 3 seconds)
-   - Body content with key points
-   - Closing CTA
-
-Base your proposals on the psychological insights and creative angles identified. Make the copywriting compelling, authentic, and aligned with what made the original content successful.
-
-Format: Clearly indicate the content type (carousel/video with images OR spoken video), then provide the specific texts or script.`;
-
-      const copywritingParts: any[] = [];
-      if (videoFile && videoFile.uri) {
-        copywritingParts.push({
-          fileData: {
-            fileUri: videoFile.uri,
-            mimeType: videoFile.mimeType
-          }
-        });
-      }
-      copywritingParts.push({ text: copywritingPrompt });
-
-      const copywritingResult = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [
-          {
-            role: 'user',
-            parts: copywritingParts
-          }
-        ]
-      });
-
-      // Calcular y mostrar costos del copywriting (solo en terminal)
-      try {
-        const usageMetadata = (copywritingResult as any).usageMetadata;
-        if (usageMetadata) {
-          const promptTokenCount = usageMetadata.promptTokenCount || 0;
-          const candidatesTokenCount = usageMetadata.candidatesTokenCount || 0;
-          const totalTokenCount = usageMetadata.totalTokenCount || (promptTokenCount + candidatesTokenCount);
-
-          // Precios de Gemini 3 Flash Preview (por millón de tokens)
-          // Input: $0.50 por millón de tokens
-          // Output: $3.00 por millón de tokens
-          const inputCostPerMillion = 0.5;
-          const outputCostPerMillion = 3.0;
-
-          const inputCost = (promptTokenCount / 1_000_000) * inputCostPerMillion;
-          const outputCost = (candidatesTokenCount / 1_000_000) * outputCostPerMillion;
-          const totalCost = inputCost + outputCost;
-
-          console.log('\n=== COSTO COPYWRITING (Gemini 3 Flash Preview) ===');
-          console.log(`Input tokens: ${promptTokenCount.toLocaleString()}, Costo: $${inputCost.toFixed(6)}`);
-          console.log(`Output tokens: ${candidatesTokenCount.toLocaleString()}, Costo: $${outputCost.toFixed(6)}`);
-          console.log(`Total tokens: ${totalTokenCount.toLocaleString()}, Costo total: $${totalCost.toFixed(6)}`);
+    // Fallback: try to split by "---" or numbered sections
+    if (insightsArray.length === 0) {
+      const sections = fullAnalysisText.split(/---|INSIGHT\s+\d+:/i);
+      sections.forEach((section, index) => {
+        const cleaned = section.trim();
+        if (cleaned && index > 0) { // Skip first section (usually intro)
+          insightsArray.push(cleaned);
         }
-      } catch (costError) {
-        console.error('Error calculando costos del copywriting:', costError);
-      }
+      });
+    }
 
-      if (copywritingResult.candidates && copywritingResult.candidates[0]?.content?.parts) {
-        copywriting = copywritingResult.candidates[0].content.parts
-          .map((part: any) => part.text || '')
-          .join('');
-      } else if ((copywritingResult as any).text) {
-        copywriting = (copywritingResult as any).text;
-      }
-    } catch (copyError: any) {
-      console.error('Error generating copywriting:', copyError);
-      // Don't fail the whole request if copywriting generation fails
-      copywriting = 'Could not generate copywriting proposal.';
+    // If still no insights, use the full text as one insight
+    if (insightsArray.length === 0) {
+      console.warn('No se pudieron extraer insights específicos, usando texto completo');
+      insightsArray.push(fullAnalysisText.trim());
+    }
+
+    // Verify each insight with Perplexity Sonar Pro
+    console.log(`\n=== VERIFICANDO ${insightsArray.length} INSIGHT(S) CON PERPLEXITY SONAR PRO ===`);
+    
+    // Verificar que la API key de Perplexity existe antes de proceder
+    const perplexityApiKey = process.env.PERPLEXITY_API_KEY;
+    console.log('=== VERIFICACIÓN PERPLEXITY API KEY ===');
+    console.log('PERPLEXITY_API_KEY existe?', !!perplexityApiKey);
+    console.log('PERPLEXITY_API_KEY primeros 10 chars:', perplexityApiKey ? `${perplexityApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
+    
+    if (!perplexityApiKey) {
+      console.warn('⚠️ PERPLEXITY_API_KEY no está configurada. Los insights no serán verificados con Perplexity.');
+      // Continuar sin verificación de Perplexity
+      return NextResponse.json({
+        success: true,
+        contentType,
+        insights: fullAnalysisText.trim(),
+        verifiedInsights: [],
+        warning: 'PERPLEXITY_API_KEY no está configurada. Los insights fueron generados pero no verificados con Perplexity Sonar Pro.'
+      });
     }
     
-    console.log('\n=== ANÁLISIS COMPLETADO ===');
-    console.log('Psychological analysis length:', psychologicalAnalysis.length);
-    console.log('Creative angles length:', creativeAngles.length);
-    console.log('Copywriting length:', copywriting.length);
+    interface VerifiedInsight {
+      original: string;
+      verified: boolean;
+      verificationData: {
+        content: string;
+        citations: string[];
+        relatedInfo?: string;
+      };
+      error?: string;
+    }
+
+    const verifiedInsights: VerifiedInsight[] = [];
+    
+    // Acumuladores para costos de Perplexity
+    let totalPerplexityInputTokens = 0;
+    let totalPerplexityOutputTokens = 0;
+
+    for (let i = 0; i < Math.min(insightsArray.length, 3); i++) {
+      const insight = insightsArray[i];
+      console.log(`\nVerificando Insight ${i + 1}...`);
+      
+      try {
+        // Prompt for Perplexity - search for deeper information about the insight and audience
+        const verificationPrompt = `Research and provide deeper psychological insight about this audience truth. Do not provide sources or citations, just deeper analysis.
+
+Audience: ${estimatedAudience || 'The target audience of this video'}
+
+Insight: "${insight}"
+
+Search the internet (forums, studies, articles, discussions) to provide:
+- Deeper psychological understanding of this insight
+- Additional context about why this truth resonates with this specific audience
+- More depth on this pain point or hidden truth
+
+Provide ONE concise paragraph (maximum 150 words) with deeper analysis. All content must be in English. Do not include sources or citations.`;
+
+        // Use callPerplexitySonarPro directly to avoid citations
+        const perplexityResponse = await callPerplexitySonarPro(
+          [
+            {
+              role: 'user',
+              content: verificationPrompt
+            }
+          ],
+          {
+            model: 'sonar-pro',
+            temperature: 0.3,
+            max_tokens: 300, // Limit to one paragraph
+            return_citations: false // No citations needed
+          }
+        );
+
+        // Extract content from response
+        const deeperInsight = perplexityResponse.choices && perplexityResponse.choices[0]?.message?.content 
+          ? perplexityResponse.choices[0].message.content 
+          : 'Could not retrieve deeper insight';
+
+        verifiedInsights.push({
+          original: insight,
+          verified: true,
+          verificationData: {
+            content: deeperInsight,
+            citations: [], // No citations needed
+            relatedInfo: deeperInsight
+          }
+        });
+
+        // Acumular costos de Perplexity (estimación: 4 chars = 1 token)
+        const perplexityInputTokens = verificationPrompt.length / 4;
+        const perplexityOutputTokens = deeperInsight.length / 4;
+        totalPerplexityInputTokens += perplexityInputTokens;
+        totalPerplexityOutputTokens += perplexityOutputTokens;
+
+        console.log(`✓ Insight ${i + 1} profundizado.`);
+      } catch (perplexityError: any) {
+        console.error(`Error verificando Insight ${i + 1}:`, perplexityError);
+        
+        // Detectar si es un error de API key
+        let errorMessage = perplexityError.message || 'Error al verificar con Perplexity';
+        if (errorMessage.includes('PERPLEXITY_API_KEY') || errorMessage.includes('API key')) {
+          errorMessage += ' Por favor, reinicia el servidor de Next.js después de agregar la variable de entorno.';
+        }
+        
+        verifiedInsights.push({
+          original: insight,
+          verified: false,
+          verificationData: {
+            content: '',
+            citations: []
+          },
+          error: errorMessage
+        });
+      }
+
+      // Small delay between requests to avoid rate limiting
+      if (i < Math.min(insightsArray.length, 3) - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    // Format the final response
+    const finalInsights = {
+      originalAnalysis: fullAnalysisText.trim(),
+      estimatedAudience: estimatedAudience || 'Not specified',
+      insights: verifiedInsights.map((vi, index) => ({
+        number: index + 1,
+        insight: vi.original,
+        deeperAnalysis: {
+          content: vi.verificationData.content,
+          verified: vi.verified,
+          error: vi.error
+        }
+      }))
+    };
+
+    // Calcular costos totales de Perplexity
+    const perplexityInputCost = (totalPerplexityInputTokens / 1_000_000) * 3.0; // $3 por millón input
+    const perplexityOutputCost = (totalPerplexityOutputTokens / 1_000_000) * 15.0; // $15 por millón output
+    const totalPerplexityCost = perplexityInputCost + perplexityOutputCost;
+
+    console.log('\n=== COSTO PERPLEXITY (Verificación de Insights) ===');
+    console.log(`Input tokens: ${totalPerplexityInputTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })}, Costo: $${perplexityInputCost.toFixed(6)}`);
+    console.log(`Output tokens: ${totalPerplexityOutputTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })}, Costo: $${perplexityOutputCost.toFixed(6)}`);
+    console.log(`Costo total Perplexity: $${totalPerplexityCost.toFixed(6)}`);
+
+    console.log('\n=== COSTO TOTAL DEL PROCESO ===');
+    console.log(`Gemini: $${geminiCost.toFixed(6)}`);
+    console.log(`Perplexity: $${totalPerplexityCost.toFixed(6)}`);
+    console.log(`TOTAL: $${(geminiCost + totalPerplexityCost).toFixed(6)}`);
+
+    console.log('\n=== PROCESO COMPLETADO ===');
+    console.log(`Total insights procesados: ${verifiedInsights.length}`);
+    console.log(`Insights verificados exitosamente: ${verifiedInsights.filter(vi => vi.verified).length}`);
 
     // Return the results
     return NextResponse.json({
       success: true,
       contentType,
-      psychologicalAnalysis: psychologicalAnalysis.trim(),
-      creativeAngles: creativeAngles.trim(),
-      copywriting: copywriting.trim(),
-      productService: productService.trim()
+      insights: finalInsights.originalAnalysis,
+      estimatedAudience: finalInsights.estimatedAudience,
+      verifiedInsights: finalInsights.insights
     });
 
   } catch (error: any) {
