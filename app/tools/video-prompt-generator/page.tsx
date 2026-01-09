@@ -425,59 +425,64 @@ export default function VideoPromptGenerator() {
 
       <div className="space-y-8">
         {/* Mode Selection - Show when no mode selected or when manually navigating back */}
-        {(!mode || (mode === 'manual' && currentStep === 'sceneCount' && !generatedPrompt)) && (
-          <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-            <div className="mb-6">
-              <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90 mb-2">
-                Select Mode
-              </label>
-              <p className="text-sm text-zinc-500 mb-6">
-                Choose between manual scene-by-scene control or automatic AI generation
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={() => {
-                    setMode('manual');
-                    setCurrentStep('sceneCount');
-                    setGeneratedPrompt(''); // Reset prompt when switching modes
-                  }}
-                  className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
-                    mode === 'manual'
-                      ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
-                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
-                  }`}
-                >
-                  <div className="font-bold text-lg mb-2">Manual</div>
-                  <div className="text-sm opacity-90">Full control: choose scenes, compositions, lighting, and durations</div>
-                  {mode === 'manual' && (
-                    <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
-                      ✓
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={() => {
-                    setMode('automatic');
-                    setGeneratedPrompt(''); // Reset prompt when switching modes
-                  }}
-                  className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
-                    mode === 'automatic'
-                      ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
-                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
-                  }`}
-                >
-                  <div className="font-bold text-lg mb-2">Automatic</div>
-                  <div className="text-sm opacity-90">AI generates complete prompt from simple description</div>
-                  {mode === 'automatic' && (
-                    <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
-                      ✓
-                    </span>
-                  )}
-                </button>
+        {(() => {
+          const showModeSelection = !mode || (mode === 'manual' && currentStep === 'sceneCount' && !generatedPrompt);
+          if (!showModeSelection) return null;
+          
+          return (
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <div className="mb-6">
+                <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90 mb-2">
+                  Select Mode
+                </label>
+                <p className="text-sm text-zinc-500 mb-6">
+                  Choose between manual scene-by-scene control or automatic AI generation
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => {
+                      setMode('manual');
+                      setCurrentStep('sceneCount');
+                      setGeneratedPrompt(''); // Reset prompt when switching modes
+                    }}
+                    className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
+                      mode === 'manual'
+                        ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                    }`}
+                  >
+                    <div className="font-bold text-lg mb-2">Manual</div>
+                    <div className="text-sm opacity-90">Full control: choose scenes, compositions, lighting, and durations</div>
+                    {mode === 'manual' && (
+                      <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMode('automatic');
+                      setGeneratedPrompt(''); // Reset prompt when switching modes
+                    }}
+                    className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
+                      mode === 'automatic'
+                        ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                    }`}
+                  >
+                    <div className="font-bold text-lg mb-2">Automatic</div>
+                    <div className="text-sm opacity-90">AI generates complete prompt from simple description</div>
+                    {mode === 'automatic' && (
+                      <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Manual Mode: Step 1: Number of Scenes */}
         {mode === 'manual' && currentStep === 'sceneCount' && (
