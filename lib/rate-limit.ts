@@ -100,6 +100,21 @@ function getRateLimiter() {
         limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
         analytics: true,
       }),
+      generateVideoPromptAuto: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
+        analytics: true,
+      }),
+      generateViralScriptPerplexity: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(25, '1 h'), // 25 requests per hour
+        analytics: true,
+      }),
+      researchPerplexity: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(30, '1 h'), // 30 requests per hour
+        analytics: true,
+      }),
     };
   } else {
     // Use in-memory rate limiting for development
@@ -126,6 +141,15 @@ function getRateLimiter() {
       generateImagePrompt: {
         limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
       },
+      generateVideoPromptAuto: {
+        limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
+      },
+      generateViralScriptPerplexity: {
+        limit: (identifier: string) => inMemory.limit(identifier, 25, 3600), // 25 per hour
+      },
+      researchPerplexity: {
+        limit: (identifier: string) => inMemory.limit(identifier, 30, 3600), // 30 per hour
+      },
     };
   }
 
@@ -147,7 +171,7 @@ function getIdentifier(request: Request | NextRequest): string {
 
 // Rate limit middleware
 export async function checkRateLimit(
-  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt',
+  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt' | 'generateVideoPromptAuto' | 'generateViralScriptPerplexity' | 'researchPerplexity',
   request: Request | NextRequest
 ): Promise<{ success: boolean; limit?: number; remaining?: number; reset?: number; error?: string }> {
   try {
