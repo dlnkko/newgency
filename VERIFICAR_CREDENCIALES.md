@@ -73,3 +73,6 @@ WHOP_API_KEY=apik_tu_api_key_aqui
 - El Product ID es para verificar acceso a tu comunidad
 
 
+
+
+

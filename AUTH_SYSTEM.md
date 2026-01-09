@@ -95,3 +95,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 - No se requiere configuración adicional de Supabase Auth
 
 
+
+
+

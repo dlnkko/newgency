@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const ai = getGoogleGenAI();
     
     const body = await request.json();
-    const { description, style, referenceImage } = body;
+    const { description, style, referenceImage, firstFrameFromVideo } = body;
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -242,6 +242,52 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
 
     // Build style-specific instructions
     let styleInstructions = '';
+    // Special mode: generate an image prompt that represents the first frame of a video prompt
+    // This keeps the selected style, but reframes the task to "first frame still"
+    if (firstFrameFromVideo === true) {
+      styleInstructions += `
+
+**FIRST FRAME FROM VIDEO PROMPT (VEO 3 MODE):**
+You are given a description that is written like a video prompt (may include hook, concept, benefit, scenes). Your task is to convert this into a single IMAGE prompt that captures the very first frame/still of that video. The still image must:
+- Communicate the exact opening hook or the strongest visual of the first scene
+- Include all immediate visual elements present at the start (characters, product, setting, camera angle, lighting)
+- Freeze a single, impactful moment (no motion words) while preserving the same style and narrative intent
+- Keep only what would be visible in the very first frame – no time‑based actions or sequences
+
+CRITICAL:
+- Convert dynamic verbs into static visual states (e.g., "holding", "showing", "looking at", "close-up of", "on a table")
+- Keep the same style you are asked to use (${style}), including lighting, composition, textures, color, and aesthetics
+- If the description mentions a strong hook, the still must be the most attention‑grabbing visual moment of that hook
+- If a product is central, the product must be clearly visible and well-lit in the frame
+- No bullet points, no sections – deliver ONE single, continuous paragraph that describes the still image precisely`;
+    }
+
+    // CRITICAL: Analyze the prompt first to determine if it's UGC or not
+    // If UGC is mentioned explicitly or implied, use iPhone/hyperrealistic UGC style
+    // If NOT UGC, use the selected style but can be cinematographic, professional, etc.
+    const ugcDetectionInstructions = `**CRITICAL - STYLE ANALYSIS (MUST DO FIRST):**
+Before applying any style, you MUST analyze the user's description to determine if it is UGC (User-Generated Content) style or not:
+
+**Analyze the description:**
+"${description}"
+
+**UGC Indicators (if ANY of these are present, it's UGC):**
+- Explicitly mentions "UGC", "user-generated", "amateur", "home video", "casual", "iPhone video", "phone recording", "selfie style", "authentic user content"
+- Mentions casual, homemade, authentic, real people, everyday life, natural settings
+- Implies informal, unpolished, spontaneous content
+- Mentions social media style, TikTok, Instagram story style
+- Describes content that looks like someone casually recording with their phone
+
+**NON-UGC Indicators (if description suggests professional, cinematic, or polished content):**
+- Mentions "cinematic", "professional", "high production", "film", "cinematography", "cinema quality"
+- Describes polished, staged, professional-looking content
+- Mentions professional lighting, studio quality, commercial quality
+- Implies high-budget, professional video production
+
+**Your Decision:**
+- IF UGC is detected (explicitly or implied): Use iPhone/hyperrealistic UGC style (see UGC section below)
+- IF UGC is NOT detected: Use the selected style (${style}) but adapt it appropriately - can be cinematographic, professional, cinematic, or whatever best fits the description. DO NOT force iPhone/UGC characteristics if they're not appropriate.`;
+
     if (style === 'hyperrealistic') {
       const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
 A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
@@ -306,7 +352,12 @@ A reference image has been attached. You MUST:
 
 - **CRITICAL**: The generated prompt must create an image that looks EXACTLY like the reference image visually (angle, composition, lighting, textures, colors, aesthetic), but with the content/subject from the user's description.` : '';
 
-      styleInstructions = `**HYPERREALISTIC STYLE REQUIREMENTS (CRITICAL):**
+      // Build style instructions based on UGC detection
+      styleInstructions = `${ugcDetectionInstructions}
+
+**HYPERREALISTIC STYLE REQUIREMENTS (APPLY BASED ON UGC DETECTION):**
+
+**IF UGC IS DETECTED:**
 You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo:
 
 - **iPhone photography aesthetic**: The image must look exactly like it was captured with an iPhone camera - authentic iPhone color science, iPhone's characteristic depth of field, iPhone's natural image processing, iPhone's realistic skin tones and color reproduction
@@ -387,7 +438,42 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
   - **Reference image priority**: ${referenceImageFile && referenceImagePrompt ? 'If a reference image is provided, match the EXACT camera angle and perspective from the reference image. The reference image prompt describes exactly how the reference looks - respect that EXACTLY.' : 'Choose the most natural camera angle that fits the scene.'}
 
-The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it.`;
+The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it.
+
+**IF UGC IS NOT DETECTED:**
+You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM but with cinematic, professional, or high-production quality - NOT iPhone/UGC style. The image should look like it was captured with professional camera equipment (DSLR, cinema camera, etc.) - high-quality, polished, and professional:
+- **Professional camera aesthetic**: The image must look like it was captured with professional camera equipment - cinematic color grading, professional depth of field, high-end image processing, professional color science
+- **Cinematic or professional quality**: Based on the description, choose the most appropriate style:
+  - **Cinematic**: If the description suggests cinematic, film-like, or movie-quality content, use cinematic lighting, color grading, and composition (anamorphic lens look, film grain, cinematic color palette)
+  - **Professional photography**: If the description suggests professional photography, use professional camera characteristics (DSLR, mirrorless, or professional camera systems)
+  - **High-production commercial**: If the description suggests commercial or advertisement quality, use high-production, polished, professional aesthetic
+- **Professional camera characteristics**: 
+  - Professional depth of field and bokeh (cinematic blur)
+  - Professional color grading and color science
+  - High-resolution, sharp details
+  - Professional dynamic range
+  - Professional white balance and color temperature
+- **Professional lighting**: Based on the description, use appropriate professional lighting:
+  - Cinematic lighting for cinematic content (dramatic, moody, color-graded)
+  - Professional studio lighting for professional photography
+  - Natural but enhanced lighting for high-production content
+- **Ultra-realistic shadows**: Professional-quality shadows with proper falloff, realistic shadow edges, authentic shadow density and color
+- **Hyperrealistic lighting**: Professional lighting behavior, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
+- **Photorealistic textures**: Every surface must show realistic material properties - hyperrealistic textures with professional detail capture, all textures must look completely real and professional-quality
+- **Human facial features (CRITICAL)**: If the image includes human faces, facial features MUST be:
+  - **Soft and realistic**: Facial features must look soft and natural, exactly as real human faces appear - not harsh, not overly sharp, not artificial
+  - **Natural skin texture**: Skin must have soft, natural texture - smooth but not uniform, with subtle variations, natural pores, and realistic skin quality
+  - **Realistic facial structure**: Facial features must have the natural softness and subtlety of real human faces
+  - **Natural variations**: Skin texture must be non-uniform with natural variations in tone, texture, and detail
+  - **Hyperrealistic but natural**: Maximum realism while maintaining the natural softness and organic quality of real human faces
+  - **Professional-quality capture**: Should look like it was captured with professional camera equipment, not a phone
+- **Authentic colors**: Professional color grading, cinematic color palette, or professional color science based on the description
+- **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, professional depth of field
+- **Maximum realism**: Everything must look 100% real, as if photographed with professional camera equipment in real life
+- **No iPhone characteristics**: DO NOT mention iPhone, phone camera, mobile phone, or any phone-related characteristics. Use professional camera terminology instead (DSLR, cinema camera, professional camera, etc.)
+- **Style adaptation**: Analyze the description carefully and choose the most appropriate professional style (cinematic, professional photography, high-production commercial) that best fits the content
+
+The goal is absolute photorealism with professional/cinematic quality - the image should look like it was captured with professional camera equipment. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, but with professional, polished, high-production aesthetic - NOT iPhone/UGC style.${referenceImageNote}`;
     } else if (style === 'studio-quality') {
       const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
 A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
@@ -472,7 +558,29 @@ You MUST generate a prompt that creates professional design work (infographics, 
 The image should look like professional design work - infographics, static ads, or creative designs that a human designer would create, with careful attention to every detail, color, composition, and element.`;
     }
 
-    const promptGenerationRequest = `You are an expert AI prompt engineer specializing in ${style === 'hyperrealistic' ? 'hyperrealistic' : style === 'studio-quality' ? 'professional studio photography' : 'professional design'} image generation. Your task is to create a detailed, comprehensive prompt for AI image generation.
+    // Build conditional parts before template literal to avoid parsing issues
+    const styleSpecialization = style === 'hyperrealistic' 
+      ? 'hyperrealistic' 
+      : style === 'studio-quality' 
+        ? 'professional studio photography' 
+        : 'professional design';
+    
+    const styleApplicationNote = style === 'hyperrealistic' 
+      ? 'IF UGC is detected: Use iPhone/hyperrealistic UGC style. IF UGC is NOT detected: Use cinematic, professional, or high-production quality (still hyperrealistic, but NOT iPhone/UGC).'
+      : style === 'studio-quality' 
+        ? 'Use professional studio photography quality'
+        : 'Use professional design quality';
+    
+    const criticalRequirementsNote = style === 'hyperrealistic' 
+      ? '**CRITICAL**: You MUST analyze the description first. If it explicitly mentions UGC, user-generated, casual, amateur, iPhone video, or similar UGC indicators, use iPhone/UGC style. If it mentions cinematic, professional, high-production, or suggests polished content, use cinematic/professional style (NOT iPhone/UGC). If it is ambiguous, choose the style that best fits the description.'
+      : '';
+
+    // Build the critical requirements section to avoid template literal nesting issues
+    const criticalRequirementsSection = criticalRequirementsNote 
+      ? '- ' + criticalRequirementsNote + '\n'
+      : '';
+
+    const promptGenerationRequest = `You are an expert AI prompt engineer specializing in ${styleSpecialization} image generation. Your task is to create a detailed, comprehensive prompt for AI image generation.
 
 **User's Description:**
 "${description}"
@@ -481,13 +589,15 @@ ${styleInstructions}
 
 **Your Task:**
 Generate an extremely detailed, comprehensive prompt that:
-1. **Faithfully follows** the user's description: "${description}"
-2. **Applies the ${style === 'hyperrealistic' ? 'hyperrealistic' : style === 'studio-quality' ? 'studio quality photography' : 'design'} style** with all the requirements above
-3. **Enhances and expands** the user's description with professional details, technical specifications, and visual elements
-4. **Ensures maximum quality** for the selected style
+1. **First analyzes** the user's description to determine if it's UGC or not (if style is hyperrealistic)
+2. **Faithfully follows** the user's description: "${description}"
+3. **Applies the appropriate style** based on your analysis:
+   - ${styleApplicationNote}
+4. **Enhances and expands** the user's description with professional details, technical specifications, and visual elements
+5. **Ensures maximum quality** for the selected style
 
 **Critical Requirements:**
-- The prompt must be detailed and comprehensive
+${criticalRequirementsSection}- The prompt must be detailed and comprehensive
 - Include all necessary technical details for the selected style
 - Be specific about lighting, composition, colors, textures, and all visual elements
 - Ensure the prompt will generate exactly what the user described, but with professional enhancement

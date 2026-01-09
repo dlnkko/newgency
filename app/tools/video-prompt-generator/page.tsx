@@ -59,11 +59,21 @@ export default function VideoPromptGenerator() {
   const mainStyle: MainStyle = 'hyperrealistic';
   const productFocus: ProductFocus = 'ugc';
   
+  // Mode: 'manual' or 'automatic'
+  const [mode, setMode] = useState<'manual' | 'automatic'>('manual');
+  
+  // Manual mode state
   const [sceneCount, setSceneCount] = useState<number>(1);
   const [scenes, setScenes] = useState<Scene[]>([{ id: 1, action: '', composition: [], lighting: null, duration: 1 }]);
+  const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
+  
+  // Automatic mode state
+  const [autoDescription, setAutoDescription] = useState<string>('');
+  const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
+  
+  // Shared state
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   const [productImage, setProductImage] = useState<File | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
 
@@ -221,7 +231,7 @@ export default function VideoPromptGenerator() {
     });
   };
 
-  const generatePrompt = async () => {
+  const generatePromptManual = async () => {
     setIsGenerating(true);
     setGeneratedPrompt('');
 
@@ -286,6 +296,49 @@ export default function VideoPromptGenerator() {
     } catch (error) {
       console.error('Error generating prompt:', error);
       setGeneratedPrompt('Error generating prompt. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const generatePromptAutomatic = async () => {
+    if (!autoDescription.trim()) {
+      alert('Please enter a description');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGeneratedPrompt('');
+
+    try {
+      // Convert product image to base64 if provided
+      let productImageBase64 = null;
+      if (productImage) {
+        productImageBase64 = await fileToBase64(productImage);
+      }
+
+      const response = await fetch('/api/generate-video-prompt-auto', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: autoDescription.trim(),
+          productImage: productImageBase64,
+          isUGC: isUGC
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error generating prompt');
+      }
+
+      setGeneratedPrompt(data.prompt || '');
+    } catch (error: any) {
+      console.error('Error generating automatic prompt:', error);
+      setGeneratedPrompt(`Error generating prompt: ${error.message || 'Please try again.'}`);
     } finally {
       setIsGenerating(false);
     }
@@ -371,8 +424,63 @@ export default function VideoPromptGenerator() {
       </div>
 
       <div className="space-y-8">
-        {/* Step 1: Number of Scenes */}
-        {currentStep === 'sceneCount' && (
+        {/* Mode Selection - Show when no mode selected or when manually navigating back */}
+        {(!mode || (mode === 'manual' && currentStep === 'sceneCount' && !generatedPrompt)) && (
+          <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+            <div className="mb-6">
+              <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90 mb-2">
+                Select Mode
+              </label>
+              <p className="text-sm text-zinc-500 mb-6">
+                Choose between manual scene-by-scene control or automatic AI generation
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setMode('manual');
+                    setCurrentStep('sceneCount');
+                    setGeneratedPrompt(''); // Reset prompt when switching modes
+                  }}
+                  className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
+                    mode === 'manual'
+                      ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                  }`}
+                >
+                  <div className="font-bold text-lg mb-2">Manual</div>
+                  <div className="text-sm opacity-90">Full control: choose scenes, compositions, lighting, and durations</div>
+                  {mode === 'manual' && (
+                    <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
+                      ✓
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setMode('automatic');
+                    setGeneratedPrompt(''); // Reset prompt when switching modes
+                  }}
+                  className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
+                    mode === 'automatic'
+                      ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                  }`}
+                >
+                  <div className="font-bold text-lg mb-2">Automatic</div>
+                  <div className="text-sm opacity-90">AI generates complete prompt from simple description</div>
+                  {mode === 'automatic' && (
+                    <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Mode: Step 1: Number of Scenes */}
+        {mode === 'manual' && currentStep === 'sceneCount' && (
           <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
             <div className="mb-2">
               <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90">
@@ -576,8 +684,172 @@ export default function VideoPromptGenerator() {
           );
         })()}
 
-        {/* Step 3: Generate */}
-        {currentStep === 'generate' && sceneCount > 0 && (
+        {/* Automatic Mode */}
+        {mode === 'automatic' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-amber-300">Automatic Mode</h3>
+              <button
+                onClick={() => {
+                  setMode('manual');
+                  setCurrentStep('sceneCount');
+                  setGeneratedPrompt('');
+                  setAutoDescription('');
+                }}
+                className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+              >
+                Switch to Manual →
+              </button>
+            </div>
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="mb-2 text-lg font-bold text-amber-300">
+                    Describe Your Video
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Describe what you want in your video. The AI will automatically decide the number of scenes, compositions, lighting, characters, and create a complete prompt.
+                  </p>
+                </div>
+                {/* UGC Toggle */}
+                <div className="ml-6 flex flex-col items-end gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    UGC Mode
+                  </label>
+                  <button
+                    onClick={() => setIsUGC(!isUGC)}
+                    disabled={isGenerating}
+                    className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isUGC
+                        ? 'bg-amber-500/80'
+                        : 'bg-zinc-700/50'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                        isUGC ? 'translate-x-9' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-xs font-medium ${isUGC ? 'text-amber-400' : 'text-zinc-500'}`}>
+                    {isUGC ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              </div>
+              {isUGC && (
+                <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+                  <p className="text-xs text-amber-300">
+                    <strong>UGC Mode ON:</strong> The video will be generated as hyperrealistic UGC content, as if recorded by a real person on their iPhone with authentic mobile aesthetics, natural handheld movements, and photorealistic textures.
+                  </p>
+                </div>
+              )}
+              <textarea
+                value={autoDescription}
+                onChange={(e) => setAutoDescription(e.target.value)}
+                placeholder="Example: 'Hook: Do you know what's living inside your old pillow? Concept: Focus on the Freshness Built-In story. Explain that while most pillows only have a treated cover, this one protects the foam core too, preventing old pillow smells and moisture buildup. Key Benefit: A cleaner, fresher sleep surface for the whole family'"
+                rows={8}
+                disabled={isGenerating}
+                className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+              />
+            </div>
+
+            {/* Product Image Upload */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-amber-300">
+                Product Image (Optional)
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Upload a product image to make the prompt more accurate.
+              </p>
+              <div className="space-y-4">
+                {!productPreview ? (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                    <svg
+                      className="mb-3 h-10 w-10 text-zinc-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium text-zinc-400">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="mt-1 text-xs text-zinc-500">
+                      PNG, JPG, WEBP up to 10MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      onChange={handleProductImageUpload}
+                      className="hidden"
+                      disabled={isGenerating}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                    <div className="relative inline-block">
+                      <img
+                        src={productPreview}
+                        alt="Product preview"
+                        className="max-h-64 rounded-lg object-contain"
+                      />
+                      <button
+                        onClick={() => {
+                          setProductImage(null);
+                          setProductPreview(null);
+                        }}
+                        disabled={isGenerating}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Remove image"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={generatePromptAutomatic}
+              disabled={isGenerating || !autoDescription.trim()}
+              className="w-full rounded-xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-500/20 px-8 py-4 font-bold text-amber-200 shadow-[0_0_30px_rgba(250,204,21,0.25)] transition-all hover:from-amber-500/30 hover:via-amber-500/25 hover:to-amber-500/30 hover:shadow-[0_0_40px_rgba(250,204,21,0.35)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500/20 disabled:hover:via-amber-500/15 disabled:hover:to-amber-500/20 disabled:hover:scale-100"
+            >
+              {isGenerating ? (
+                <span className="flex items-center justify-center gap-3">
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400 border-t-transparent"></span>
+                  <span>Generating prompt with AI...</span>
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  <span>✨</span>
+                  <span>Generate Complete Prompt</span>
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Manual Mode: Step 3: Generate */}
+        {mode === 'manual' && currentStep === 'generate' && sceneCount > 0 && (
           <div className="space-y-6">
             <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
               <h3 className="mb-6 text-lg font-bold text-amber-300">
@@ -671,7 +943,7 @@ export default function VideoPromptGenerator() {
             </div>
             
             <button
-            onClick={generatePrompt}
+            onClick={generatePromptManual}
             disabled={isGenerating}
             className="w-full rounded-xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-500/20 px-8 py-4 font-bold text-amber-200 shadow-[0_0_30px_rgba(250,204,21,0.25)] transition-all hover:from-amber-500/30 hover:via-amber-500/25 hover:to-amber-500/30 hover:shadow-[0_0_40px_rgba(250,204,21,0.35)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500/20 disabled:hover:via-amber-500/15 disabled:hover:to-amber-500/20 disabled:hover:scale-100"
           >
@@ -700,8 +972,8 @@ export default function VideoPromptGenerator() {
           </div>
         )}
 
-        {/* Generated Prompt - Mostrar en el paso de generate */}
-        {currentStep === 'generate' && generatedPrompt && (
+        {/* Generated Prompt - Show when prompt is generated */}
+        {((mode === 'manual' && currentStep === 'generate') || mode === 'automatic') && generatedPrompt && (
           <div className="rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-8 shadow-[0_0_50px_rgba(250,204,21,0.2)]">
             <div className="mb-6 flex items-center justify-between border-b border-zinc-800/50 pb-4">
               <div>

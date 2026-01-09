@@ -118,3 +118,6 @@ WHOP_API_KEY=apik_xxxxx                    # API Key de tu cuenta
 - [API Reference - Check Access](https://docs.whop.com/api-reference/users/check-access)
 
 
+
+
+

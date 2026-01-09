@@ -81,3 +81,6 @@ Después de cambiar la configuración:
 - Si usas Supabase local, necesitas reiniciar el servicio para que los cambios surtan efecto
 
 
+
+
+

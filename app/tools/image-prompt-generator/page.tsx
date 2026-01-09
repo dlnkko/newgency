@@ -15,6 +15,7 @@ export default function ImagePromptGenerator() {
   const [costInfo, setCostInfo] = useState<any>(null);
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
+  const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
 
   // Compress and resize image to reduce file size
   const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.85): Promise<File> => {
@@ -162,6 +163,7 @@ export default function ImagePromptGenerator() {
           description: description.trim(),
           style: selectedStyle,
           referenceImage: referenceImageBase64,
+          firstFrameFromVideo: veo3FirstFrame
         }),
       });
 
@@ -206,6 +208,32 @@ export default function ImagePromptGenerator() {
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
             What should the image be about?
           </label>
+          {/* Veo 3 toggle (first frame from video prompt) */}
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <p className="text-xs text-zinc-500">
+              If your text is a video-style prompt (scenes, hook, concept), enable Veo 3 to generate an image prompt for the first frame.
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Veo 3</span>
+              <button
+                onClick={() => setVeo3FirstFrame(!veo3FirstFrame)}
+                disabled={isGenerating}
+                className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  veo3FirstFrame ? 'bg-amber-500/80' : 'bg-zinc-700/50'
+                }`}
+                title="If ON, generate an image prompt representing the first frame of the described video."
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    veo3FirstFrame ? 'translate-x-8' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-medium ${veo3FirstFrame ? 'text-amber-400' : 'text-zinc-500'}`}>
+                {veo3FirstFrame ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
