@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getGoogleGenAI } from '@/lib/gemini';
 import { verifyAndConsumeCredit } from '@/lib/credit-check';
+import { recordGeneration } from '@/lib/generation-check';
 
 export async function POST(request: NextRequest) {
   try {
