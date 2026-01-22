@@ -77,13 +77,22 @@ export default function DashboardPage() {
                 AI Ad Lab
               </p>
             </div>
-            <a
-              href="/api/auth/logout"
-              className="group relative rounded-xl border border-zinc-800/50 bg-zinc-900/50 px-4 py-2 text-xs text-zinc-400 backdrop-blur-sm transition-all hover:border-amber-500/40 hover:bg-zinc-900/80 hover:text-zinc-300"
-            >
-              <span className="relative z-10">Sign out</span>
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500/0 via-amber-500/5 to-amber-500/0 opacity-0 transition-opacity group-hover:opacity-100" />
-            </a>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/settings"
+                className="group relative rounded-xl border border-zinc-800/50 bg-zinc-900/50 px-4 py-2 text-xs text-zinc-400 backdrop-blur-sm transition-all hover:border-amber-500/40 hover:bg-zinc-900/80 hover:text-zinc-300"
+              >
+                <span className="relative z-10">⚙️ Settings</span>
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500/0 via-amber-500/5 to-amber-500/0 opacity-0 transition-opacity group-hover:opacity-100" />
+              </Link>
+              <a
+                href="/api/auth/logout"
+                className="group relative rounded-xl border border-zinc-800/50 bg-zinc-900/50 px-4 py-2 text-xs text-zinc-400 backdrop-blur-sm transition-all hover:border-amber-500/40 hover:bg-zinc-900/80 hover:text-zinc-300"
+              >
+                <span className="relative z-10">Sign out</span>
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-500/0 via-amber-500/5 to-amber-500/0 opacity-0 transition-opacity group-hover:opacity-100" />
+              </a>
+            </div>
           </div>
           
           <h1 className="mb-4 bg-gradient-to-r from-zinc-50 via-amber-50 to-zinc-50 bg-clip-text text-4xl font-bold text-transparent sm:text-6xl lg:text-7xl">

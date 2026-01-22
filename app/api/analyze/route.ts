@@ -1,21 +1,8 @@
 import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { generateWithCitations, callPerplexitySonarPro } from '@/lib/perplexity';
-
-// Helper function to get and validate API key at runtime
-function getGoogleGenAI() {
-  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-  
-  if (!googleApiKey) {
-    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
-  }
-  
-  return new GoogleGenAI({ 
-    apiKey: googleApiKey 
-  });
-}
+import { getGoogleGenAI } from '@/lib/gemini';
+import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
 function getScrapeCreatorsApiKey() {
   const apiKey = process.env.SCRAPECREATORS_API_KEY;
@@ -75,14 +62,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize AI client at runtime
-    const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-    console.log('=== VERIFICACIÓN DE API KEYS ===');
-    console.log('GOOGLE_GENAI_API_KEY existe?', !!googleApiKey);
-    console.log('GOOGLE_GENAI_API_KEY primeros 10 chars:', googleApiKey ? `${googleApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
-    console.log('GOOGLE_GENAI_API_KEY longitud:', googleApiKey?.length || 0);
-    
-    const ai = getGoogleGenAI();
+    // Check and consume user credit
+    const creditError = await verifyAndConsumeCredit(request);
+    if (creditError) {
+      return creditError;
+    }
+
+    // Initialize AI client at runtime (uses user's API key if configured)
+    const ai = await getGoogleGenAI(request);
     const body = await request.json();
     const { metaAdUrl, socialMediaUrl } = body;
 
@@ -1087,160 +1074,24 @@ INSIGHT 3: [Another deep hidden truth about this audience]
       insightsArray.push(fullAnalysisText.trim());
     }
 
-    // Verify each insight with Perplexity Sonar Pro
-    console.log(`\n=== VERIFICANDO ${insightsArray.length} INSIGHT(S) CON PERPLEXITY SONAR PRO ===`);
-    
-    // Verificar que la API key de Perplexity existe antes de proceder
-    const perplexityApiKey = process.env.PERPLEXITY_API_KEY;
-    console.log('=== VERIFICACIÓN PERPLEXITY API KEY ===');
-    console.log('PERPLEXITY_API_KEY existe?', !!perplexityApiKey);
-    console.log('PERPLEXITY_API_KEY primeros 10 chars:', perplexityApiKey ? `${perplexityApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
-    
-    if (!perplexityApiKey) {
-      console.warn('⚠️ PERPLEXITY_API_KEY no está configurada. Los insights no serán verificados con Perplexity.');
-      // Continuar sin verificación de Perplexity
-      return NextResponse.json({
-        success: true,
-        contentType,
-        insights: fullAnalysisText.trim(),
-        verifiedInsights: [],
-        warning: 'PERPLEXITY_API_KEY no está configurada. Los insights fueron generados pero no verificados con Perplexity Sonar Pro.'
-      });
-    }
-    
-    interface VerifiedInsight {
-      original: string;
-      verified: boolean;
-      verificationData: {
-        content: string;
-        citations: string[];
-        relatedInfo?: string;
-      };
-      error?: string;
-    }
-
-    const verifiedInsights: VerifiedInsight[] = [];
-    
-    // Acumuladores para costos de Perplexity
-    let totalPerplexityInputTokens = 0;
-    let totalPerplexityOutputTokens = 0;
-
-    for (let i = 0; i < Math.min(insightsArray.length, 3); i++) {
-      const insight = insightsArray[i];
-      console.log(`\nVerificando Insight ${i + 1}...`);
-      
-      try {
-        // Prompt for Perplexity - search for deeper information about the insight and audience
-        const verificationPrompt = `Research and provide deeper psychological insight about this audience truth. Do not provide sources or citations, just deeper analysis.
-
-Audience: ${estimatedAudience || 'The target audience of this video'}
-
-Insight: "${insight}"
-
-Search the internet (forums, studies, articles, discussions) to provide:
-- Deeper psychological understanding of this insight
-- Additional context about why this truth resonates with this specific audience
-- More depth on this pain point or hidden truth
-
-Provide ONE concise paragraph (maximum 150 words) with deeper analysis. All content must be in English. Do not include sources or citations.`;
-
-        // Use callPerplexitySonarPro directly to avoid citations
-        const perplexityResponse = await callPerplexitySonarPro(
-          [
-            {
-              role: 'user',
-              content: verificationPrompt
-            }
-          ],
-          {
-            model: 'sonar-pro',
-            temperature: 0.3,
-            max_tokens: 300, // Limit to one paragraph
-            return_citations: false // No citations needed
-          }
-        );
-
-        // Extract content from response
-        const deeperInsight = perplexityResponse.choices && perplexityResponse.choices[0]?.message?.content 
-          ? perplexityResponse.choices[0].message.content 
-          : 'Could not retrieve deeper insight';
-
-        verifiedInsights.push({
-          original: insight,
-          verified: true,
-          verificationData: {
-            content: deeperInsight,
-            citations: [], // No citations needed
-            relatedInfo: deeperInsight
-          }
-        });
-
-        // Acumular costos de Perplexity (estimación: 4 chars = 1 token)
-        const perplexityInputTokens = verificationPrompt.length / 4;
-        const perplexityOutputTokens = deeperInsight.length / 4;
-        totalPerplexityInputTokens += perplexityInputTokens;
-        totalPerplexityOutputTokens += perplexityOutputTokens;
-
-        console.log(`✓ Insight ${i + 1} profundizado.`);
-      } catch (perplexityError: any) {
-        console.error(`Error verificando Insight ${i + 1}:`, perplexityError);
-        
-        // Detectar si es un error de API key
-        let errorMessage = perplexityError.message || 'Error al verificar con Perplexity';
-        if (errorMessage.includes('PERPLEXITY_API_KEY') || errorMessage.includes('API key')) {
-          errorMessage += ' Por favor, reinicia el servidor de Next.js después de agregar la variable de entorno.';
-        }
-        
-        verifiedInsights.push({
-          original: insight,
-          verified: false,
-          verificationData: {
-            content: '',
-            citations: []
-          },
-          error: errorMessage
-        });
-      }
-
-      // Small delay between requests to avoid rate limiting
-      if (i < Math.min(insightsArray.length, 3) - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-
-    // Format the final response
+    // Format the final response with insights from Gemini only
     const finalInsights = {
       originalAnalysis: fullAnalysisText.trim(),
       estimatedAudience: estimatedAudience || 'Not specified',
-      insights: verifiedInsights.map((vi, index) => ({
+      insights: insightsArray.slice(0, 3).map((insight, index) => ({
         number: index + 1,
-        insight: vi.original,
-        deeperAnalysis: {
-          content: vi.verificationData.content,
-          verified: vi.verified,
-          error: vi.error
-        }
+        insight: insight
       }))
     };
 
-    // Calcular costos totales de Perplexity
-    const perplexityInputCost = (totalPerplexityInputTokens / 1_000_000) * 3.0; // $3 por millón input
-    const perplexityOutputCost = (totalPerplexityOutputTokens / 1_000_000) * 15.0; // $15 por millón output
-    const totalPerplexityCost = perplexityInputCost + perplexityOutputCost;
-
-    console.log('\n=== COSTO PERPLEXITY (Verificación de Insights) ===');
-    console.log(`Input tokens: ${totalPerplexityInputTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })}, Costo: $${perplexityInputCost.toFixed(6)}`);
-    console.log(`Output tokens: ${totalPerplexityOutputTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })}, Costo: $${perplexityOutputCost.toFixed(6)}`);
-    console.log(`Costo total Perplexity: $${totalPerplexityCost.toFixed(6)}`);
-
     console.log('\n=== COSTO TOTAL DEL PROCESO ===');
     console.log(`Gemini: $${geminiCost.toFixed(6)}`);
-    console.log(`Perplexity: $${totalPerplexityCost.toFixed(6)}`);
-    console.log(`TOTAL: $${(geminiCost + totalPerplexityCost).toFixed(6)}`);
+    console.log(`TOTAL: $${geminiCost.toFixed(6)}`);
 
     console.log('\n=== PROCESO COMPLETADO ===');
-    console.log(`Total insights procesados: ${verifiedInsights.length}`);
-    console.log(`Insights verificados exitosamente: ${verifiedInsights.filter(vi => vi.verified).length}`);
+    console.log(`Total insights generados: ${finalInsights.insights.length}`);
+
+    // Credit already consumed in verifyAndConsumeCredit
 
     // Return the results
     return NextResponse.json({

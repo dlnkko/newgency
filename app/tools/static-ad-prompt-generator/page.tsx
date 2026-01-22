@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
+import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
 export default function StaticAdPromptGenerator() {
   const [staticAdImage, setStaticAdImage] = useState<File | null>(null);
@@ -12,6 +13,7 @@ export default function StaticAdPromptGenerator() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isScraping, setIsScraping] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
   const [staticAdPreview, setStaticAdPreview] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
   const [costInfo, setCostInfo] = useState<any>(null);
@@ -57,6 +59,7 @@ export default function StaticAdPromptGenerator() {
 
     setIsGenerating(true);
     setError(null);
+    setIsInsufficientCredits(false);
     setGeneratedPrompt('');
 
     try {
@@ -141,6 +144,13 @@ export default function StaticAdPromptGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+          setIsGenerating(false);
+          return;
+        }
         throw new Error(data.error || 'Failed to generate prompt');
       }
 
@@ -318,8 +328,15 @@ export default function StaticAdPromptGenerator() {
           )}
         </button>
 
+        {/* Insufficient Credits Error */}
+        {isInsufficientCredits && (
+          <div className="mb-6">
+            <InsufficientCreditsError />
+          </div>
+        )}
+
         {/* Error Message */}
-        {error && (
+        {error && !isInsufficientCredits && (
           <div className="rounded-xl border-2 border-red-500/50 bg-red-500/10 p-4 text-sm text-red-300">
             {error}
           </div>

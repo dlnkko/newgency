@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
+import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
 type ProductFocus = 'conceptual' | 'ugc' | null;
 type MainStyle = 'hyperrealistic';
@@ -76,6 +77,8 @@ export default function VideoPromptGenerator() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [productImage, setProductImage] = useState<File | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
 
   const handleSceneCountChange = (count: number) => {
     setSceneCount(count);
@@ -156,6 +159,10 @@ export default function VideoPromptGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits - throw a special error that can be caught
+          throw new Error('Insufficient credits');
+        }
         throw new Error(data.error || 'Error enhancing prompt');
       }
 
@@ -234,6 +241,8 @@ export default function VideoPromptGenerator() {
   const generatePromptManual = async () => {
     setIsGenerating(true);
     setGeneratedPrompt('');
+    setError(null);
+    setIsInsufficientCredits(false);
 
     try {
       // Enhance each scene with AI before generating the prompt
@@ -293,9 +302,16 @@ export default function VideoPromptGenerator() {
 
       setGeneratedPrompt(prompt);
       // Stay on generate step to show result
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating prompt:', error);
-      setGeneratedPrompt('Error generating prompt. Please try again.');
+      if (error.message && error.message.includes('Insufficient credits')) {
+        setIsInsufficientCredits(true);
+        setError(null);
+      } else {
+        setError('Error generating prompt. Please try again.');
+        setIsInsufficientCredits(false);
+      }
+      setGeneratedPrompt('');
     } finally {
       setIsGenerating(false);
     }
@@ -309,6 +325,8 @@ export default function VideoPromptGenerator() {
 
     setIsGenerating(true);
     setGeneratedPrompt('');
+    setError(null);
+    setIsInsufficientCredits(false);
 
     try {
       // Convert product image to base64 if provided
@@ -332,13 +350,23 @@ export default function VideoPromptGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+          setGeneratedPrompt('');
+          setIsGenerating(false);
+          return;
+        }
         throw new Error(data.error || 'Error generating prompt');
       }
 
       setGeneratedPrompt(data.prompt || '');
     } catch (error: any) {
       console.error('Error generating automatic prompt:', error);
-      setGeneratedPrompt(`Error generating prompt: ${error.message || 'Please try again.'}`);
+      setError(`Error generating prompt: ${error.message || 'Please try again.'}`);
+      setIsInsufficientCredits(false);
+      setGeneratedPrompt('');
     } finally {
       setIsGenerating(false);
     }
@@ -974,6 +1002,20 @@ export default function VideoPromptGenerator() {
               <span>Previous</span>
             </button>
           </div>
+          </div>
+        )}
+
+        {/* Insufficient Credits Error */}
+        {isInsufficientCredits && (
+          <div className="mb-6">
+            <InsufficientCreditsError />
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && !isInsufficientCredits && (
+          <div className="mb-6 rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+            {error}
           </div>
         )}
 

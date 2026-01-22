@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
+import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
 interface GeneratedPrompts {
   nanoBananaPrompt: string;
@@ -14,6 +15,7 @@ export default function ProductVideoGenerator() {
   const [isUGC, setIsUGC] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
   const [productPreview, setProductPreview] = useState<string | null>(null);
   const [nanoBananaPrompt, setNanoBananaPrompt] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<File | null>(null);
@@ -151,6 +153,7 @@ export default function ProductVideoGenerator() {
 
     setIsGenerating(true);
     setError(null);
+    setIsInsufficientCredits(false);
     setNanoBananaPrompt(null);
     setVideoAnimationPrompt(null);
     setGeneratedImage(null);
@@ -174,6 +177,13 @@ export default function ProductVideoGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+          setIsGenerating(false);
+          return;
+        }
         throw new Error(data.error || data.details || 'Failed to generate prompt');
       }
 
@@ -206,6 +216,7 @@ export default function ProductVideoGenerator() {
 
     setIsGeneratingAnimation(true);
     setError(null);
+    setIsInsufficientCredits(false);
     setVideoAnimationPrompt(null);
 
     try {
@@ -227,6 +238,13 @@ export default function ProductVideoGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+          setIsGeneratingAnimation(false);
+          return;
+        }
         throw new Error(data.error || data.details || 'Failed to generate animation prompt');
       }
 
@@ -247,6 +265,7 @@ export default function ProductVideoGenerator() {
 
     setIsAnimating(true);
     setError(null);
+    setIsInsufficientCredits(false);
     setAnimationPrompt(null);
 
     try {
@@ -268,6 +287,13 @@ export default function ProductVideoGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+          setIsAnimating(false);
+          return;
+        }
         throw new Error(data.error || data.details || 'Failed to generate animation prompt');
       }
 
@@ -406,7 +432,15 @@ export default function ProductVideoGenerator() {
               </button>
             </div>
 
-            {error && (
+            {/* Insufficient Credits Error */}
+            {isInsufficientCredits && (
+              <div className="mb-4">
+                <InsufficientCreditsError />
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && !isInsufficientCredits && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                 {error}
               </div>

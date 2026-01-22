@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
-
-function getGoogleGenAI() {
-  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-  
-  if (!googleApiKey) {
-    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables.');
-  }
-  
-  return new GoogleGenAI({ 
-    apiKey: googleApiKey 
-  });
-}
+import { getGoogleGenAI } from '@/lib/gemini';
+import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +28,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ai = getGoogleGenAI();
+    // Check and consume user credit
+    const creditError = await verifyAndConsumeCredit(request);
+    if (creditError) {
+      return creditError;
+    }
+
+    // Initialize AI client at runtime (uses user's API key if configured)
+    const ai = await getGoogleGenAI(request);
     const body = await request.json();
     const { description, productImage, isUGC = true } = body;
 
@@ -125,17 +121,19 @@ The video MUST be generated as hyperrealistic UGC content, as if recorded by a r
    - Hyperrealistic textures (skin with pores, fabric with visible weave, product surfaces with authentic material details)
    - iPhone camera characteristics (natural color science, realistic depth of field, authentic exposure, slight lens distortion)
    - Real-world imperfections (motion blur, focus breathing, chromatic aberration, lens flare when appropriate)
+   - **CRITICAL - NO BACKGROUND BLUR**: The background MUST be completely sharp and in focus, exactly as iPhone cameras record in vertical/portrait mode. NEVER apply blur, bokeh, or depth of field effects to the background. The entire scene (foreground, subject, and background) must be equally sharp and focused, as if recorded with an iPhone in standard camera mode. This is essential for authentic UGC realism.
 
 **CRITICAL HYPERREALISM REQUIREMENTS (MANDATORY):**
 - **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source
 - **Photorealistic lighting**: Natural light behavior, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
 - **Hyperrealistic textures**: Every surface must show realistic material properties - skin texture with pores and natural imperfections, fabric textures with visible weave, product surfaces with authentic material details
-- **iPhone camera characteristics**: Subtle mobile phone grain, natural iPhone color science, realistic depth of field with natural bokeh, authentic exposure characteristics, slight lens distortion typical of iPhone cameras
+- **iPhone camera characteristics**: Subtle mobile phone grain, natural iPhone color science, realistic depth of field, authentic exposure characteristics, slight lens distortion typical of iPhone cameras
+- **CRITICAL - NO BACKGROUND BLUR (MANDATORY)**: The background MUST be completely sharp and in focus, exactly as iPhone cameras record in vertical/portrait mode. NEVER apply blur, bokeh, shallow depth of field, or any depth-of-field effects to the background. The entire scene (foreground, subject, and background) must be equally sharp and focused, as if recorded with an iPhone in standard camera mode. This is essential for authentic UGC realism - real iPhone recordings in vertical mode keep everything in focus.
 - **Real-world imperfections**: Natural motion blur during movement, authentic focus breathing, realistic chromatic aberration in high contrast areas, genuine lens flare when appropriate
 - **Environmental authenticity**: Realistic light interaction with surfaces, authentic material response to lighting, genuine atmospheric perspective, natural light scattering
 - **Natural handheld movements**: The camera should feel like someone is holding their iPhone, with natural shake, imperfect movements, and authentic mobile recording aesthetic
 
-The goal is absolute photorealism - the video should be impossible to distinguish from a real iPhone recording.` : `
+The goal is absolute photorealism - the video should be impossible to distinguish from a real iPhone recording. The background must be completely sharp, just like real iPhone footage.` : `
 **PROFESSIONAL VIDEO MODE:**
 Generate a professional video prompt with high production quality. Focus on clear storytelling, good composition, and professional aesthetics.`;
 
@@ -214,6 +212,8 @@ ${isUGC ? '- The prompt should feel like a natural, authentic iPhone recording -
         { status: 500 }
       );
     }
+
+    // Credit already consumed in verifyAndConsumeCredit
 
     return NextResponse.json({
       success: true,

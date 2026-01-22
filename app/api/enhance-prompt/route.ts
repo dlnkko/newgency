@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
-
-// Helper function to get and validate API key at runtime
-function getGoogleGenAI() {
-  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-  
-  if (!googleApiKey) {
-    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
-  }
-  
-  return new GoogleGenAI({ 
-    apiKey: googleApiKey 
-  });
-}
+import { getGoogleGenAI } from '@/lib/gemini';
+import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,8 +28,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize AI client at runtime
-    const ai = getGoogleGenAI();
+    // Check and consume user credit
+    const creditError = await verifyAndConsumeCredit(request);
+    if (creditError) {
+      return creditError;
+    }
+
+    // Initialize AI client at runtime (uses user's API key if configured)
+    const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
     const { actionText, compositions, composition, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
@@ -203,9 +197,9 @@ This scene has a duration of **${duration} seconds**. You MUST adjust your promp
     // UGC Close-up specific instructions
     const ugcCloseUpInstructions = hasUgcCloseUp
       ? `\n\n**UGC CLOSE-UP MODE (ACTIVE):**
-Since "UGC Close-up" composition is selected, you MUST focus the shot on the product or person in extreme close-up detail. Use shallow depth of field, sharp focus on textures and details, natural shaky camera movements typical of mobile close-up shots, and emphasize the intimate, detailed view of the product or person. The close-up should feel authentic and spontaneous, as if someone is naturally zooming in with their iPhone to show details.`
+Since "UGC Close-up" composition is selected, you MUST focus the shot on the product or person in extreme close-up detail. Sharp focus on textures and details, natural shaky camera movements typical of mobile close-up shots, and emphasize the intimate, detailed view of the product or person. The close-up should feel authentic and spontaneous, as if someone is naturally zooming in with their iPhone to show details. **CRITICAL - Even in close-up, the background (if visible) must remain sharp and in focus, exactly as iPhone cameras record. No blur on background elements.**`
       : `\n\n**UGC SCENE COMPOSITION (NO CLOSE-UP):**
-Since "UGC Close-up" is NOT selected, you MUST show the product and person together in the scene as a whole, maintaining a natural wide-to-medium shot that captures the complete scene context. DO NOT focus exclusively on the product or person in close-up. Instead, show them integrated naturally within the environment, maintaining the full scene context. The shot should feel like a natural, casual mobile recording that captures the entire scene organically, as if recorded from the iPhone of the AI avatar. Keep everything visible together in the frame, respecting the natural composition of the scene while maintaining 100% UGC hyperrealism.`;
+Since "UGC Close-up" is NOT selected, you MUST show the product and person together in the scene as a whole, maintaining a natural wide-to-medium shot that captures the complete scene context. DO NOT focus exclusively on the product or person in close-up. Instead, show them integrated naturally within the environment, maintaining the full scene context. The shot should feel like a natural, casual mobile recording that captures the entire scene organically, as if recorded from the iPhone of the AI avatar. Keep everything visible together in the frame, respecting the natural composition of the scene while maintaining 100% UGC hyperrealism. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
 
     // Lighting-specific instructions for hyperrealistic UGC
     const lightingInstructions = lighting
@@ -223,10 +217,10 @@ The goal is absolute photorealism - the video should be impossible to distinguis
           
           if (lightingLower.includes('night outside')) {
             return `${hyperrealismBase}\n\n**LIGHTING: NIGHT OUTSIDE (HYPERREALISTIC UGC):**
-The lighting MUST be authentic nighttime outdoor lighting as if someone is genuinely recording outside at night with their iPhone. Include: streetlights and car headlights visible in background with realistic light falloff and authentic shadows, natural moonlight casting soft, hyperrealistic shadows with proper edge softness, realistic iPhone recording at night with authentic grain, natural noise, and lower exposure typical of nighttime smartphone footage, warm artificial lights from buildings or streetlamps with realistic color temperature and light diffusion, authentic night atmosphere with hyperrealistic light interaction. The video should look exactly like real nighttime footage recorded on an iPhone - not professional lighting, but genuine iPhone night recording with all its characteristic qualities (authentic grain, natural noise, realistic exposure, hyperrealistic shadows with proper density and softness, genuine light sources with realistic falloff, etc.). Every shadow must be hyperrealistic with natural softness and proper density. Every light source must have realistic diffusion and color temperature.`;
+The lighting MUST be authentic nighttime outdoor lighting as if someone is genuinely recording outside at night with their iPhone. Include: streetlights and car headlights visible in background with realistic light falloff and authentic shadows, natural moonlight casting soft, hyperrealistic shadows with proper edge softness, realistic iPhone recording at night with authentic grain, natural noise, and lower exposure typical of nighttime smartphone footage, warm artificial lights from buildings or streetlamps with realistic color temperature and light diffusion, authentic night atmosphere with hyperrealistic light interaction. The video should look exactly like real nighttime footage recorded on an iPhone - not professional lighting, but genuine iPhone night recording with all its characteristic qualities (authentic grain, natural noise, realistic exposure, hyperrealistic shadows with proper density and softness, genuine light sources with realistic falloff, etc.). Every shadow must be hyperrealistic with natural softness and proper density. Every light source must have realistic diffusion and color temperature. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
           } else if (lightingLower.includes('day outside')) {
             return `${hyperrealismBase}\n\n**LIGHTING: DAY OUTSIDE (HYPERREALISTIC UGC):**
-The lighting MUST be authentic daytime outdoor lighting as if someone is genuinely recording outside during the day with their iPhone. Include: bright and clear natural sunlight with hyperrealistic light diffusion and realistic color temperature, ultra-realistic shadows cast by natural light with proper edge softness, authentic density, and natural shadow color, authentic iPhone recording during daytime with natural color science typical of iPhone cameras, genuine outdoor ambient lighting with realistic light scattering, slight overexposure in bright areas typical of iPhone cameras with authentic highlight rolloff, hyperrealistic light interaction with all surfaces. The video should look exactly like real daytime footage recorded on an iPhone - not professional lighting, but genuine iPhone day recording with all its characteristic qualities (natural shadows with hyperrealistic softness and density, bright sunlight with realistic diffusion, slight overexposure in highlights with authentic rolloff, etc.). Every shadow must be hyperrealistic. Every light interaction must be photorealistic.`;
+The lighting MUST be authentic daytime outdoor lighting as if someone is genuinely recording outside during the day with their iPhone. Include: bright and clear natural sunlight with hyperrealistic light diffusion and realistic color temperature, ultra-realistic shadows cast by natural light with proper edge softness, authentic density, and natural shadow color, authentic iPhone recording during daytime with natural color science typical of iPhone cameras, genuine outdoor ambient lighting with realistic light scattering, slight overexposure in bright areas typical of iPhone cameras with authentic highlight rolloff, hyperrealistic light interaction with all surfaces. The video should look exactly like real daytime footage recorded on an iPhone - not professional lighting, but genuine iPhone day recording with all its characteristic qualities (natural shadows with hyperrealistic softness and density, bright sunlight with realistic diffusion, slight overexposure in highlights with authentic rolloff, etc.). Every shadow must be hyperrealistic. Every light interaction must be photorealistic. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
           } else if (lightingLower.includes('artificial light inside')) {
             return `${hyperrealismBase}\n\n**LIGHTING: ARTIFICIAL LIGHT INSIDE (HYPERREALISTIC UGC - CRITICAL):**
 The lighting MUST be authentic indoor artificial lighting as if someone is genuinely recording inside with artificial lights using their iPhone, while maintaining ABSOLUTE HYPERREALISM in shadows, lights, and textures. Include: 
@@ -236,10 +230,10 @@ The lighting MUST be authentic indoor artificial lighting as if someone is genui
 - **Authentic iPhone recording**: Genuine iPhone color science under artificial lighting, realistic color cast from artificial light sources, natural exposure characteristics, subtle mobile phone grain, authentic depth of field
 - **Realistic indoor ambient light**: Natural light interaction with indoor surfaces, authentic material response to artificial lighting, genuine atmospheric perspective, realistic light scattering in indoor environment
 - **Real-world imperfections**: Natural motion blur, authentic focus characteristics, realistic chromatic aberration, genuine lens characteristics typical of iPhone cameras
-The video should look exactly like real indoor footage recorded on an iPhone with artificial lighting - not professional lighting, but genuine iPhone indoor recording with ABSOLUTE HYPERREALISM. Every shadow must be hyperrealistic with natural softness, proper density, and authentic color. Every light must have realistic diffusion, color temperature, and falloff. Every texture must be photorealistic and respond authentically to the artificial light. The goal is to make it impossible to distinguish from a real iPhone recording.`;
+The video should look exactly like real indoor footage recorded on an iPhone with artificial lighting - not professional lighting, but genuine iPhone indoor recording with ABSOLUTE HYPERREALISM. Every shadow must be hyperrealistic with natural softness, proper density, and authentic color. Every light must have realistic diffusion, color temperature, and falloff. Every texture must be photorealistic and respond authentically to the artificial light. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.** The goal is to make it impossible to distinguish from a real iPhone recording.`;
           } else if (lightingLower.includes('natural light inside')) {
             return `${hyperrealismBase}\n\n**LIGHTING: NATURAL LIGHT INSIDE (HYPERREALISTIC UGC):**
-The lighting MUST be authentic indoor natural lighting as if someone is genuinely recording inside near a window with their iPhone, maintaining absolute hyperrealism. Include: natural window light streaming indoors with hyperrealistic light diffusion and realistic color temperature, soft diffused daylight through windows with authentic light falloff, ultra-realistic indoor natural lighting with proper light scattering, authentic iPhone recording indoors with natural light showing genuine iPhone color science, hyperrealistic shadows from window light with natural edge softness, proper density, and authentic shadow color, bright and airy atmosphere with realistic atmospheric perspective. The video should look exactly like real indoor footage recorded on an iPhone near a window - not professional lighting, but genuine iPhone indoor recording with natural window light and all its characteristic qualities (soft diffused light with hyperrealistic diffusion, window shadows with ultra-realistic softness and density, bright and airy feel with authentic light interaction, etc.). Every shadow must be hyperrealistic. Every light interaction must be photorealistic.`;
+The lighting MUST be authentic indoor natural lighting as if someone is genuinely recording inside near a window with their iPhone, maintaining absolute hyperrealism. Include: natural window light streaming indoors with hyperrealistic light diffusion and realistic color temperature, soft diffused daylight through windows with authentic light falloff, ultra-realistic indoor natural lighting with proper light scattering, authentic iPhone recording indoors with natural light showing genuine iPhone color science, hyperrealistic shadows from window light with natural edge softness, proper density, and authentic shadow color, bright and airy atmosphere with realistic atmospheric perspective. The video should look exactly like real indoor footage recorded on an iPhone near a window - not professional lighting, but genuine iPhone indoor recording with natural window light and all its characteristic qualities (soft diffused light with hyperrealistic diffusion, window shadows with ultra-realistic softness and density, bright and airy feel with authentic light interaction, etc.). Every shadow must be hyperrealistic. Every light interaction must be photorealistic. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
           }
           return hyperrealismBase;
         })()
@@ -317,7 +311,8 @@ The final output must be strictly a single, continuous paragraph, without line b
 - **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color
 - **Photorealistic lighting**: Natural light behavior, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
 - **Hyperrealistic textures**: Every surface must show realistic material properties - skin texture with pores and natural imperfections, fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real and respond authentically to lighting
-- **iPhone camera characteristics**: Subtle mobile phone grain, natural iPhone color science, realistic depth of field with natural bokeh, authentic exposure characteristics, slight lens distortion typical of iPhone cameras
+- **iPhone camera characteristics**: Subtle mobile phone grain, natural iPhone color science, realistic depth of field, authentic exposure characteristics, slight lens distortion typical of iPhone cameras
+- **CRITICAL - NO BACKGROUND BLUR (MANDATORY)**: The background MUST be completely sharp and in focus, exactly as iPhone cameras record in vertical/portrait mode. NEVER apply blur, bokeh, shallow depth of field, or any depth-of-field effects to the background. The entire scene (foreground, subject, and background) must be equally sharp and focused, as if recorded with an iPhone in standard camera mode. This is essential for authentic UGC realism - real iPhone recordings in vertical mode keep everything in focus.
 - **Real-world imperfections**: Natural motion blur during movement, authentic focus breathing, realistic chromatic aberration in high contrast areas, genuine lens flare when appropriate
 - **Environmental authenticity**: Realistic light interaction with surfaces, authentic material response to lighting, genuine atmospheric perspective, natural light scattering
 
@@ -327,7 +322,7 @@ The final output must be strictly a single, continuous paragraph, without line b
 - **Subtle mobile grain**: Authentic iPhone camera grain and noise characteristics
 - **Genuine ambient lighting**: Without professional artifices, exactly as iPhone cameras capture real-world lighting
 
-The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. **CRITICAL PROHIBITION - NO TEXT OVERLAY: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.**
+The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. The background must be completely sharp and in focus, just like real iPhone footage in vertical mode. **CRITICAL PROHIBITION - NO TEXT OVERLAY: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.**
 
 [ACTION TEXT TO ENHANCE]: ${actionText}
 
@@ -534,6 +529,8 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
     } catch (err) {
       console.error('Error extracting usage information:', err);
     }
+
+    // Credit already consumed in verifyAndConsumeCredit
 
     return NextResponse.json({
       success: true,

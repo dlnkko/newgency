@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
+import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
 type StyleType = 'hyperrealistic' | 'studio-quality' | 'design' | null;
 
@@ -12,6 +13,7 @@ export default function ImagePromptGenerator() {
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
   const [costInfo, setCostInfo] = useState<any>(null);
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
@@ -110,6 +112,7 @@ export default function ImagePromptGenerator() {
 
     setIsGenerating(true);
     setError(null);
+    setIsInsufficientCredits(false);
     setGeneratedPrompt('');
     setCostInfo(null);
 
@@ -170,13 +173,19 @@ export default function ImagePromptGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 429) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+        } else if (response.status === 429) {
           setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
+          setIsInsufficientCredits(false);
         } else {
           // Show detailed error message if available
           const errorMessage = data.error || 'Failed to generate prompt';
           const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
           setError(`${errorMessage}${errorDetails}`);
+          setIsInsufficientCredits(false);
         }
         return;
       }
@@ -392,8 +401,15 @@ export default function ImagePromptGenerator() {
           </button>
         </div>
 
+        {/* Insufficient Credits Error */}
+        {isInsufficientCredits && (
+          <div className="mb-6">
+            <InsufficientCreditsError />
+          </div>
+        )}
+
         {/* Error Message */}
-        {error && (
+        {error && !isInsufficientCredits && (
           <div className="mb-6 rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-4 text-sm text-red-200">
             {error}
           </div>

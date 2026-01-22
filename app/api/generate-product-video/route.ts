@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
-
-// Helper function to get and validate API key at runtime
-function getGoogleGenAI() {
-  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-  
-  if (!googleApiKey) {
-    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
-  }
-  
-  return new GoogleGenAI({ 
-    apiKey: googleApiKey 
-  });
-}
+import { getGoogleGenAI } from '@/lib/gemini';
+import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,8 +28,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize AI client at runtime
-    const ai = getGoogleGenAI();
+    // Check and consume user credit
+    const creditError = await verifyAndConsumeCredit(request);
+    if (creditError) {
+      return creditError;
+    }
+
+    // Initialize AI client at runtime (uses user's API key if configured)
+    const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
     const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC } = body;
@@ -345,6 +339,9 @@ Provide your response EXACTLY in this format:
           );
         }
 
+        // Record generation after successful completion
+        await recordGeneration(request);
+
         return NextResponse.json({
           success: true,
           videoPrompt: videoPrompt
@@ -588,6 +585,8 @@ Provide ONLY the optimized prompt as a single continuous paragraph, under 999 ch
       }
 
       console.log('\n=== Prompts generated successfully ===');
+
+      // Credit already consumed in verifyAndConsumeCredit
 
       return NextResponse.json({
         success: true,

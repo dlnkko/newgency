@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
-
-// Helper function to get and validate API key at runtime
-function getGoogleGenAI() {
-  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
-  
-  if (!googleApiKey) {
-    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
-  }
-  
-  return new GoogleGenAI({ 
-    apiKey: googleApiKey 
-  });
-}
+import { getGoogleGenAI } from '@/lib/gemini';
+import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,8 +28,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize AI client at runtime
-    const ai = getGoogleGenAI();
+    // Check and consume user credit
+    const creditError = await verifyAndConsumeCredit(request);
+    if (creditError) {
+      return creditError;
+    }
+
+    // Initialize AI client at runtime (uses user's API key if configured)
+    const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
     const { originalScript, duration } = body;
@@ -153,6 +147,8 @@ Provide ONLY the adapted script as a single continuous paragraph optimized for $
       console.log(`Total cost: $${totalCost.toFixed(6)}`);
       console.log('===================================');
     }
+
+    // Credit already consumed in verifyAndConsumeCredit
 
     return NextResponse.json({
       script: scriptText,

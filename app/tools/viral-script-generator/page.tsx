@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
+import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
 export default function ViralScriptGenerator() {
   const [videoUrl, setVideoUrl] = useState<string>('');
@@ -11,6 +12,7 @@ export default function ViralScriptGenerator() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isScraping, setIsScraping] = useState<boolean>(false);
+  const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
 
   const handleGenerate = async () => {
     if (!videoUrl.trim()) {
@@ -26,6 +28,7 @@ export default function ViralScriptGenerator() {
     setIsGenerating(true);
     setIsScraping(true);
     setError(null);
+    setIsInsufficientCredits(false);
     setGeneratedScript('');
 
     try {
@@ -43,10 +46,16 @@ export default function ViralScriptGenerator() {
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 429) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+        } else if (response.status === 429) {
           setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
+          setIsInsufficientCredits(false);
         } else {
           setError(data.error || 'Failed to generate viral script');
+          setIsInsufficientCredits(false);
         }
         return;
       }
@@ -125,8 +134,15 @@ export default function ViralScriptGenerator() {
           </button>
         </div>
 
+        {/* Insufficient Credits Error */}
+        {isInsufficientCredits && (
+          <div className="mb-6">
+            <InsufficientCreditsError />
+          </div>
+        )}
+
         {/* Error Message */}
-        {error && (
+        {error && !isInsufficientCredits && (
           <div className="mb-6 rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-4 text-sm text-red-200">
             {error}
           </div>

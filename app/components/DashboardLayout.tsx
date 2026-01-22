@@ -3,6 +3,7 @@
 import { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import CreditsCounter from '@/components/CreditsCounter';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -73,9 +74,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Mobile Header with Tool Selector */}
         <div className="md:hidden">
           <div className="mb-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-400/80">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-400/80 mb-3">
               AI Ad Lab
             </p>
+            <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-950/20 to-amber-900/10 p-3 shadow-[0_0_30px_rgba(250,204,21,0.15)]">
+              <CreditsCounter />
+            </div>
           </div>
           
           {/* Mobile Tool Selector */}
@@ -162,6 +166,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <p className="mt-3 text-sm text-zinc-400">
               A focused space for experimenting with next‑gen creative intelligence.
             </p>
+          </div>
+          
+          {/* Credits Counter */}
+          <div className="mb-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-950/20 to-amber-900/10 p-4 shadow-[0_0_30px_rgba(250,204,21,0.15)]">
+            <CreditsCounter />
           </div>
           <nav className="space-y-2 text-sm">
             {tools.map((tool) => {
