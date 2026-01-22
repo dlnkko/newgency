@@ -242,7 +242,6 @@ export async function POST(request: NextRequest) {
               videoError.message?.includes('API_KEY_INVALID') ||
               videoError.status === 400 && videoError.message?.includes('API key')) {
             console.error('❌ Error: API key de Google Gemini no es válida');
-            console.error('API key usada (primeros 10 chars):', googleApiKey ? `${googleApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
             
             return NextResponse.json(
               { 
@@ -759,7 +758,6 @@ export async function POST(request: NextRequest) {
           videoError.message?.includes('API_KEY_INVALID') ||
           videoError.status === 400 && videoError.message?.includes('API key')) {
         console.error('❌ Error: API key de Google Gemini no es válida');
-        console.error('API key usada (primeros 10 chars):', googleApiKey ? `${googleApiKey.substring(0, 10)}...` : 'NO DEFINIDA');
         
         return NextResponse.json(
           { 
