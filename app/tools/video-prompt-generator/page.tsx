@@ -176,7 +176,7 @@ export default function VideoPromptGenerator() {
       }
 
       return enhancedText;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error enhancing prompt:', error);
       // Remove enhancing state on error
       if (updateState && sceneId !== undefined) {
@@ -184,7 +184,11 @@ export default function VideoPromptGenerator() {
           scene.id === sceneId ? { ...scene, isEnhancing: false } : scene
         ));
       }
-      return actionText; // Return original text on error
+      // If it's a credit error, propagate it
+      if (error.message && error.message.includes('Insufficient credits')) {
+        throw error;
+      }
+      return actionText; // Return original text on other errors
     }
   };
 
@@ -263,16 +267,25 @@ export default function VideoPromptGenerator() {
             // Pass all scenes and current index for consistency
             // If duration is 1 (default), pass null to not include it in prompt
             const effectiveDuration = scene.duration === 1 ? null : scene.duration;
-            finalAction = await enhanceActionWithAI(
-              finalAction, 
-              scene.composition, 
-              scene.lighting,
-              effectiveDuration,
-              false,
-              scene.id,
-              scenes,
-              index
-            );
+            try {
+              finalAction = await enhanceActionWithAI(
+                finalAction, 
+                scene.composition, 
+                scene.lighting,
+                effectiveDuration,
+                false,
+                scene.id,
+                scenes,
+                index
+              );
+            } catch (enhanceError: any) {
+              // If error is about insufficient credits, throw it to stop the process
+              if (enhanceError.message && enhanceError.message.includes('Insufficient credits')) {
+                throw enhanceError;
+              }
+              // For other errors, use original text
+              console.error('Error enhancing scene:', enhanceError);
+            }
           } else if (!finalAction) {
             // If not both parameters but one exists, use default text
             if (scene.composition && scene.composition.length > 0) {
@@ -307,11 +320,12 @@ export default function VideoPromptGenerator() {
       if (error.message && error.message.includes('Insufficient credits')) {
         setIsInsufficientCredits(true);
         setError(null);
+        setGeneratedPrompt('');
       } else {
         setError('Error generating prompt. Please try again.');
         setIsInsufficientCredits(false);
+        setGeneratedPrompt('');
       }
-      setGeneratedPrompt('');
     } finally {
       setIsGenerating(false);
     }
@@ -364,8 +378,14 @@ export default function VideoPromptGenerator() {
       setGeneratedPrompt(data.prompt || '');
     } catch (error: any) {
       console.error('Error generating automatic prompt:', error);
-      setError(`Error generating prompt: ${error.message || 'Please try again.'}`);
-      setIsInsufficientCredits(false);
+      // Check if it's a credit error from the response
+      if (error.message && error.message.includes('Insufficient credits')) {
+        setIsInsufficientCredits(true);
+        setError(null);
+      } else {
+        setError(`Error generating prompt: ${error.message || 'Please try again.'}`);
+        setIsInsufficientCredits(false);
+      }
       setGeneratedPrompt('');
     } finally {
       setIsGenerating(false);
@@ -1020,7 +1040,7 @@ export default function VideoPromptGenerator() {
         )}
 
         {/* Generated Prompt - Show when prompt is generated */}
-        {((mode === 'manual' && currentStep === 'generate') || mode === 'automatic') && generatedPrompt && (
+        {((mode === 'manual' && currentStep === 'generate') || mode === 'automatic') && generatedPrompt && !isInsufficientCredits && (
           <div className="rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-8 shadow-[0_0_50px_rgba(250,204,21,0.2)]">
             <div className="mb-6 flex items-center justify-between border-b border-zinc-800/50 pb-4">
               <div>

@@ -80,7 +80,7 @@ export default function GenerationsCounter({ className = '' }: GenerationsCounte
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-400 border-t-transparent"></div>
-        <span className="text-xs text-zinc-400">Cargando...</span>
+        <span className="text-xs text-zinc-400">Loading...</span>
       </div>
     );
   }
