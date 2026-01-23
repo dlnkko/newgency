@@ -8,6 +8,8 @@ import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 export default function ViralScriptGenerator() {
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [productDescription, setProductDescription] = useState<string>('');
+  const [creativeAngle, setCreativeAngle] = useState<string>('');
+  const [duration, setDuration] = useState<number | null>(null);
   const [generatedScript, setGeneratedScript] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,8 @@ export default function ViralScriptGenerator() {
         body: JSON.stringify({
           videoUrl,
           productDescription,
+          creativeAngle: creativeAngle.trim() || null,
+          duration: duration,
         }),
       });
 
@@ -121,6 +125,50 @@ export default function ViralScriptGenerator() {
             disabled={isGenerating}
             className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
           />
+        </div>
+
+        {/* Creative Angle Input (Optional) */}
+        <div className="mb-8">
+          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+            Creative Angle <span className="text-xs font-normal text-zinc-500">(Optional)</span>
+          </label>
+          <textarea
+            value={creativeAngle}
+            onChange={(e) => setCreativeAngle(e.target.value)}
+            placeholder="Enter a creative angle or approach for the script... (e.g., 'Focus on the transformation story', 'Emphasize the before/after comparison', 'Highlight the unique ingredient story', 'Tell it from a customer testimonial perspective')"
+            rows={4}
+            disabled={isGenerating}
+            className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+          />
+          <p className="mt-2 text-xs text-zinc-500">
+            Optional: Provide a creative direction or angle. The script will be generated based on this angle while maintaining the format and style of the scraped video.
+          </p>
+        </div>
+
+        {/* Duration Selection */}
+        <div className="mb-8">
+          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+            Video Duration
+          </label>
+          <div className="grid grid-cols-4 gap-3">
+            {[15, 30, 45, 60].map((seconds) => (
+              <button
+                key={seconds}
+                onClick={() => setDuration(duration === seconds ? null : seconds)}
+                disabled={isGenerating}
+                className={`rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all ${
+                  duration === seconds
+                    ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_20px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30'
+                    : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {seconds}s
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">
+            Select the target duration for your video. The script will be adapted to fit within this timeframe.
+          </p>
         </div>
 
         {/* Generate Button */}

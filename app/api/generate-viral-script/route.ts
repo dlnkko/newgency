@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
     
     const body = await request.json();
-    const { videoUrl, productDescription } = body;
+    const { videoUrl, productDescription, creativeAngle, duration } = body;
 
     if (!videoUrl || !videoUrl.trim()) {
       return NextResponse.json(
@@ -156,6 +156,33 @@ export async function POST(request: NextRequest) {
 
     console.log('Transcript extracted, length:', transcript.length);
 
+    // Build duration instructions
+    const durationInstructions = duration && duration > 0
+      ? `\n\n**CRITICAL DURATION CONSTRAINT:**
+The script MUST be adapted to fit within **${duration} seconds** of video time. This is approximately ${Math.round(duration * 2.5)}-${Math.round(duration * 3)} words when spoken at a natural pace (2.5-3 words per second).
+
+**Duration Adaptation Requirements:**
+- **For ${duration}s videos**: The script must be concise and impactful. Every word must count.
+- **Pacing**: Adjust the pacing to fit the ${duration}-second timeframe. If the original is longer, condense it. If shorter, expand it naturally.
+- **Key Elements**: Prioritize the most important hooks, benefits, and calls-to-action within the time constraint.
+- **Natural Flow**: The script should feel complete and natural within ${duration} seconds - not rushed, not stretched.
+- **Word Count Target**: Aim for approximately ${Math.round(duration * 2.5)}-${Math.round(duration * 3)} words total to fit comfortably in ${duration} seconds when spoken naturally.`
+      : '';
+
+    // Build creative angle instructions
+    const creativeAngleInstructions = creativeAngle && creativeAngle.trim()
+      ? `\n\n**CREATIVE ANGLE (MANDATORY):**
+The user has provided a specific creative angle that you MUST follow:
+"${creativeAngle}"
+
+**Your Task:**
+- The script MUST be generated based on this creative angle
+- Maintain the format, structure, and style of the original scraped video
+- Incorporate the product description naturally within this creative angle
+- The creative angle should guide the narrative approach, tone, and focus of the script
+- While following the creative angle, still maintain the storytelling DNA and energy of the original video format`
+      : '';
+
     // Transform transcript using Gemini 3
     const transformationPrompt = `You are an expert creative writer specializing in viral marketing scripts. Your task is to creatively transform a viral video transcript into a new, improved script for the user's product while maintaining the essence, energy, and storytelling magic of the original.
 
@@ -163,7 +190,7 @@ export async function POST(request: NextRequest) {
 ${transcript}
 
 **Product Description:**
-${productDescription}
+${productDescription}${creativeAngleInstructions}${durationInstructions}
 
 **Your Creative Task:**
 Transform the original viral video transcript into a fresh, creative script for the user's product. You MUST:
@@ -178,7 +205,7 @@ Transform the original viral video transcript into a fresh, creative script for 
 
 5. **Adapt Hooks and Body Creatively** - Transform the opening hook to be attention-grabbing for the user's product, but maintain the same hook style and energy. Adapt the body content to showcase the product's unique value while maintaining the narrative flow.
 
-6. **Keep Natural Language** - The script should feel authentic, conversational, and natural - like a real person enthusiastically talking about the product.
+6. **Keep Natural Language** - The script should feel authentic, conversational, and natural - like a real person enthusiastically talking about the product.${creativeAngleInstructions ? '\n\n7. **Follow Creative Angle** - The script must be generated based on the provided creative angle while maintaining the format and style of the original video.' : ''}${durationInstructions ? '\n\n8. **Respect Duration** - The script must fit within the specified duration when spoken naturally.' : ''}
 
 **Critical Requirements:**
 - **NEVER copy exact phrases or sentences** - Everything must be creatively rewritten
@@ -188,10 +215,10 @@ Transform the original viral video transcript into a fresh, creative script for 
 - The script should feel fresh and creative, not like a template
 - Maintain the original's storytelling magic but with new, improved content
 - Do NOT add analysis or explanations - just output the transformed script
-- **CRITICAL FORMATTING**: The script must be output as a SINGLE, CONTINUOUS PARAGRAPH with no line breaks, no bullet points, and no special formatting. Just one flowing paragraph of text.
+- **CRITICAL FORMATTING**: The script must be output as a SINGLE, CONTINUOUS PARAGRAPH with no line breaks, no bullet points, and no special formatting. Just one flowing paragraph of text.${durationInstructions ? `\n- **WORD COUNT**: The script must be approximately ${Math.round((duration || 30) * 2.5)}-${Math.round((duration || 30) * 3)} words to fit in ${duration} seconds when spoken naturally.` : ''}
 
 **Output:**
-Provide ONLY the creatively transformed script as a single continuous paragraph. It should be a fresh, improved version that captures the original's energy and structure but is completely rewritten with creative, unique language focused on the user's product. No headers, no explanations, no line breaks - just the script text flowing naturally in one paragraph.`;
+Provide ONLY the creatively transformed script as a single continuous paragraph. It should be a fresh, improved version that captures the original's energy and structure but is completely rewritten with creative, unique language focused on the user's product.${creativeAngleInstructions ? ' The script must follow the provided creative angle.' : ''}${durationInstructions ? ` The script must fit within ${duration} seconds when spoken.` : ''} No headers, no explanations, no line breaks - just the script text flowing naturally in one paragraph.`;
 
     let result;
     try {

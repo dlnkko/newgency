@@ -10,7 +10,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadCredits();
-    // Recargar créditos cada 30 segundos
+    // Reload credits every 30 seconds
     const interval = setInterval(loadCredits, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -35,7 +35,7 @@ export default function SettingsPage() {
     if (purchaseUrl) {
       window.open(purchaseUrl, '_blank');
     } else {
-      alert('URL de compra no configurada. Por favor, contacta al administrador.');
+      alert('Purchase URL not configured. Please contact the administrator.');
     }
   };
 
@@ -52,16 +52,16 @@ export default function SettingsPage() {
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Volver al Dashboard
+          Back to Dashboard
         </Link>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400/70">
-          Configuración
+          Settings
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-zinc-50 sm:text-4xl">
-          Créditos
+          Credits
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-          Gestiona tus créditos para usar las herramientas de IA. Cada generación consume 1 crédito.
+          Manage your credits to use AI tools. Each generation consumes 1 credit.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export default function SettingsPage() {
                 <h3 className={`text-2xl font-bold mb-2 ${
                   hasCredits ? 'text-green-300' : 'text-red-300'
                 }`}>
-                  {hasCredits ? 'Tienes Créditos Disponibles' : 'Sin Créditos'}
+                  {hasCredits ? 'You Have Credits Available' : 'No Credits'}
                 </h3>
                 <div className="mt-4">
                   <p className={`text-4xl font-bold mb-2 ${
@@ -108,9 +108,9 @@ export default function SettingsPage() {
                   <p className="text-sm text-zinc-400">
                     {hasCredits 
                       ? isLow 
-                        ? 'Te quedan pocos créditos. Considera comprar más para continuar usando las herramientas.'
-                        : 'Créditos disponibles para generar contenido.'
-                      : 'Necesitas comprar créditos para usar las herramientas de IA.'}
+                        ? 'You have few credits left. Consider buying more to continue using the tools.'
+                        : 'Credits available to generate content.'
+                      : 'You need to purchase credits to use AI tools.'}
                   </p>
                 </div>
               </div>
@@ -122,10 +122,10 @@ export default function SettingsPage() {
         <div className="rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-amber-950/30 via-amber-900/20 to-amber-950/30 p-8 shadow-[0_0_60px_rgba(250,204,21,0.3)] backdrop-blur-xl">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-amber-200 mb-2">
-              Comprar Créditos
+              Buy Credits
             </h2>
             <p className="text-sm text-zinc-300">
-              500 créditos por $39 - Cada generación consume 1 crédito
+              500 credits for $39 - Each generation consumes 1 credit
             </p>
           </div>
 
@@ -144,23 +144,23 @@ export default function SettingsPage() {
 
         {/* Information Section */}
         <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-          <h3 className="mb-4 text-lg font-bold text-amber-300">Información sobre Créditos</h3>
+          <h3 className="mb-4 text-lg font-bold text-amber-300">Credit Information</h3>
           <ul className="space-y-3 text-sm text-zinc-400">
             <li className="flex items-start gap-3">
               <span className="mt-1 text-amber-400">•</span>
-              <span>Cada generación de contenido consume 1 crédito.</span>
+              <span>Each content generation consumes 1 credit.</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-1 text-amber-400">•</span>
-              <span>Los créditos se agregan automáticamente después de una compra exitosa.</span>
+              <span>Credits are added automatically after a successful purchase.</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-1 text-amber-400">•</span>
-              <span>El balance de créditos se actualiza en tiempo real.</span>
+              <span>Credit balance updates in real-time.</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-1 text-amber-400">•</span>
-              <span>Si te quedas sin créditos, podrás comprar más en cualquier momento.</span>
+              <span>If you run out of credits, you can purchase more at any time.</span>
             </li>
           </ul>
         </div>
