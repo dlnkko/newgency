@@ -246,6 +246,7 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+      }
       } catch (scrapeError: any) {
         console.error('Error scraping transcript:', scrapeError);
         return NextResponse.json(
