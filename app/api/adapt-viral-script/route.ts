@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!duration || ![15, 20, 30].includes(duration)) {
+    if (!duration || ![15, 30, 45, 60].includes(duration)) {
       return NextResponse.json(
-        { error: 'Duration must be 15, 20, or 30 seconds' },
+        { error: 'Duration must be 15, 30, 45, or 60 seconds' },
         { status: 400 }
       );
     }

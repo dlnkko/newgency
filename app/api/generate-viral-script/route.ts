@@ -50,11 +50,12 @@ export async function POST(request: NextRequest) {
     const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
     
     const body = await request.json();
-    const { videoUrl, productDescription, creativeAngle, duration } = body;
+    const { videoUrl, metaAdUrl, productDescription, creativeAngle, duration } = body;
 
-    if (!videoUrl || !videoUrl.trim()) {
+    // Either videoUrl or metaAdUrl must be provided
+    if ((!videoUrl || !videoUrl.trim()) && (!metaAdUrl || !metaAdUrl.trim())) {
       return NextResponse.json(
-        { error: 'Video URL is required' },
+        { error: 'Either Video URL or Meta Ad URL is required' },
         { status: 400 }
       );
     }
@@ -66,21 +67,131 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Detect platform and extract transcript
-    const isInstagram = videoUrl.includes('instagram.com/reel') || videoUrl.includes('instagram.com/p/');
-    const isTikTok = videoUrl.includes('tiktok.com');
-
-    if (!isInstagram && !isTikTok) {
-      return NextResponse.json(
-        { error: 'Invalid URL. Please provide an Instagram Reel or TikTok URL.' },
-        { status: 400 }
-      );
-    }
-
     let transcript = '';
-    
-    try {
-      if (isInstagram) {
+
+    // Handle Meta Ad URL first (if provided)
+    if (metaAdUrl && metaAdUrl.trim()) {
+      try {
+        // Extract ad ID from Meta Ad URL
+        let adId: string | null = null;
+        try {
+          const urlObj = new URL(metaAdUrl);
+          adId = urlObj.searchParams.get('id');
+        } catch (urlError) {
+          const idMatch = metaAdUrl.match(/[?&]id=(\d+)/);
+          if (idMatch) {
+            adId = idMatch[1];
+          }
+        }
+
+        if (!adId) {
+          return NextResponse.json(
+            { error: 'Could not extract ad ID from URL. Make sure the URL has the correct format: https://www.facebook.com/ads/library/?id=XXXXX' },
+            { status: 400 }
+          );
+        }
+
+        // Call ScrapeCreators API to get Meta Ad transcript
+        const response = await axios.get(
+          `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}`,
+          {
+            headers: {
+              'x-api-key': scrapeCreatorsApiKey,
+              'get_transcript': 'true'
+            },
+            timeout: 30000,
+            validateStatus: (status) => status < 500
+          }
+        );
+
+        if (response.status === 402) {
+          return NextResponse.json(
+            {
+              error: 'No credits in ScrapeCreators',
+              details: 'Your ScrapeCreators account does not have available credits. Please purchase more credits at https://scrapecreators.com'
+            },
+            { status: 402 }
+          );
+        }
+
+        if (response.status >= 400) {
+          return NextResponse.json(
+            {
+              error: 'Error getting ad data',
+              details: response.data?.message || response.data?.error || 'Could not access Meta Ad'
+            },
+            { status: response.status }
+          );
+        }
+
+        let data = response.data;
+        
+        // Handle nested message structure (similar to analyze route)
+        if (data && typeof data === 'object' && 'message' in data && !('snapshot' in data)) {
+          const messageData = data.message;
+          if (messageData && typeof messageData === 'object' && 'snapshot' in messageData) {
+            data = messageData;
+          } else if (typeof messageData === 'string') {
+            try {
+              const parsed = JSON.parse(messageData);
+              if (parsed && typeof parsed === 'object' && 'snapshot' in parsed) {
+                data = parsed;
+              }
+            } catch (e) {
+              // Continue with original data
+            }
+          }
+        }
+        
+        // Extract transcript from Meta Ad response - check multiple possible locations
+        if (data?.snapshot?.transcript) {
+          transcript = data.snapshot.transcript;
+        } else if (data?.snapshot?.videos?.[0]?.transcript) {
+          transcript = data.snapshot.videos[0].transcript;
+        } else if (data?.snapshot?.video?.transcript) {
+          transcript = data.snapshot.video.transcript;
+        } else if (data?.transcript) {
+          transcript = data.transcript;
+        } else if (data?.snapshot?.cards?.[0]?.transcript) {
+          transcript = data.snapshot.cards[0].transcript;
+        } else if (data?.snapshot?.cards?.[0]?.video?.transcript) {
+          transcript = data.snapshot.cards[0].video.transcript;
+        } else {
+          return NextResponse.json(
+            { error: 'Could not extract transcript from Meta Ad. The ad may not have a video with captions.' },
+            { status: 400 }
+          );
+        }
+        
+        // Ensure transcript is a string
+        if (typeof transcript !== 'string') {
+          transcript = String(transcript || '').trim();
+        }
+      } catch (scrapeError: any) {
+        console.error('Error scraping Meta Ad:', scrapeError);
+        return NextResponse.json(
+          { 
+            error: 'Failed to extract transcript from Meta Ad',
+            details: scrapeError.response?.data?.message || scrapeError.message || 'Could not access Meta Ad transcript'
+          },
+          { status: 500 }
+        );
+      }
+    } else if (videoUrl && videoUrl.trim()) {
+      // Handle regular video URL (Instagram/TikTok)
+      // Detect platform and extract transcript
+      const isInstagram = videoUrl.includes('instagram.com/reel') || videoUrl.includes('instagram.com/p/');
+      const isTikTok = videoUrl.includes('tiktok.com');
+
+      if (!isInstagram && !isTikTok) {
+        return NextResponse.json(
+          { error: 'Invalid URL. Please provide an Instagram Reel or TikTok URL.' },
+          { status: 400 }
+        );
+      }
+
+      try {
+        if (isInstagram) {
         // Instagram Reel transcript
         const response = await axios.get(
           `https://api.scrapecreators.com/v2/instagram/media/transcript?url=${encodeURIComponent(videoUrl)}`,
@@ -135,16 +246,16 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+      } catch (scrapeError: any) {
+        console.error('Error scraping transcript:', scrapeError);
+        return NextResponse.json(
+          { 
+            error: 'Failed to extract transcript from video',
+            details: scrapeError.response?.data?.message || scrapeError.message || 'Could not access video transcript'
+          },
+          { status: 500 }
+        );
       }
-    } catch (scrapeError: any) {
-      console.error('Error scraping transcript:', scrapeError);
-      return NextResponse.json(
-        { 
-          error: 'Failed to extract transcript from video',
-          details: scrapeError.response?.data?.message || scrapeError.message || 'Could not access video transcript'
-        },
-        { status: 500 }
-      );
     }
 
     if (!transcript || !transcript.trim()) {
