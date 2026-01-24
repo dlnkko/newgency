@@ -5,7 +5,7 @@ import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
 import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
-type StyleType = 'hyperrealistic' | 'studio-quality' | 'design' | null;
+type StyleType = 'hyperrealistic' | 'studio-quality' | 'design' | 'copy-image' | null;
 
 export default function ImagePromptGenerator() {
   const [description, setDescription] = useState<string>('');
@@ -106,7 +106,12 @@ export default function ImagePromptGenerator() {
     }
 
     if (!selectedStyle) {
-      setError('Please select a style (Hyperrealistic, Studio Quality, or Design)');
+      setError('Please select a style (Hyperrealistic, Studio Quality, Design, or Copy Image)');
+      return;
+    }
+
+    if (selectedStyle === 'copy-image' && !referenceImage) {
+      setError('Please upload a reference image for Copy Image mode');
       return;
     }
 
@@ -246,7 +251,9 @@ export default function ImagePromptGenerator() {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what you want in the image. For example: 'A person using headphones while exercising in a gym', 'A skincare product on a bathroom counter with natural lighting', 'An infographic showing the benefits of a supplement'"
+            placeholder={selectedStyle === 'copy-image' 
+              ? "Describe what you want to change or make different in the reference image. For example: 'Change the background to a beach scene', 'Replace the person with a different person', 'Change the product color to blue', 'Make it more vibrant and colorful', 'Change the lighting to sunset'"
+              : "Describe what you want in the image. For example: 'A person using headphones while exercising in a gym', 'A skincare product on a bathroom counter with natural lighting', 'An infographic showing the benefits of a supplement'"}
             rows={6}
             disabled={isGenerating}
             className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
@@ -258,7 +265,7 @@ export default function ImagePromptGenerator() {
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
             Select Style
           </label>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <button
               onClick={() => setSelectedStyle('hyperrealistic')}
               disabled={isGenerating}
@@ -306,21 +313,39 @@ export default function ImagePromptGenerator() {
                 Creative designs like infographics or static ads. Human-made quality with attention to every detail, colors, and composition.
               </p>
             </button>
+
+            <button
+              onClick={() => setSelectedStyle('copy-image')}
+              disabled={isGenerating}
+              className={`rounded-xl border-2 p-6 text-left transition-all ${
+                selectedStyle === 'copy-image'
+                  ? 'border-green-500/80 bg-gradient-to-br from-green-500/20 to-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.2)] ring-1 ring-green-500/30'
+                  : 'border-zinc-700/50 bg-zinc-800/30 hover:border-green-500/50 hover:bg-zinc-800/50'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <div className="mb-2 text-2xl">🔄</div>
+              <h3 className="mb-2 text-lg font-bold text-zinc-50">Copy Image</h3>
+              <p className="text-xs text-zinc-400">
+                Upload a reference image and describe what you want to change or make different. The AI will iterate on the image while maintaining its core characteristics.
+              </p>
+            </button>
           </div>
         </div>
 
-        {/* Reference Image Upload (for design, studio-quality, and hyperrealistic) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic') && (
+        {/* Reference Image Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-              Imagen de Referencia (Opcional)
+              Reference Image (Optional)
             </label>
             <p className="mb-3 text-xs text-zinc-400">
               {selectedStyle === 'hyperrealistic' 
-                ? 'Sube una imagen de referencia (por ejemplo, una imagen hiperrealista). La IA analizará la imagen y creará un prompt detallado que describe su estilo, luz, textura y estética. Luego usará ese prompt como referencia para crear el prompt final basado en tu descripción, incorporando el mismo nivel de hiperrealismo, iluminación y calidad de texturas.'
+                ? 'Upload a reference image (for example, a hyperrealistic image). The AI will analyze the image and create a detailed prompt describing its style, light, texture, and aesthetics. Then it will use that prompt as a reference to create the final prompt based on your description, incorporating the same level of hyperrealism, lighting, and texture quality.'
                 : selectedStyle === 'studio-quality'
-                ? 'Sube una imagen de referencia (por ejemplo, una foto de estudio profesional). La IA analizará la imagen y creará un prompt detallado que describe su estilo, iluminación, composición y estética. Luego usará ese prompt como referencia para crear el prompt final basado en tu descripción, incorporando el mismo estilo de iluminación, composición y calidad profesional.'
-                : 'Sube una imagen de referencia (por ejemplo, un diseño o infografía). La IA analizará la imagen y creará un prompt detallado que describe su estilo de diseño, colores, tipografía y composición. Luego usará ese prompt como referencia para crear el prompt final basado en tu descripción, incorporando el mismo estilo de diseño, paleta de colores y estética visual.'}
+                ? 'Upload a reference image (for example, a professional studio photo). The AI will analyze the image and create a detailed prompt describing its style, lighting, composition, and aesthetics. Then it will use that prompt as a reference to create the final prompt based on your description, incorporating the same lighting style, composition, and professional quality.'
+                : selectedStyle === 'copy-image'
+                ? 'Upload a reference image that you want to iterate on. The AI will analyze the image and create a prompt that varies it based on what you want to change or make different, while maintaining the core visual characteristics.'
+                : 'Upload a reference image (for example, a design or infographic). The AI will analyze the image and create a detailed prompt describing its design style, colors, typography, and composition. Then it will use that prompt as a reference to create the final prompt based on your description, incorporating the same design style, color palette, and visual aesthetics.'}
             </p>
             <div className="space-y-4">
               {!referenceImagePreview ? (
@@ -431,11 +456,13 @@ export default function ImagePromptGenerator() {
                     {selectedStyle === 'hyperrealistic' && 'Hyperrealistic Image Prompt'}
                     {selectedStyle === 'studio-quality' && 'Studio Quality Image Prompt'}
                     {selectedStyle === 'design' && 'Design Image Prompt'}
+                    {selectedStyle === 'copy-image' && 'Copy Image Prompt'}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1">
                     Style: {selectedStyle === 'hyperrealistic' && 'Hyperrealistic'}
                     {selectedStyle === 'studio-quality' && 'Studio Quality'}
                     {selectedStyle === 'design' && 'Design'}
+                    {selectedStyle === 'copy-image' && 'Copy Image'}
                   </p>
                 </div>
                 <CopyButton

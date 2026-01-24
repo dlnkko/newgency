@@ -47,16 +47,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!style || !['hyperrealistic', 'studio-quality', 'design'].includes(style)) {
+    if (!style || !['hyperrealistic', 'studio-quality', 'design', 'copy-image'].includes(style)) {
       return NextResponse.json(
-        { error: 'Valid style is required (hyperrealistic, studio-quality, or design)' },
+        { error: 'Valid style is required (hyperrealistic, studio-quality, design, or copy-image)' },
         { status: 400 }
       );
     }
 
-    // Handle reference image upload if provided (for design, studio-quality, and hyperrealistic styles)
+    // Copy Image mode requires a reference image
+    if (style === 'copy-image' && !referenceImage) {
+      return NextResponse.json(
+        { error: 'Reference image is required for Copy Image mode' },
+        { status: 400 }
+      );
+    }
+
+    // Handle reference image upload if provided (for design, studio-quality, hyperrealistic, and copy-image styles)
     let referenceImageFile = null;
-    if (referenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic')) {
+    if (referenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
       try {
         console.log('Uploading reference image to Gemini Files...');
         const referenceBuffer = Buffer.from(referenceImage.split(',')[1], 'base64');
@@ -550,6 +558,69 @@ You MUST generate a prompt that creates professional design work (infographics, 
 - **Creative but functional**: Creative and visually appealing while maintaining clarity and functionality${referenceImageNote}
 
 The image should look like professional design work - infographics, static ads, or creative designs that a human designer would create, with careful attention to every detail, color, composition, and element.`;
+    } else if (style === 'copy-image') {
+      // Copy Image mode: iterate/vary the reference image based on user's description
+      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (BASE FOR ITERATION):**
+A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+
+**Reference Image Prompt (this is the base image):**
+"${referenceImagePrompt}"
+
+**Your Task:**
+You MUST create a prompt that iterates on the reference image based on what the user wants to change: "${description}"
+
+**CRITICAL REQUIREMENTS:**
+- **Maintain core characteristics**: Keep the fundamental visual style, quality, and aesthetic of the reference image (lighting style, texture quality, color palette, composition approach, overall aesthetic)
+- **Apply requested changes**: Modify ONLY what the user specifically wants to change or make different
+- **Preserve what's not mentioned**: Keep everything else from the reference image that the user didn't mention changing
+- **Natural variation**: The changes should feel natural and integrated, not forced or artificial
+- **Same quality level**: Maintain the same level of detail, quality, and visual sophistication as the reference
+
+**Examples:**
+- If user says "change background to beach": Keep the subject, lighting, colors, and style, but change the background to a beach scene
+- If user says "make it more vibrant": Keep everything the same but increase color saturation and vibrancy
+- If user says "change person to different person": Keep the pose, lighting, composition, and style, but change the person
+- If user says "change lighting to sunset": Keep everything else but change the lighting to sunset lighting
+
+**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining all other characteristics.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (BASE FOR ITERATION):**
+A reference image has been attached. You MUST:
+
+**Your Task:**
+Create a prompt that iterates on the reference image based on what the user wants to change: "${description}"
+
+**CRITICAL REQUIREMENTS:**
+- **Analyze the reference image** to understand its visual characteristics (lighting, composition, colors, textures, style, aesthetic)
+- **Maintain core characteristics**: Keep the fundamental visual style, quality, and aesthetic of the reference image
+- **Apply requested changes**: Modify ONLY what the user specifically wants to change or make different
+- **Preserve what's not mentioned**: Keep everything else from the reference image that the user didn't mention changing
+- **Natural variation**: The changes should feel natural and integrated, not forced or artificial
+- **Same quality level**: Maintain the same level of detail, quality, and visual sophistication as the reference
+
+**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining all other characteristics.` : '';
+
+      styleInstructions = `**COPY IMAGE MODE - ITERATE ON REFERENCE IMAGE:**
+
+You are creating a prompt that will iterate/vary a reference image based on specific changes requested by the user.
+
+**User's Requested Changes:**
+"${description}"
+
+**Your Task:**
+Generate a detailed prompt that:
+1. **Starts with the reference image** as the base (maintain its core visual characteristics)
+2. **Applies the requested changes** from the user's description
+3. **Preserves everything else** that wasn't mentioned for change
+4. **Maintains the same quality and style** as the reference image
+
+**Critical Requirements:**
+- The prompt must describe an image that looks like the reference image but with the requested modifications
+- Maintain the reference image's lighting style, texture quality, color palette, composition approach, and overall aesthetic (unless specifically asked to change them)
+- Only modify what the user explicitly wants to change
+- The result should feel like a natural variation of the reference image, not a completely different image
+- Include all technical details needed to generate the image with the same quality as the reference${referenceImageNote}
+
+**Output Format:**
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text ready to use.`;
     }
 
     // Build conditional parts before template literal to avoid parsing issues
@@ -557,12 +628,16 @@ The image should look like professional design work - infographics, static ads, 
       ? 'hyperrealistic' 
       : style === 'studio-quality' 
         ? 'professional studio photography' 
+        : style === 'copy-image'
+        ? 'image iteration and variation'
         : 'professional design';
     
     const styleApplicationNote = style === 'hyperrealistic' 
       ? 'IF UGC is detected: Use iPhone/hyperrealistic UGC style. IF UGC is NOT detected: Use cinematic, professional, or high-production quality (still hyperrealistic, but NOT iPhone/UGC).'
       : style === 'studio-quality' 
         ? 'Use professional studio photography quality'
+        : style === 'copy-image'
+        ? 'Iterate on the reference image with the requested changes while maintaining core characteristics'
         : 'Use professional design quality';
     
     const criticalRequirementsNote = style === 'hyperrealistic' 
@@ -574,7 +649,10 @@ The image should look like professional design work - infographics, static ads, 
       ? '- ' + criticalRequirementsNote + '\n'
       : '';
 
-    const promptGenerationRequest = `You are an expert AI prompt engineer specializing in ${styleSpecialization} image generation. Your task is to create a detailed, comprehensive prompt for AI image generation.
+    // For copy-image, use a different prompt structure
+    const promptGenerationRequest = style === 'copy-image' 
+      ? styleInstructions // For copy-image, styleInstructions already contains the full prompt
+      : `You are an expert AI prompt engineer specializing in ${styleSpecialization} image generation. Your task is to create a detailed, comprehensive prompt for AI image generation.
 
 **User's Description:**
 "${description}"
@@ -603,12 +681,15 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
 
     let result;
     try {
-      // Build parts array - include image if provided and we don't have a reference prompt
-      // If we have a reference prompt, we don't need to include the image again
+      // Build parts array - include image if provided
+      // For copy-image mode, always include the image even if we have a reference prompt
+      // For other modes, only include image if we don't have a reference prompt (fallback case)
       const parts: any[] = [];
       
-      // Only include the image if we don't have a reference prompt (fallback case)
-      if (referenceImageFile && !referenceImagePrompt) {
+      // Include the image if:
+      // 1. We're in copy-image mode (always include the image)
+      // 2. We don't have a reference prompt (fallback case for other modes)
+      if (referenceImageFile && (style === 'copy-image' || !referenceImagePrompt)) {
         console.log('Adding reference image to prompt (no reference prompt available):', {
           uri: referenceImageFile.uri?.substring(0, 50) + '...',
           mimeType: referenceImageFile.mimeType,
