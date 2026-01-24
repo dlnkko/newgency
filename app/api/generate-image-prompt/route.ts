@@ -170,24 +170,31 @@ export async function POST(request: NextRequest) {
 
 **Your Task:**
 Create an extremely detailed prompt that describes:
-1. **Visual Style**: Is it hyperrealistic, studio-quality, design, illustration, etc.? Describe the exact aesthetic
-2. **Lighting**: Type of lighting (natural, studio, artificial, flash, etc.), direction, intensity, color temperature, shadows, highlights
-3. **Textures**: All surface textures visible (skin, fabric, materials, surfaces) - describe their appearance, quality, and characteristics
-4. **Colors**: Color palette, color temperature, saturation, contrast, color harmony
-5. **Composition**: Camera angle, framing, perspective, depth of field, focus
-6. **Technical Details**: Image quality, resolution appearance, sharpness, grain/noise, post-processing style
-7. **Atmosphere/Mood**: Overall feeling, mood, aesthetic quality
-8. **All Visual Elements**: Every detail that makes this image unique - style, technique, visual characteristics
+1. **Image Format/Type (CRITICAL)**: First and foremost, identify the EXACT format and type:
+   - Is it a screenshot? (iPhone screen screenshot, computer screen screenshot, app interface screenshot, mobile app screenshot, etc.)
+   - Is it a photo? (photo taken with iPhone, photo taken with camera, professional photo, etc.)
+   - Is it a design/mockup? (digital design, UI mockup, graphic design, web design, etc.)
+   - What device/medium is shown or used? (iPhone, computer, tablet, physical object, etc.)
+   - Be VERY specific about the format/type (e.g., "screenshot of iPhone screen", "photo taken with iPhone camera", "design mockup", etc.)
+2. **Visual Style**: Is it hyperrealistic, studio-quality, design, illustration, etc.? Describe the exact aesthetic
+3. **Lighting**: Type of lighting (natural, studio, artificial, flash, screen glow, etc.), direction, intensity, color temperature, shadows, highlights
+4. **Textures**: All surface textures visible (skin, fabric, materials, surfaces, screen textures, etc.) - describe their appearance, quality, and characteristics
+5. **Colors**: Color palette, color temperature, saturation, contrast, color harmony
+6. **Composition**: Camera angle, framing, perspective, depth of field, focus, layout structure
+7. **Technical Details**: Image quality, resolution appearance, sharpness, grain/noise, post-processing style
+8. **Atmosphere/Mood**: Overall feeling, mood, aesthetic quality
+9. **All Visual Elements**: Every detail that makes this image unique - style, technique, visual characteristics, format specifics
 
 **Critical Requirements:**
+- **MUST identify format/type first**: Explicitly state if it's a screenshot, photo, mockup, etc., and what device/medium is involved
 - The prompt must be extremely detailed and comprehensive
 - Describe the image as if you were going to generate this exact same image
 - Include all technical and aesthetic details
-- Be specific about lighting, textures, colors, composition, and style
-- The prompt should capture everything that makes this image visually distinctive
+- Be specific about format/type, lighting, textures, colors, composition, and style
+- The prompt should capture everything that makes this image visually distinctive, especially the format/type
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image.`;
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Start by clearly identifying the format/type (e.g., "screenshot of iPhone screen showing..." or "photo taken with iPhone camera showing...").`;
 
           const referenceParts: any[] = [
             {
@@ -560,6 +567,7 @@ You MUST generate a prompt that creates professional design work (infographics, 
 The image should look like professional design work - infographics, static ads, or creative designs that a human designer would create, with careful attention to every detail, color, composition, and element.`;
     } else if (style === 'copy-image') {
       // Copy Image mode: iterate/vary the reference image based on user's description
+      // CRITICAL: Must maintain the EXACT format/type of image (screenshot, photo, etc.) unless user explicitly asks to change it
       const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (BASE FOR ITERATION):**
 A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
 
@@ -569,55 +577,99 @@ A reference image has been provided and analyzed. Below is a detailed prompt tha
 **Your Task:**
 You MUST create a prompt that iterates on the reference image based on what the user wants to change: "${description}"
 
-**CRITICAL REQUIREMENTS:**
-- **Maintain core characteristics**: Keep the fundamental visual style, quality, and aesthetic of the reference image (lighting style, texture quality, color palette, composition approach, overall aesthetic)
-- **Apply requested changes**: Modify ONLY what the user specifically wants to change or make different
-- **Preserve what's not mentioned**: Keep everything else from the reference image that the user didn't mention changing
-- **Natural variation**: The changes should feel natural and integrated, not forced or artificial
-- **Same quality level**: Maintain the same level of detail, quality, and visual sophistication as the reference
+**ABSOLUTELY CRITICAL REQUIREMENTS - FORMAT PRESERVATION:**
+- **MAINTAIN EXACT IMAGE FORMAT/TYPE**: The reference image prompt describes the EXACT type and format of the image. You MUST preserve this EXACTLY unless the user explicitly asks to change the format/type. Examples:
+  - If the reference is a "screenshot of iPhone screen" → The output MUST be "screenshot of iPhone screen" (unless user says "change to photo" or similar)
+  - If the reference is a "photo taken with iPhone" → The output MUST be "photo taken with iPhone" (unless user says "change to screenshot" or similar)
+  - If the reference is a "design mockup" → The output MUST be "design mockup" (unless user says "change to photo" or similar)
+  - If the reference is a "product photo" → The output MUST be "product photo" (unless user explicitly changes it)
+
+- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the reference image prompt EXACTLY as described:
+  - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
+  - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
+  - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
+  - **EXACT lighting style** (same type, direction, intensity, color temperature)
+  - **EXACT texture quality and appearance** (same level of detail, same material appearance)
+  - **EXACT color palette** (same color temperature, saturation, contrast)
+  - **EXACT overall aesthetic and visual style** (same look and feel)
+
+- **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
+  - If user says "change background to beach" → Keep the EXACT format (e.g., "screenshot of iPhone screen") but change the background content
+  - If user says "change text to X" → Keep the EXACT format but change the text content
+  - If user says "change colors" → Keep the EXACT format but change colors
+  - If user says "change to photo" or "change format" → THEN you can change the format/type
+  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM REFERENCE
+
+- **FORMAT DETECTION**: Analyze the reference image prompt carefully to identify:
+  - Is it a screenshot? (iPhone screen, computer screen, app interface, etc.)
+  - Is it a photo? (taken with camera, iPhone camera, etc.)
+  - Is it a design/mockup? (digital design, UI mockup, etc.)
+  - What device/medium is shown? (iPhone, computer, tablet, etc.)
+  - Then MAINTAIN that exact format/type in your output unless user explicitly changes it
 
 **Examples:**
-- If user says "change background to beach": Keep the subject, lighting, colors, and style, but change the background to a beach scene
-- If user says "make it more vibrant": Keep everything the same but increase color saturation and vibrancy
-- If user says "change person to different person": Keep the pose, lighting, composition, and style, but change the person
-- If user says "change lighting to sunset": Keep everything else but change the lighting to sunset lighting
+- Reference: "screenshot of iPhone screen showing app interface" + User: "change background color to blue" → Output: "screenshot of iPhone screen showing app interface with blue background" (KEEPS screenshot format)
+- Reference: "screenshot of iPhone screen" + User: "change to photo" → Output: "photo taken with iPhone showing..." (CHANGES format because user requested it)
+- Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
+- Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
 
-**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining all other characteristics.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (BASE FOR ITERATION):**
+**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining the EXACT format/type and all other characteristics unless explicitly changed by the user.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (BASE FOR ITERATION):**
 A reference image has been attached. You MUST:
 
 **Your Task:**
 Create a prompt that iterates on the reference image based on what the user wants to change: "${description}"
 
-**CRITICAL REQUIREMENTS:**
-- **Analyze the reference image** to understand its visual characteristics (lighting, composition, colors, textures, style, aesthetic)
-- **Maintain core characteristics**: Keep the fundamental visual style, quality, and aesthetic of the reference image
-- **Apply requested changes**: Modify ONLY what the user specifically wants to change or make different
-- **Preserve what's not mentioned**: Keep everything else from the reference image that the user didn't mention changing
-- **Natural variation**: The changes should feel natural and integrated, not forced or artificial
-- **Same quality level**: Maintain the same level of detail, quality, and visual sophistication as the reference
+**ABSOLUTELY CRITICAL REQUIREMENTS - FORMAT PRESERVATION:**
+- **ANALYZE THE EXACT IMAGE FORMAT/TYPE**: First, carefully analyze the reference image to determine its EXACT format and type:
+  - Is it a screenshot? (iPhone screen, computer screen, app interface, mobile app screenshot, etc.)
+  - Is it a photo? (taken with camera, iPhone camera, professional photo, etc.)
+  - Is it a design/mockup? (digital design, UI mockup, graphic design, etc.)
+  - What device/medium is shown or used? (iPhone, computer, tablet, etc.)
+  - What is the exact visual structure? (screen layout, photo composition, design layout, etc.)
 
-**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining all other characteristics.` : '';
+- **MAINTAIN EXACT IMAGE FORMAT/TYPE**: You MUST preserve the EXACT format/type of the reference image UNLESS the user explicitly asks to change the format/type. Examples:
+  - If reference is a screenshot of iPhone screen → Output MUST be "screenshot of iPhone screen" (unless user says "change to photo" or "change format")
+  - If reference is a photo taken with iPhone → Output MUST be "photo taken with iPhone" (unless user explicitly changes it)
+  - If reference is a design mockup → Output MUST be "design mockup" (unless user explicitly changes it)
 
-      styleInstructions = `**COPY IMAGE MODE - ITERATE ON REFERENCE IMAGE:**
+- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the reference image EXACTLY:
+  - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
+  - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
+  - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
+  - **EXACT lighting style** (same type, direction, intensity, color temperature)
+  - **EXACT texture quality** (same level of detail, same material appearance)
+  - **EXACT color palette** (same color temperature, saturation, contrast)
+  - **EXACT overall aesthetic** (same look and feel)
 
-You are creating a prompt that will iterate/vary a reference image based on specific changes requested by the user.
+- **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
+  - If user says "change background" → Keep the EXACT format but change the background content
+  - If user says "change text" → Keep the EXACT format but change the text content
+  - If user says "change colors" → Keep the EXACT format but change colors
+  - If user says "change to photo" or "change format" → THEN you can change the format/type
+  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM REFERENCE
+
+**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining the EXACT format/type and all other characteristics unless explicitly changed by the user.` : '';
+
+      styleInstructions = `**COPY IMAGE MODE - EXACT FORMAT PRESERVATION:**
+
+You are creating a prompt that will iterate/vary a reference image based on specific changes requested by the user. CRITICAL: You must maintain the EXACT format/type of the reference image unless the user explicitly asks to change it.
 
 **User's Requested Changes:**
 "${description}"
 
 **Your Task:**
 Generate a detailed prompt that:
-1. **Starts with the reference image** as the base (maintain its core visual characteristics)
-2. **Applies the requested changes** from the user's description
-3. **Preserves everything else** that wasn't mentioned for change
-4. **Maintains the same quality and style** as the reference image
+1. **Identifies the EXACT format/type** of the reference image (screenshot, photo, mockup, etc.)
+2. **Maintains that EXACT format/type** unless user explicitly requests format change
+3. **Applies ONLY the requested changes** from the user's description
+4. **Preserves EVERYTHING else** that wasn't mentioned for change
 
-**Critical Requirements:**
-- The prompt must describe an image that looks like the reference image but with the requested modifications
-- Maintain the reference image's lighting style, texture quality, color palette, composition approach, and overall aesthetic (unless specifically asked to change them)
-- Only modify what the user explicitly wants to change
-- The result should feel like a natural variation of the reference image, not a completely different image
-- Include all technical details needed to generate the image with the same quality as the reference${referenceImageNote}
+**ABSOLUTELY CRITICAL REQUIREMENTS:**
+- **FORMAT PRESERVATION IS MANDATORY**: If the reference image is a "screenshot of iPhone screen", your output MUST describe a "screenshot of iPhone screen" (unless user says "change to photo" or similar)
+- **ONLY CHANGE FORMAT IF EXPLICITLY REQUESTED**: If user does NOT mention changing the format/type, you MUST keep the exact same format/type as the reference
+- **MAINTAIN ALL VISUAL CHARACTERISTICS**: Keep the exact composition, lighting, colors, textures, and aesthetic from the reference (unless specifically asked to change)
+- **CHANGE ONLY REQUESTED ELEMENTS**: Modify only what the user explicitly wants to change (content, colors, text, etc.) while keeping the format intact
+- **BE SPECIFIC ABOUT FORMAT**: Explicitly state the format/type in your prompt (e.g., "screenshot of iPhone screen", "photo taken with iPhone", etc.)${referenceImageNote}
 
 **Output Format:**
 Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text ready to use.`;
