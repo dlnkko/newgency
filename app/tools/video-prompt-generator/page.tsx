@@ -60,8 +60,8 @@ export default function VideoPromptGenerator() {
   const mainStyle: MainStyle = 'hyperrealistic';
   const productFocus: ProductFocus = 'ugc';
   
-  // Mode: 'manual' or 'automatic'
-  const [mode, setMode] = useState<'manual' | 'automatic'>('manual');
+  // Mode: 'manual', 'automatic', or 'copy-video'
+  const [mode, setMode] = useState<'manual' | 'automatic' | 'copy-video'>('manual');
   
   // Manual mode state
   const [sceneCount, setSceneCount] = useState<number>(1);
@@ -71,6 +71,11 @@ export default function VideoPromptGenerator() {
   // Automatic mode state
   const [autoDescription, setAutoDescription] = useState<string>('');
   const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
+  
+  // Copy Video mode state
+  const [referenceVideo, setReferenceVideo] = useState<File | null>(null);
+  const [referenceVideoPreview, setReferenceVideoPreview] = useState<string | null>(null);
+  const [copyVideoDuration, setCopyVideoDuration] = useState<number>(10); // Default 10 seconds
   
   // Shared state
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
@@ -113,6 +118,86 @@ export default function VideoPromptGenerator() {
         setProductPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleReferenceVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file type
+      if (!file.type.startsWith('video/')) {
+        setError('Please upload a video file');
+        return;
+      }
+      setReferenceVideo(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReferenceVideoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const compressVideo = async (file: File): Promise<File> => {
+    // For now, just return the file as-is
+    // In production, you might want to compress large videos
+    // Video compression is complex and might require a library like ffmpeg
+    return file;
+  };
+
+  const generatePromptFromVideo = async () => {
+    if (!referenceVideo) {
+      setError('Please upload a reference video');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+    setIsInsufficientCredits(false);
+    setGeneratedPrompt('');
+
+    try {
+      // Compress video if needed
+      const videoToProcess = await compressVideo(referenceVideo);
+      
+      // Convert video to base64
+      const videoBase64 = await fileToBase64(videoToProcess);
+
+      const response = await fetch('/api/generate-video-prompt-from-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          video: videoBase64,
+          duration: copyVideoDuration
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setError(null);
+        } else if (response.status === 429) {
+          setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
+          setIsInsufficientCredits(false);
+        } else {
+          const errorMessage = data.error || 'Failed to generate prompt from video';
+          const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+          setError(`${errorMessage}${errorDetails}`);
+          setIsInsufficientCredits(false);
+        }
+        return;
+      }
+
+      setGeneratedPrompt(data.prompt || '');
+    } catch (err) {
+      setError('An error occurred while generating the prompt from video');
+      console.error('Error generating prompt from video:', err);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -460,7 +545,7 @@ export default function VideoPromptGenerator() {
   // Helper to check mode without type narrowing issues
   const isManualMode = mode === 'manual';
   const isAutomaticMode = mode === 'automatic';
-  const showModeSelection = !mode || (isManualMode && currentStep === 'sceneCount' && !generatedPrompt);
+  const showModeSelection = !mode || (isManualMode && currentStep === 'sceneCount' && !generatedPrompt) || (mode === 'copy-video' && !generatedPrompt);
 
   return (
     <DashboardLayout>
@@ -523,6 +608,25 @@ export default function VideoPromptGenerator() {
                   <div className="text-sm opacity-90">AI generates complete prompt from simple description</div>
                   {isAutomaticMode && (
                     <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
+                      ✓
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setMode('copy-video');
+                    setGeneratedPrompt(''); // Reset prompt when switching modes
+                  }}
+                  className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
+                    mode === 'copy-video'
+                      ? 'border-green-500/80 bg-gradient-to-br from-green-500/20 to-green-500/10 text-green-200 shadow-[0_0_25px_rgba(34,197,94,0.3)] ring-2 ring-green-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-green-500/50 hover:bg-zinc-800/50 hover:text-green-300/90'
+                  }`}
+                >
+                  <div className="font-bold text-lg mb-2">Copy Video</div>
+                  <div className="text-sm opacity-90">Upload a video and get a prompt to recreate it</div>
+                  {mode === 'copy-video' && (
+                    <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-xs text-zinc-900 font-bold">
                       ✓
                     </span>
                   )}
@@ -901,6 +1005,177 @@ export default function VideoPromptGenerator() {
           </div>
         )}
 
+        {/* Copy Video Mode */}
+        {mode === 'copy-video' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-green-300">Copy Video Mode</h3>
+              <button
+                onClick={() => {
+                  setMode('manual');
+                  setCurrentStep('sceneCount');
+                  setGeneratedPrompt('');
+                  setReferenceVideo(null);
+                  setReferenceVideoPreview(null);
+                }}
+                className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+              >
+                Switch to Manual →
+              </button>
+            </div>
+
+            {/* Reference Video Upload */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-green-300">
+                Upload Reference Video
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Upload a video and the AI will analyze it to generate a detailed prompt that describes how to recreate it exactly, including actions, camera cuts, angles, hyperrealism, and all visual characteristics.
+              </p>
+              <div className="space-y-4">
+                {!referenceVideoPreview ? (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-green-500/50 hover:bg-zinc-800/50">
+                    <svg
+                      className="mb-3 h-10 w-10 text-zinc-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium text-zinc-400">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="mt-1 text-xs text-zinc-500">
+                      MP4, MOV, WEBM up to 50MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/mov,video/webm,video/quicktime"
+                      onChange={handleReferenceVideoUpload}
+                      className="hidden"
+                      disabled={isGenerating}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                    <div className="relative inline-block">
+                      <video
+                        src={referenceVideoPreview}
+                        controls
+                        className="max-h-96 rounded-lg"
+                      />
+                      <button
+                        onClick={() => {
+                          setReferenceVideo(null);
+                          setReferenceVideoPreview(null);
+                        }}
+                        disabled={isGenerating}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Remove video"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Duration Selection */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-green-300">
+                Video Duration
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Select the duration for the generated video prompt (between 8 and 15 seconds). The prompt will be adjusted to fit perfectly within this timeframe.
+              </p>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="8"
+                    max="15"
+                    value={copyVideoDuration}
+                    onChange={(e) => setCopyVideoDuration(parseInt(e.target.value))}
+                    className="flex-1 h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                    disabled={isGenerating}
+                  />
+                  <div className="flex items-center gap-2 min-w-[80px]">
+                    <span className="text-2xl font-bold text-green-400">{copyVideoDuration}</span>
+                    <span className="text-sm text-zinc-500">sec</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-8 gap-2">
+                  {[8, 9, 10, 11, 12, 13, 14, 15].map((duration) => (
+                    <button
+                      key={duration}
+                      onClick={() => setCopyVideoDuration(duration)}
+                      disabled={isGenerating}
+                      className={`rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all ${
+                        copyVideoDuration === duration
+                          ? 'border-green-500/80 bg-gradient-to-br from-green-500/20 to-green-500/10 text-green-200 shadow-[0_0_15px_rgba(34,197,94,0.3)]'
+                          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-green-500/50 hover:bg-zinc-800/50'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {duration}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={generatePromptFromVideo}
+              disabled={isGenerating || !referenceVideo}
+              className="w-full rounded-xl border-2 border-green-500/70 bg-gradient-to-r from-green-500/20 via-green-500/15 to-green-500/20 px-8 py-4 font-bold text-green-200 shadow-[0_0_30px_rgba(34,197,94,0.25)] transition-all hover:from-green-500/30 hover:via-green-500/25 hover:to-green-500/30 hover:shadow-[0_0_40px_rgba(34,197,94,0.35)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-green-500/20 disabled:hover:via-green-500/15 disabled:hover:to-green-500/20 disabled:hover:scale-100"
+            >
+              {isGenerating ? (
+                <span className="flex items-center justify-center gap-3">
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-green-400 border-t-transparent"></span>
+                  <span>Analyzing video and generating prompt...</span>
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  <span>🎬</span>
+                  <span>Generate Prompt from Video</span>
+                </span>
+              )}
+            </button>
+
+            {/* Insufficient Credits Error */}
+            {isInsufficientCredits && mode === 'copy-video' && (
+              <div className="mb-6">
+                <InsufficientCreditsError />
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && !isInsufficientCredits && mode === 'copy-video' && (
+              <div className="mb-6 rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+                {error}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Manual Mode: Step 3: Generate */}
         {mode === 'manual' && currentStep === 'generate' && sceneCount > 0 && (
           <div className="space-y-6">
@@ -1040,11 +1315,17 @@ export default function VideoPromptGenerator() {
         )}
 
         {/* Generated Prompt - Show when prompt is generated */}
-        {((mode === 'manual' && currentStep === 'generate') || mode === 'automatic') && generatedPrompt && !isInsufficientCredits && (
-          <div className="rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-8 shadow-[0_0_50px_rgba(250,204,21,0.2)]">
+        {((mode === 'manual' && currentStep === 'generate') || mode === 'automatic' || mode === 'copy-video') && generatedPrompt && !isInsufficientCredits && (
+          <div className={`rounded-2xl border-2 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-8 shadow-[0_0_50px_rgba(250,204,21,0.2)] ${
+            mode === 'copy-video' 
+              ? 'border-green-500/50 shadow-[0_0_50px_rgba(34,197,94,0.2)]' 
+              : 'border-amber-500/50'
+          }`}>
             <div className="mb-6 flex items-center justify-between border-b border-zinc-800/50 pb-4">
               <div>
-                <h3 className="text-xl font-bold text-amber-300">Generated Prompt</h3>
+                <h3 className={`text-xl font-bold ${mode === 'copy-video' ? 'text-green-300' : 'text-amber-300'}`}>
+                  Generated Prompt
+                </h3>
                 <p className="mt-1 text-xs text-zinc-500">Ready to use in your AI video generator</p>
               </div>
               <CopyButton 

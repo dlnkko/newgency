@@ -168,33 +168,37 @@ export async function POST(request: NextRequest) {
         try {
           const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image and create a detailed, comprehensive prompt that would generate this exact image. 
 
+**CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
+- **DO NOT invent or assume characteristics** that are not explicitly visible in the image
+- **DO NOT add device frames, borders, or UI elements** unless they are actually visible in the image
+- **DO NOT assume it's a screenshot** unless you can clearly see screen borders, UI elements, or device frames
+- **DO NOT assume it's taken with a specific device** (iPhone, camera, etc.) unless there are visible indicators
+- **ONLY describe what is actually present** in the image - the subject, lighting, composition, colors, textures, and visual quality as they appear
+- **If it looks like a regular photo**, describe it as a photo without adding device-specific characteristics unless visible
+- **If it looks like a selfie**, describe it as a selfie photo without inventing device frames or borders
+- **Be honest about what you see** - if you cannot determine the format/type from what's visible, describe it as a photo/image without assumptions
+
 **Your Task:**
-Create an extremely detailed prompt that describes:
-1. **Image Format/Type (CRITICAL)**: First and foremost, identify the EXACT format and type:
-   - Is it a screenshot? (iPhone screen screenshot, computer screen screenshot, app interface screenshot, mobile app screenshot, etc.)
-   - Is it a photo? (photo taken with iPhone, photo taken with camera, professional photo, etc.)
-   - Is it a design/mockup? (digital design, UI mockup, graphic design, web design, etc.)
-   - What device/medium is shown or used? (iPhone, computer, tablet, physical object, etc.)
-   - Be VERY specific about the format/type (e.g., "screenshot of iPhone screen", "photo taken with iPhone camera", "design mockup", etc.)
-2. **Visual Style**: Is it hyperrealistic, studio-quality, design, illustration, etc.? Describe the exact aesthetic
-3. **Lighting**: Type of lighting (natural, studio, artificial, flash, screen glow, etc.), direction, intensity, color temperature, shadows, highlights
-4. **Textures**: All surface textures visible (skin, fabric, materials, surfaces, screen textures, etc.) - describe their appearance, quality, and characteristics
-5. **Colors**: Color palette, color temperature, saturation, contrast, color harmony
-6. **Composition**: Camera angle, framing, perspective, depth of field, focus, layout structure
-7. **Technical Details**: Image quality, resolution appearance, sharpness, grain/noise, post-processing style
-8. **Atmosphere/Mood**: Overall feeling, mood, aesthetic quality
-9. **All Visual Elements**: Every detail that makes this image unique - style, technique, visual characteristics, format specifics
+Create an extremely detailed prompt that describes ONLY what is actually visible in the image:
+1. **What you actually see**: Describe the subject, scene, and content exactly as it appears
+2. **Visual Style**: Describe the aesthetic quality (hyperrealistic, realistic, etc.) based on what you see
+3. **Lighting**: Describe the lighting you can actually observe (type, direction, intensity, color temperature, shadows, highlights)
+4. **Textures**: Describe textures that are visible (skin, fabric, materials, surfaces) - only what you can see
+5. **Colors**: Describe the color palette, color temperature, saturation, contrast that are actually present
+6. **Composition**: Describe the camera angle, framing, perspective, depth of field, focus that you can observe
+7. **Technical Details**: Describe the image quality, sharpness, grain/noise, post-processing style that are visible
+8. **Atmosphere/Mood**: Describe the overall feeling and mood based on what you see
 
 **Critical Requirements:**
-- **MUST identify format/type first**: Explicitly state if it's a screenshot, photo, mockup, etc., and what device/medium is involved
-- The prompt must be extremely detailed and comprehensive
-- Describe the image as if you were going to generate this exact same image
-- Include all technical and aesthetic details
-- Be specific about format/type, lighting, textures, colors, composition, and style
-- The prompt should capture everything that makes this image visually distinctive, especially the format/type
+- **ONLY describe what is visible** - do not invent or assume
+- **If you cannot determine if it's a screenshot or photo**, describe it simply as a photo/image
+- **Do not add device-specific characteristics** (iPhone frames, borders, UI elements) unless they are actually visible
+- **Do not assume the camera/device** used unless there are clear visual indicators
+- The prompt must be extremely detailed about what IS visible, but must NOT include assumptions about what is NOT visible
+- Describe the image as if you were going to generate this exact same image, but only based on what you can actually see
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Start by clearly identifying the format/type (e.g., "screenshot of iPhone screen showing..." or "photo taken with iPhone camera showing...").`;
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
 
           const referenceParts: any[] = [
             {
@@ -307,32 +311,40 @@ A reference image has been provided and analyzed. Below is a detailed prompt tha
 **Your Task:**
 You MUST use the reference image prompt above to create a prompt that generates an image as CLOSE AS POSSIBLE to how the reference image looks. The reference image prompt describes EXACTLY how the reference image appears. Your job is to:
 
-- **RESPECT THE REFERENCE IMAGE EXACTLY**: The reference image prompt describes the exact visual appearance of the reference image. You MUST respect and match:
-  - **EXACT camera angle and perspective** from the reference (frontal, side, three-quarter, from above, from below, etc.)
-  - **EXACT composition and framing** (close-up, medium shot, wide shot, etc.)
-  - **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights)
-  - **EXACT texture quality and appearance** (same level of detail, same material appearance)
-  - **EXACT color palette** (same color temperature, saturation, contrast, color harmony)
-  - **EXACT depth of field and focus** (same blur/sharpness characteristics)
-  - **EXACT overall aesthetic and visual style** (same look and feel)
+- **RESPECT THE REFERENCE IMAGE EXACTLY**: The reference image prompt describes ONLY what is actually visible in the reference image. You MUST respect and match EXACTLY what is described:
+  - **EXACT camera angle and perspective** from the reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described
+  - **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described
+  - **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible
+  - **EXACT texture quality and appearance** (same level of detail, same material appearance) - ONLY what is visible
+  - **EXACT color palette** (same color temperature, saturation, contrast, color harmony) - ONLY what is present
+  - **EXACT depth of field and focus** (same blur/sharpness characteristics) - ONLY what is visible
+  - **EXACT overall aesthetic and visual style** (same look and feel) - ONLY what is actually present
   
-- **Apply to user's description**: While respecting the EXACT visual characteristics of the reference image, adapt the CONTENT to match what the user described: "${description}"
-  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the reference
+- **DO NOT ADD CHARACTERISTICS NOT IN THE REFERENCE**: 
+  - **DO NOT add device frames, borders, or UI elements** unless the reference image prompt explicitly mentions them
+  - **DO NOT add "iPhone screenshot" or "iPhone frame"** unless the reference explicitly describes these elements
+  - **DO NOT assume device-specific characteristics** unless they are explicitly described in the reference prompt
+  - **ONLY use what is actually described** in the reference image prompt
+  
+- **Apply to user's description**: While respecting the EXACT visual characteristics described in the reference image prompt, adapt the CONTENT to match what the user described: "${description}"
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the reference (as described)
   - Change only the CONTENT/SUBJECT to match the user's description
   - The result should look like the reference image but with the content/subject the user requested
+  - **DO NOT add any characteristics** (device frames, borders, etc.) that were not in the reference image prompt
 
 - **CRITICAL**: The generated prompt must describe an image that looks EXACTLY like the reference image in terms of:
-  - Camera angle and perspective
-  - Composition and framing
-  - Lighting style and characteristics
-  - Texture quality and appearance
-  - Color palette and color characteristics
-  - Overall aesthetic and visual style
+  - Camera angle and perspective (only if described in reference)
+  - Composition and framing (only if described in reference)
+  - Lighting style and characteristics (only what was visible)
+  - Texture quality and appearance (only what was visible)
+  - Color palette and color characteristics (only what was present)
+  - Overall aesthetic and visual style (only what was actually there)
   - But with the content/subject from the user's description
+  - **WITHOUT adding any elements** (frames, borders, device-specific features) that were not in the reference
 
-**Example**: If the reference image is a side view of a person with natural lighting, and the user describes "person exercising", the prompt should describe a side view of a person exercising with the EXACT same natural lighting, camera angle, composition, and aesthetic as the reference image.
+**Example**: If the reference image prompt describes "a photo of a person from the side with natural lighting", and the user describes "person exercising", the prompt should describe "a photo of a person exercising from the side with natural lighting" - NOT "an iPhone screenshot" or "iPhone frame" unless the reference explicitly mentioned those elements.
 
-**Important**: Match the reference image's visual characteristics EXACTLY - camera angle, composition, lighting, textures, colors, and aesthetic. Only adapt the content/subject to the user's description.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
+**Important**: Match ONLY what is actually described in the reference image prompt. Do not add device frames, borders, or device-specific characteristics unless they were explicitly described in the reference.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
 A reference image has been attached. You MUST:
 - **Analyze the attached reference image** to understand EXACTLY how it looks:
   - Camera angle and perspective (frontal, side, three-quarter, from above, from below, etc.)
