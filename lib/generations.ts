@@ -181,3 +181,4 @@ export async function addUserGenerations(request: NextRequest, amount: number): 
 }
 
 
+

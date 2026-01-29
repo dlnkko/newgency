@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, compositions, composition, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
+    const { actionText, script, compositions, composition, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
@@ -175,6 +175,108 @@ This is scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of 
 **Your task**: Maintain ALL the power, detail, and authenticity requirements, but express them with maximum efficiency. Every word must carry maximum weight. Use compound adjectives, merged clauses, and efficient phrasing. The prompt must be shorter but equally powerful and detailed.`
       : '';
 
+    // Calculate effective duration (default is 15 seconds)
+    const effectiveDuration = duration && duration > 0 ? duration : 15;
+    
+    // Script integration instructions
+    const scriptInstructions = script && script.trim()
+      ? `\n\n**CRITICAL - SCRIPT INTEGRATION WITH ACTIONS (MANDATORY):**
+A script/dialogue has been provided for this scene. You MUST integrate it seamlessly and coherently with the actions described.
+
+**Script provided:**
+"${script}"
+
+**Action text provided:**
+"${actionText}"
+
+**CRITICAL REQUIREMENTS:**
+
+1. **Action Analysis (MANDATORY FIRST STEP)**:
+   - **Analyze the action text** to identify ALL actions, scenes, B-roll, or visual elements mentioned
+   - **Identify multiple actions/scenes**: If the action text mentions multiple actions, B-roll, different scenes, or visual sequences, you MUST include ALL of them clearly in the prompt
+   - **Examples of what to detect**:
+     * "shows B-roll of product", "cuts to B-roll", "B-roll sequence"
+     * "first shows X, then Y", "starts with A, transitions to B"
+     * "shows how hair was before, then shows current hair"
+     * Multiple distinct actions or visual moments
+   - **MANDATORY**: If B-roll or multiple actions/scenes are mentioned in the action text, they MUST appear explicitly and clearly in your generated prompt
+
+2. **Script-Action Coherence Mapping (CRITICAL)**:
+   - **Map script portions to specific actions**: Analyze the script and identify which parts relate to which actions mentioned in the action text
+   - **Coherent pairing**: If the script mentions something (e.g., "look how my hair was before") and the action text also mentions showing that thing (e.g., "shows how hair was before"), that specific script portion MUST be spoken DURING that specific action
+   - **Dynamic synchronization**: For each action/scene/B-roll mentioned in the action text, identify the corresponding script portion and pair them together
+   - **Examples**:
+     * Script: "Look how my hair was before" + Action: "shows before photo" → "while showing the before photo, says 'Look how my hair was before'"
+     * Script: "Now look at it now" + Action: "shows current hair" → "as the camera focuses on the current hair, says 'Now look at it now'"
+     * Script: "This product changed everything" + Action: "holds product up" → "while holding the product up to the camera, says 'This product changed everything'"
+
+3. **Timing Analysis**:
+   - Average speaking rate: ~2.5-3 words per second
+   - Script word count: approximately ${script.split(/\s+/).length} words
+   - Estimated speaking time: ~${Math.round(script.split(/\s+/).length / 2.5)}-${Math.round(script.split(/\s+/).length / 2.2)} seconds
+   - Available time: ${effectiveDuration} seconds
+
+4. **Script Adaptation Decision**:
+   - **IF script fits comfortably** (estimated time ≤ ${effectiveDuration} seconds): Use the script EXACTLY as provided, but integrate each portion with its corresponding action
+   - **IF script is slightly long** (estimated time > ${effectiveDuration} seconds but ≤ ${effectiveDuration + 2} seconds): Adapt it minimally - condense non-essential words while preserving all key content and maintaining script-action coherence
+   - **IF script is too long** (estimated time > ${effectiveDuration + 2} seconds): Adapt it significantly - prioritize key messages, remove redundant phrases, but maintain the core content and meaning, AND maintain coherence with actions
+
+5. **Integration with Actions (MANDATORY STRUCTURE)**:
+   - **Break down actions**: Identify each distinct action, scene, B-roll, or visual moment from the action text
+   - **Break down script**: Identify logical portions of the script that correspond to each action
+   - **Pair them coherently**: For each action, specify when and how the corresponding script portion is spoken:
+     * "while [specific action], says [corresponding script portion]"
+     * "as [specific action happens], narrates [corresponding script portion]"
+     * "during [specific action/B-roll], speaks [corresponding script portion]"
+     * "while performing [specific action], explains [corresponding script portion]"
+   - **Maintain coherence**: If script mentions "before" and action shows "before", pair them together. If script mentions "now" and action shows "current", pair them together.
+   - **Natural flow**: The script should feel naturally integrated with the actions, with each script portion occurring during its relevant action
+
+6. **B-roll and Multiple Actions Handling**:
+   - **If B-roll is mentioned**: Explicitly describe the B-roll sequence and integrate the relevant script portion during the B-roll
+   - **If multiple actions/scenes**: Clearly separate each action/scene in your prompt and pair each with its corresponding script portion
+   - **Transitions**: Describe transitions between actions/scenes and how the script flows through them
+   - **Example structure**: "First, [action 1] while saying [script portion 1]. Then, transitions to [action 2/B-roll] as [script portion 2] is spoken. Finally, [action 3] while narrating [script portion 3]."
+
+7. **Script Distribution**:
+   - Distribute the script throughout the scene duration, synchronized with relevant actions
+   - Start speaking early if the script is substantial
+   - Ensure each script portion is paired with its corresponding action/scene
+   - If the script is long, prioritize mentioning it early and distributing it across multiple action moments
+
+8. **Duration Compliance**:
+   - The final prompt must describe a scene where the script can be fully spoken within ${effectiveDuration} seconds
+   - Adjust pacing and script length accordingly
+   - Ensure actions, B-roll, multiple scenes, and script together fit naturally within the ${effectiveDuration}-second timeframe
+
+**CRITICAL EXAMPLES:**
+
+Example 1 - B-roll:
+- Action: "shows B-roll of product being used"
+- Script: "This is how I use it every day"
+- Integration: "The scene cuts to B-roll footage showing the product being used, while the narrator says 'This is how I use it every day'"
+
+Example 2 - Multiple actions with coherent script:
+- Action: "shows before photo, then shows current result"
+- Script: "Look how my hair was before. Now look at it now."
+- Integration: "While showing the before photo, says 'Look how my hair was before'. Then, as the camera transitions to show the current hair, says 'Now look at it now'"
+
+Example 3 - Action-script coherence:
+- Action: "holds product up to camera"
+- Script: "This product changed everything"
+- Integration: "While holding the product up to the camera, says 'This product changed everything'"
+
+**Your task**: 
+1. First, analyze the action text to identify ALL actions, B-roll, scenes, or visual elements
+2. Then, analyze the script to identify portions that correspond to each action
+3. Create a prompt that:
+   - Explicitly includes ALL actions/B-roll/scenes mentioned in the action text
+   - Pairs each script portion with its corresponding action coherently
+   - Ensures script portions are spoken DURING the relevant actions
+   - Maintains natural flow and coherence between script and actions
+   - Fits within ${effectiveDuration} seconds`
+      : '';
+
     // Duration-based instructions
     const durationInstructions = duration && duration > 0
       ? `\n\n**CRITICAL DURATION CONSTRAINT:**
@@ -187,7 +289,15 @@ This scene has a duration of **${duration} seconds**. You MUST adjust your promp
 - **For longer durations (11+ seconds)**: You can include more detailed descriptions, multiple actions, transitions, and richer visual storytelling. Include more nuanced details about movements, expressions, and environmental elements. Allow for a more complete narrative arc within the scene.
 
 **Your task**: Adjust the density and pacing of your prompt description to match the ${duration}-second duration. Ensure the action described can realistically unfold within this timeframe. If the action is too complex for the duration, simplify it. If the duration allows for more detail, enrich the description appropriately. The prompt should feel neither rushed (too much action for the time) nor stretched (too little action for the time).`
-      : '';
+      : `\n\n**CRITICAL DURATION CONSTRAINT (DEFAULT):**
+This scene uses the default duration of **15 seconds**. You MUST adjust your prompt accordingly:
+
+- Include multiple actions, transitions, and detailed visual storytelling
+- Allow for a complete narrative arc within the scene
+- Include nuanced details about movements, expressions, and environmental elements
+- Balance detail with pacing to fit comfortably within 15 seconds
+
+**Your task**: Create a prompt that describes actions and visual elements that can realistically unfold within 15 seconds, with appropriate pacing and detail level.`;
 
     // Check if "UGC Close-up" is in the compositions
     const hasUgcCloseUp = compositionArray.some((comp: string) => 
@@ -269,7 +379,7 @@ A product image has been attached. You MUST:
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}
+${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}
 
 **CRITICAL DEFAULT INSTRUCTION - CAMERA POSITION (PRIORITIZE HYPERREALISM):**
 **DEFAULT BEHAVIOR - HANDHELD SELFIE (PRIORITY):**
@@ -324,7 +434,7 @@ The final output must be strictly a single, continuous paragraph, without line b
 
 The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. The background must be completely sharp and in focus, just like real iPhone footage in vertical mode. **CRITICAL PROHIBITION - NO TEXT OVERLAY: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.**
 
-[ACTION TEXT TO ENHANCE]: ${actionText}
+[ACTION TEXT TO ENHANCE]: ${actionText}${script && script.trim() ? `\n\n[SCRIPT TO INTEGRATE]: ${script}` : ''}
 
 [CAMERA AND LIGHTING DETAILS TO INCORPORATE]:
 - Camera composition(s): ${compositionsList}

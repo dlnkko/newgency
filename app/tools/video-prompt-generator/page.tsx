@@ -13,6 +13,7 @@ type Lighting = string;
 interface Scene {
   id: number;
   action: string;
+  script: string | null; // Script text for the scene
   composition: Composition[];
   lighting: Lighting | null;
   duration: number | null; // Duration in seconds
@@ -65,7 +66,7 @@ export default function VideoPromptGenerator() {
   
   // Manual mode state
   const [sceneCount, setSceneCount] = useState<number>(1);
-  const [scenes, setScenes] = useState<Scene[]>([{ id: 1, action: '', composition: [], lighting: null, duration: 1 }]);
+  const [scenes, setScenes] = useState<Scene[]>([{ id: 1, action: '', script: null, composition: [], lighting: null, duration: 1 }]);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   
   // Automatic mode state
@@ -90,7 +91,7 @@ export default function VideoPromptGenerator() {
     const newScenes: Scene[] = [];
     for (let i = 1; i <= count; i++) {
       newScenes.push(
-        scenes[i - 1] || { id: i, action: '', composition: [], lighting: null, duration: 1 }
+        scenes[i - 1] || { id: i, action: '', script: null, composition: [], lighting: null, duration: 1 }
       );
     }
     setScenes(newScenes);
@@ -201,7 +202,7 @@ export default function VideoPromptGenerator() {
     }
   };
 
-  const enhanceActionWithAI = async (actionText: string, compositions: string[], lighting: string | null, duration: number | null, updateState: boolean = false, sceneId?: number, allScenes?: Scene[], currentSceneIndex?: number) => {
+  const enhanceActionWithAI = async (actionText: string, script: string | null, compositions: string[], lighting: string | null, duration: number | null, updateState: boolean = false, sceneId?: number, allScenes?: Scene[], currentSceneIndex?: number) => {
     if (!compositions || compositions.length === 0 || !lighting || !actionText) {
       return actionText;
     }
@@ -230,6 +231,7 @@ export default function VideoPromptGenerator() {
         },
         body: JSON.stringify({
           actionText,
+          script,
           compositions,
           lighting,
           duration: effectiveDuration,
@@ -354,7 +356,8 @@ export default function VideoPromptGenerator() {
             const effectiveDuration = scene.duration === 1 ? null : scene.duration;
             try {
               finalAction = await enhanceActionWithAI(
-                finalAction, 
+                finalAction,
+                scene.script,
                 scene.composition, 
                 scene.lighting,
                 effectiveDuration,
@@ -753,6 +756,28 @@ export default function VideoPromptGenerator() {
                     disabled={scene.isEnhancing}
                     className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
                   />
+                </div>
+
+                {/* Script Text Box */}
+                <div className="mb-8">
+                  <div className="mb-3 flex items-center justify-between">
+                    <label className="block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                      Script (Optional)
+                    </label>
+                  </div>
+                  <textarea
+                    value={scene.script || ''}
+                    onChange={(e) => updateScene(scene.id, 'script', e.target.value || null)}
+                    placeholder="Enter the script/dialogue that should be spoken in this scene. The AI will integrate it with the actions and adjust it to fit the scene duration..."
+                    rows={5}
+                    disabled={scene.isEnhancing}
+                    className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                  />
+                  <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+                    <p className="text-xs text-amber-300">
+                      <strong>Note:</strong> The script will be integrated with the actions (e.g., "while lifting the head, says..."). The script duration target is {scene.duration === 1 ? '15 seconds (default)' : `${scene.duration} seconds`}. If the script is too long, it will be adapted to fit the duration without sacrificing too much content. The script will be mentioned as early as possible if it's long but achievable within the time limit.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Composition Buttons - Multiple Selection */}

@@ -38,7 +38,14 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { description, style, referenceImage, firstFrameFromVideo } = body;
+    const { description, style, referenceImage, referenceImages, firstFrameFromVideo } = body;
+    
+    // Support both old format (single image) and new format (array of images)
+    const imagesArray = referenceImages && Array.isArray(referenceImages) && referenceImages.length > 0
+      ? referenceImages
+      : referenceImage
+      ? [referenceImage]
+      : [];
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -54,119 +61,131 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Copy Image mode requires a reference image
-    if (style === 'copy-image' && !referenceImage) {
+    // Copy Image mode requires at least one reference image
+    if (style === 'copy-image' && imagesArray.length === 0) {
       return NextResponse.json(
-        { error: 'Reference image is required for Copy Image mode' },
+        { error: 'At least one reference image is required for Copy Image mode' },
         { status: 400 }
       );
     }
 
-    // Handle reference image upload if provided (for design, studio-quality, hyperrealistic, and copy-image styles)
-    let referenceImageFile = null;
-    if (referenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
-      try {
-        console.log('Uploading reference image to Gemini Files...');
-        const referenceBuffer = Buffer.from(referenceImage.split(',')[1], 'base64');
-        let referenceMime = referenceImage.split(';')[0].split(':')[1] || 'image/png';
-        
-        // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
-        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-        if (!supportedFormats.includes(referenceMime.toLowerCase())) {
-          console.log(`Converting unsupported format ${referenceMime} to PNG`);
-          referenceMime = 'image/png';
-        }
-        
-        const referenceUint8Array = new Uint8Array(referenceBuffer);
-        const referenceBlob = new Blob([referenceUint8Array], { type: referenceMime });
-        referenceImageFile = await ai.files.upload({
-          file: referenceBlob,
-          config: { mimeType: referenceMime }
-        });
-        console.log('Reference image uploaded:', referenceImageFile.uri);
-        
-        // Wait for file to be ACTIVE
-        const maxWaitTime = 60000;
-        const checkInterval = 2000;
-        const startTime = Date.now();
-        
-        const waitForFile = async (file: any, fileName: string) => {
-          if (file.state === 'ACTIVE') return file;
+    // Handle reference images upload if provided (for design, studio-quality, hyperrealistic, and copy-image styles)
+    const referenceImageFiles: any[] = [];
+    if (imagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+      // Limit to 3 images
+      const imagesToProcess = imagesArray.slice(0, 3);
+      
+      for (let i = 0; i < imagesToProcess.length; i++) {
+        const referenceImage = imagesToProcess[i];
+        try {
+          console.log(`Uploading reference image ${i + 1} of ${imagesToProcess.length} to Gemini Files...`);
+          const referenceBuffer = Buffer.from(referenceImage.split(',')[1], 'base64');
+          let referenceMime = referenceImage.split(';')[0].split(':')[1] || 'image/png';
           
-          while (file.state !== 'ACTIVE') {
-            if (Date.now() - startTime > maxWaitTime) {
-              throw new Error(`Timeout waiting for reference image to be ready`);
-            }
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
+          // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
+          const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+          if (!supportedFormats.includes(referenceMime.toLowerCase())) {
+            console.log(`Converting unsupported format ${referenceMime} to PNG`);
+            referenceMime = 'image/png';
+          }
+          
+          const referenceUint8Array = new Uint8Array(referenceBuffer);
+          const referenceBlob = new Blob([referenceUint8Array], { type: referenceMime });
+          let referenceImageFile = await ai.files.upload({
+            file: referenceBlob,
+            config: { mimeType: referenceMime }
+          });
+          console.log(`Reference image ${i + 1} uploaded:`, referenceImageFile.uri);
+          
+          // Wait for file to be ACTIVE
+          const maxWaitTime = 60000;
+          const checkInterval = 2000;
+          const startTime = Date.now();
+          
+          const waitForFile = async (file: any, fileName: string) => {
+            if (file.state === 'ACTIVE') return file;
             
-            try {
-              const fileInfo = await ai.files.get({ name: fileName });
-              file = fileInfo;
-            } catch (err) {
-              console.error(`Error checking file status for ${fileName}:`, err);
+            while (file.state !== 'ACTIVE') {
+              if (Date.now() - startTime > maxWaitTime) {
+                throw new Error(`Timeout waiting for reference image ${i + 1} to be ready`);
+              }
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+              
+              try {
+                const fileInfo = await ai.files.get({ name: fileName });
+                file = fileInfo;
+              } catch (err) {
+                console.error(`Error checking file status for ${fileName}:`, err);
+              }
+            }
+            return file;
+          };
+          
+          const referenceFileName = referenceImageFile.name || referenceImageFile.uri?.split('/').pop() || '';
+          if (referenceFileName) {
+            referenceImageFile = await waitForFile(referenceImageFile, referenceFileName);
+            if (!referenceImageFile.uri) {
+              return NextResponse.json(
+                { error: `Reference image ${i + 1} file is missing required URI property` },
+                { status: 500 }
+              );
             }
           }
-          return file;
-        };
-        
-        const referenceFileName = referenceImageFile.name || referenceImageFile.uri?.split('/').pop() || '';
-        if (referenceFileName) {
-          referenceImageFile = await waitForFile(referenceImageFile, referenceFileName);
-          if (!referenceImageFile.uri) {
+          
+          referenceImageFiles.push(referenceImageFile);
+        } catch (uploadError: any) {
+          console.error(`Error uploading reference image ${i + 1}:`, {
+            message: uploadError.message,
+            status: uploadError.status,
+            code: uploadError.code,
+            response: uploadError.response?.data,
+            stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+          });
+          
+          // Check for API key errors
+          if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
             return NextResponse.json(
-              { error: 'Reference image file is missing required URI property' },
-              { status: 500 }
+              { 
+                error: 'Google Gemini API key is not valid', 
+                details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+              },
+              { status: 401 }
             );
           }
-        }
-      } catch (uploadError: any) {
-        console.error('Error uploading reference image:', {
-          message: uploadError.message,
-          status: uploadError.status,
-          code: uploadError.code,
-          response: uploadError.response?.data,
-          stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
-        });
-        
-        // Check for API key errors
-        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          
           return NextResponse.json(
             { 
-              error: 'Google Gemini API key is not valid', 
-              details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+              error: `Error uploading reference image ${i + 1}`, 
+              details: uploadError.message || `Could not upload reference image ${i + 1} to Gemini Files`,
+              ...(process.env.NODE_ENV === 'development' && {
+                fullError: uploadError.toString(),
+                stack: uploadError.stack
+              })
             },
-            { status: 401 }
+            { status: 500 }
           );
         }
-        
-        return NextResponse.json(
-          { 
-            error: 'Error uploading reference image', 
-            details: uploadError.message || 'Could not upload the reference image to Gemini Files',
-            ...(process.env.NODE_ENV === 'development' && {
-              fullError: uploadError.toString(),
-              stack: uploadError.stack
-            })
-          },
-          { status: 500 }
-        );
       }
     }
 
-    // If reference image is provided, first generate a detailed prompt of the reference image
-    let referenceImagePrompt = '';
-    if (referenceImageFile) {
-      console.log('Reference image file available:', {
-        hasUri: !!referenceImageFile.uri,
-        mimeType: referenceImageFile.mimeType,
-        state: referenceImageFile.state
-      });
+    // If reference images are provided, first generate detailed prompts for each reference image
+    const referenceImagePrompts: string[] = [];
+    if (referenceImageFiles.length > 0) {
+      console.log(`Processing ${referenceImageFiles.length} reference image(s)...`);
       
-      // Verify the file is ready before using it
-      if (referenceImageFile.uri) {
-        console.log('Generating detailed prompt for reference image...');
-        try {
-          const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image and create a detailed, comprehensive prompt that would generate this exact image. 
+      for (let i = 0; i < referenceImageFiles.length; i++) {
+        const referenceImageFile = referenceImageFiles[i];
+        console.log(`Reference image ${i + 1} file available:`, {
+          hasUri: !!referenceImageFile.uri,
+          mimeType: referenceImageFile.mimeType,
+          state: referenceImageFile.state
+        });
+        
+        // Verify the file is ready before using it
+        if (referenceImageFile.uri) {
+          console.log(`Generating detailed prompt for reference image ${i + 1}...`);
+          try {
+            const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (Image ${i + 1} of ${referenceImageFiles.length}) and create a detailed, comprehensive prompt that would generate this exact image. 
 
 **CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
 - **DO NOT invent or assume characteristics** that are not explicitly visible in the image
@@ -200,58 +219,66 @@ Create an extremely detailed prompt that describes ONLY what is actually visible
 **Output Format:**
 Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
 
-          const referenceParts: any[] = [
-            {
-              fileData: {
-                fileUri: referenceImageFile.uri,
-                mimeType: referenceImageFile.mimeType || 'image/png'
-              }
-            },
-            {
-              text: referenceImageAnalysisRequest
-            }
-          ];
-
-          const referenceResult = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: [
+            const referenceParts: any[] = [
               {
-                role: 'user',
-                parts: referenceParts
+                fileData: {
+                  fileUri: referenceImageFile.uri,
+                  mimeType: referenceImageFile.mimeType || 'image/png'
+                }
+              },
+              {
+                text: referenceImageAnalysisRequest
               }
-            ]
-          });
+            ];
 
-          // Extract the reference image prompt
-          if (referenceResult.candidates && referenceResult.candidates[0]?.content?.parts) {
-            referenceImagePrompt = referenceResult.candidates[0].content.parts
-              .map((part: any) => part.text || '')
-              .join('')
-              .trim();
-          } else if ((referenceResult as any).text) {
-            referenceImagePrompt = (referenceResult as any).text.trim();
-          }
+            const referenceResult = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: [
+                {
+                  role: 'user',
+                  parts: referenceParts
+                }
+              ]
+            });
 
-          if (referenceImagePrompt && referenceImagePrompt.length > 0) {
-            console.log('Reference image prompt generated, length:', referenceImagePrompt.length);
-          } else {
-            console.warn('Reference image prompt generation returned empty result');
-            referenceImagePrompt = '';
+            // Extract the reference image prompt
+            let imagePrompt = '';
+            if (referenceResult.candidates && referenceResult.candidates[0]?.content?.parts) {
+              imagePrompt = referenceResult.candidates[0].content.parts
+                .map((part: any) => part.text || '')
+                .join('')
+                .trim();
+            } else if ((referenceResult as any).text) {
+              imagePrompt = (referenceResult as any).text.trim();
+            }
+
+            if (imagePrompt && imagePrompt.length > 0) {
+              console.log(`Reference image ${i + 1} prompt generated, length:`, imagePrompt.length);
+              referenceImagePrompts.push(imagePrompt);
+            } else {
+              console.warn(`Reference image ${i + 1} prompt generation returned empty result`);
+              referenceImagePrompts.push('');
+            }
+          } catch (refError: any) {
+            console.error(`Error generating reference image ${i + 1} prompt:`, {
+              message: refError.message,
+              status: refError.status,
+              code: refError.code,
+              stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
+            });
+            // Continue without reference prompt if it fails - will use image directly as fallback
+            referenceImagePrompts.push('');
           }
-        } catch (refError: any) {
-          console.error('Error generating reference image prompt:', {
-            message: refError.message,
-            status: refError.status,
-            code: refError.code,
-            stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
-          });
-          // Continue without reference prompt if it fails - will use image directly as fallback
-          referenceImagePrompt = '';
+        } else {
+          console.warn(`Reference image ${i + 1} file URI is missing, skipping reference prompt generation`);
+          referenceImagePrompts.push('');
         }
-      } else {
-        console.warn('Reference image file URI is missing, skipping reference prompt generation');
       }
     }
+    
+    // For backward compatibility, keep single image reference prompt
+    const referenceImagePrompt = referenceImagePrompts.length > 0 ? referenceImagePrompts[0] : '';
+    const referenceImageFile = referenceImageFiles.length > 0 ? referenceImageFiles[0] : null;
 
     // Build style-specific instructions
     let styleInstructions = '';
@@ -301,17 +328,25 @@ Before applying any style, you MUST analyze the user's description to determine 
 - IF UGC is detected (explicitly or implied): Use iPhone/hyperrealistic UGC style (see UGC section below)
 - IF UGC is NOT detected: Use the selected style (${style}) but adapt it appropriately - can be cinematographic, professional, cinematic, or whatever best fits the description. DO NOT force iPhone/UGC characteristics if they're not appropriate.`;
 
+    // Build reference image note for multiple images
+    let referenceImageNote = '';
     if (style === 'hyperrealistic') {
-      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
-A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+      if (referenceImageFiles.length > 0) {
+        const validPrompts = referenceImagePrompts.filter((p, idx) => p && p.trim().length > 0);
+        
+        if (validPrompts.length > 0) {
+          // Multiple reference images with prompts
+          if (validPrompts.length > 1) {
+            referenceImageNote = `\n\n**CRITICAL - REFERENCE IMAGES PROMPTS (USE AS STYLE REFERENCES):**
+${validPrompts.length} reference images have been provided and analyzed. Below are detailed prompts that describe each reference image's visual characteristics:
 
-**Reference Image Prompt (use this as style reference):**
-"${referenceImagePrompt}"
+${validPrompts.map((prompt, idx) => `**Reference Image ${idx + 1} Prompt (use this as style reference):**
+"${prompt}"`).join('\n\n')}
 
 **Your Task:**
-You MUST use the reference image prompt above to create a prompt that generates an image as CLOSE AS POSSIBLE to how the reference image looks. The reference image prompt describes EXACTLY how the reference image appears. Your job is to:
+You MUST use ALL the reference image prompts above to create a prompt that generates an image that combines and incorporates the visual characteristics from ALL reference images. Each reference image prompt describes EXACTLY how that reference image appears. Your job is to:
 
-- **RESPECT THE REFERENCE IMAGE EXACTLY**: The reference image prompt describes ONLY what is actually visible in the reference image. You MUST respect and match EXACTLY what is described:
+- **RESPECT ALL REFERENCE IMAGES**: Each reference image prompt describes ONLY what is actually visible in that reference image. You MUST respect and incorporate characteristics from ALL reference images, combining them intelligently based on what the user requests: "${description}":
   - **EXACT camera angle and perspective** from the reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described
   - **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described
   - **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible
@@ -344,7 +379,12 @@ You MUST use the reference image prompt above to create a prompt that generates 
 
 **Example**: If the reference image prompt describes "a photo of a person from the side with natural lighting", and the user describes "person exercising", the prompt should describe "a photo of a person exercising from the side with natural lighting" - NOT "an iPhone screenshot" or "iPhone frame" unless the reference explicitly mentioned those elements.
 
-**Important**: Match ONLY what is actually described in the reference image prompt. Do not add device frames, borders, or device-specific characteristics unless they were explicitly described in the reference.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
+**Important**: Match ONLY what is actually described in the reference image prompt. Do not add device frames, borders, or device-specific characteristics unless they were explicitly described in the reference.`;
+          }
+        } else if (referenceImageFiles.length > 0) {
+          // Images provided but no prompts generated - use images directly
+          referenceImageNote = `\n\n**CRITICAL - REFERENCE IMAGE${referenceImageFiles.length > 1 ? 'S' : ''} ATTACHED:**
+${referenceImageFiles.length > 1 ? `${referenceImageFiles.length} reference images have` : 'A reference image has'} been attached. You MUST:
 A reference image has been attached. You MUST:
 - **Analyze the attached reference image** to understand EXACTLY how it looks:
   - Camera angle and perspective (frontal, side, three-quarter, from above, from below, etc.)
@@ -371,9 +411,16 @@ A reference image has been attached. You MUST:
   - If the reference has a person and the user's description also involves a person: maintain the same person's appearance from the reference, but adapt them to the new action/environment described
   - The result should look like the reference image but with the content/subject the user requested
 
-- **CRITICAL**: The generated prompt must create an image that looks EXACTLY like the reference image visually (angle, composition, lighting, textures, colors, aesthetic), but with the content/subject from the user's description.` : '';
+- **CRITICAL**: The generated prompt must create an image that looks EXACTLY like the reference image visually (angle, composition, lighting, textures, colors, aesthetic), but with the content/subject from the user's description.`;
+        }
+      }
+    } else {
+      // No reference images
+      referenceImageNote = '';
+    }
 
-      // Build style instructions based on UGC detection
+    // Build style instructions based on UGC detection
+    if (style === 'hyperrealistic') {
       styleInstructions = `${ugcDetectionInstructions}
 
 **HYPERREALISTIC STYLE REQUIREMENTS (APPLY BASED ON UGC DETECTION):**
@@ -454,12 +501,18 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
 - Include iPhone's characteristic image processing look
 - Maintain iPhone's natural color science and white balance
 - If flash is needed, specify "iPhone flash" or "iPhone camera flash"
+- **CRITICAL - NO DEVICE FRAMES OR BORDERS**: 
+  - **ABSOLUTE PROHIBITION**: You MUST NOT mention, include, or suggest iPhone frames, iPhone borders, iPhone margins, device frames, screen borders, or any UI elements in the prompt UNLESS the user explicitly requests them
+  - **ONLY describe the photo/image itself**: Describe the image as a photo taken with an iPhone, but WITHOUT any device frames, borders, or margins
+  - **NO screenshots**: Do NOT describe it as a screenshot unless the user explicitly mentions screenshot or screen capture
+  - **NO UI elements**: Do NOT include any UI elements, status bars, navigation bars, or device interface elements
+  - **Just the photo**: The prompt should describe a clean photo/image without any device framing or borders
 - **Perspective clarification**:
   - If description mentions people: The image should look like a casual, amateur photo taken with an iPhone - can be ANY angle (frontal, side, three-quarter, from above, from below, etc.) that feels natural and casual. NOT always frontal/selfie style. Should feel like someone casually taking a photo with their iPhone.
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
   - **Reference image priority**: ${referenceImageFile && referenceImagePrompt ? 'If a reference image is provided, match the EXACT camera angle and perspective from the reference image. The reference image prompt describes exactly how the reference looks - respect that EXACTLY.' : 'Choose the most natural camera angle that fits the scene.'}
 
-The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it.
+The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**
 
 **IF UGC IS NOT DETECTED:**
 You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM but with cinematic, professional, or high-production quality - NOT iPhone/UGC style. The image should look like it was captured with professional camera equipment (DSLR, cinema camera, etc.) - high-quality, polished, and professional:
@@ -739,9 +792,10 @@ ${criticalRequirementsSection}- The prompt must be detailed and comprehensive
 - Ensure the prompt will generate exactly what the user described, but with professional enhancement
 - Make every detail explicit and clear
 - The prompt should be ready to copy and paste directly into AI image generators
+- **CRITICAL - NO DEVICE FRAMES**: Do NOT mention, include, or suggest iPhone frames, device borders, margins, screen borders, or UI elements UNLESS the user explicitly requests them. Describe only the photo/image itself without any device framing.
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text ready to use.`;
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text ready to use. **CRITICAL: The prompt must describe a clean photo/image without any device frames, borders, margins, or UI elements unless explicitly requested by the user.**`;
 
     let result;
     try {
@@ -750,31 +804,34 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       // For other modes, only include image if we don't have a reference prompt (fallback case)
       const parts: any[] = [];
       
-      // Include the image if:
-      // 1. We're in copy-image mode (always include the image)
-      // 2. We don't have a reference prompt (fallback case for other modes)
-      if (referenceImageFile && (style === 'copy-image' || !referenceImagePrompt)) {
-        console.log('Adding reference image to prompt (no reference prompt available):', {
-          uri: referenceImageFile.uri?.substring(0, 50) + '...',
-          mimeType: referenceImageFile.mimeType,
-          state: referenceImageFile.state
+      // Include images if:
+      // 1. We're in copy-image mode (always include all images)
+      // 2. We don't have reference prompts (fallback case for other modes)
+      const validPrompts = referenceImagePrompts.filter(p => p && p.trim().length > 0);
+      if (referenceImageFiles.length > 0 && (style === 'copy-image' || validPrompts.length === 0)) {
+        console.log(`Adding ${referenceImageFiles.length} reference image(s) to prompt:`, {
+          hasUris: referenceImageFiles.map(f => !!f.uri),
+          mimeTypes: referenceImageFiles.map(f => f.mimeType)
         });
         
-        if (!referenceImageFile.uri) {
-          console.error('Reference image file missing URI');
-          return NextResponse.json(
-            { error: 'Reference image file is missing URI property', details: 'The uploaded image file does not have a valid URI' },
-            { status: 500 }
-          );
-        }
-        
-        parts.push({
-          fileData: {
-            fileUri: referenceImageFile.uri,
-            mimeType: referenceImageFile.mimeType
+        // Add all reference images
+        for (const imageFile of referenceImageFiles) {
+          if (!imageFile.uri) {
+            console.error('Reference image file missing URI');
+            return NextResponse.json(
+              { error: 'Reference image file is missing URI property', details: 'The uploaded image file does not have a valid URI' },
+              { status: 500 }
+            );
           }
-        });
-      } else if (referenceImagePrompt) {
+          
+          parts.push({
+            fileData: {
+              fileUri: imageFile.uri,
+              mimeType: imageFile.mimeType || 'image/png'
+            }
+          });
+        }
+      } else if (validPrompts.length > 0) {
         console.log('Using reference image prompt instead of image (length:', referenceImagePrompt.length, ')');
       }
       

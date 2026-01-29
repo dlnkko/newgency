@@ -15,8 +15,8 @@ export default function ImagePromptGenerator() {
   const [error, setError] = useState<string | null>(null);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
   const [costInfo, setCostInfo] = useState<any>(null);
-  const [referenceImage, setReferenceImage] = useState<File | null>(null);
-  const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
+  const [referenceImages, setReferenceImages] = useState<File[]>([]);
+  const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
 
   // Compress and resize image to reduce file size
@@ -87,16 +87,50 @@ export default function ImagePromptGenerator() {
     });
   };
 
-  const handleReferenceImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReferenceImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
     const file = e.target.files?.[0];
     if (file) {
-      setReferenceImage(file);
+      const newImages = [...referenceImages];
+      const newPreviews = [...referenceImagePreviews];
+      
+      // Replace image at index or add new one
+      if (index < newImages.length) {
+        newImages[index] = file;
+      } else {
+        newImages.push(file);
+      }
+      
+      // Limit to 3 images
+      if (newImages.length > 3) {
+        newImages.splice(3);
+      }
+      
+      setReferenceImages(newImages);
+      
+      // Update previews
       const reader = new FileReader();
       reader.onloadend = () => {
-        setReferenceImagePreview(reader.result as string);
+        if (index < newPreviews.length) {
+          newPreviews[index] = reader.result as string;
+        } else {
+          newPreviews.push(reader.result as string);
+        }
+        if (newPreviews.length > 3) {
+          newPreviews.splice(3);
+        }
+        setReferenceImagePreviews(newPreviews);
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const removeReferenceImage = (index: number) => {
+    const newImages = [...referenceImages];
+    const newPreviews = [...referenceImagePreviews];
+    newImages.splice(index, 1);
+    newPreviews.splice(index, 1);
+    setReferenceImages(newImages);
+    setReferenceImagePreviews(newPreviews);
   };
 
   const handleGenerate = async () => {
@@ -110,8 +144,8 @@ export default function ImagePromptGenerator() {
       return;
     }
 
-    if (selectedStyle === 'copy-image' && !referenceImage) {
-      setError('Please upload a reference image for Copy Image mode');
+    if (selectedStyle === 'copy-image' && referenceImages.length === 0) {
+      setError('Please upload at least one reference image for Copy Image mode');
       return;
     }
 
@@ -122,44 +156,45 @@ export default function ImagePromptGenerator() {
     setCostInfo(null);
 
     try {
-      // Convert reference image to base64 if provided
-      let referenceImageBase64 = null;
-      if (referenceImage) {
-        // Check file size (Vercel limit is ~4.5MB for request body)
-        // Base64 encoding increases size by ~33%, so we limit original to ~3MB
-        const maxSizeBytes = 3 * 1024 * 1024; // 3MB
-        
-        let imageToProcess = referenceImage;
+      // Convert reference images to base64 if provided
+      const referenceImagesBase64: string[] = [];
+      const maxSizeBytes = 3 * 1024 * 1024; // 3MB per image
+      
+      for (let i = 0; i < referenceImages.length; i++) {
+        const image = referenceImages[i];
+        let imageToProcess = image;
         
         // If image is too large, compress it
-        if (referenceImage.size > maxSizeBytes) {
-          console.log(`Image size (${(referenceImage.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+        if (image.size > maxSizeBytes) {
+          console.log(`Image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
           try {
-            imageToProcess = await compressImage(referenceImage, 1920, 1920, 0.85);
+            imageToProcess = await compressImage(image, 1920, 1920, 0.85);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             
             // If still too large after compression, compress more aggressively
             if (imageToProcess.size > maxSizeBytes) {
               console.log('Still too large, compressing more aggressively...');
-              imageToProcess = await compressImage(referenceImage, 1280, 1280, 0.75);
+              imageToProcess = await compressImage(image, 1280, 1280, 0.75);
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
-            console.error('Error compressing image:', compressError);
-            setError('Failed to compress image. Please try a smaller image file.');
+            console.error(`Error compressing image ${i + 1}:`, compressError);
+            setError(`Failed to compress image ${i + 1}. Please try a smaller image file.`);
             return;
           }
         }
         
         // Convert to base64
-        referenceImageBase64 = await fileToBase64(imageToProcess);
+        const base64 = await fileToBase64(imageToProcess);
         
         // Check final base64 size (should be ~33% larger than original)
-        const base64Size = new Blob([referenceImageBase64]).size;
+        const base64Size = new Blob([base64]).size;
         if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError('Image is too large even after compression. Please use an image smaller than 3MB.');
+          setError(`Image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
           return;
         }
+        
+        referenceImagesBase64.push(base64);
       }
 
       const response = await fetch('/api/generate-image-prompt', {
@@ -170,7 +205,7 @@ export default function ImagePromptGenerator() {
         body: JSON.stringify({
           description: description.trim(),
           style: selectedStyle,
-          referenceImage: referenceImageBase64,
+          referenceImages: referenceImagesBase64,
           firstFrameFromVideo: veo3FirstFrame
         }),
       });
@@ -332,70 +367,61 @@ export default function ImagePromptGenerator() {
           </div>
         </div>
 
-        {/* Reference Image Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
+        {/* Reference Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
         {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-              Reference Image (Optional)
+              Reference Images (Optional - Up to 3)
             </label>
             <p className="mb-3 text-xs text-zinc-400">
               {selectedStyle === 'hyperrealistic' 
-                ? 'Upload a reference image (for example, a hyperrealistic image). The AI will analyze the image and create a detailed prompt describing its style, light, texture, and aesthetics. Then it will use that prompt as a reference to create the final prompt based on your description, incorporating the same level of hyperrealism, lighting, and texture quality.'
+                ? 'Upload up to 3 reference images. The AI will analyze each image and create detailed prompts describing their style, light, texture, and aesthetics. Then it will use those prompts as references to create the final prompt based on your description, incorporating the same level of hyperrealism, lighting, and texture quality from the reference images.'
                 : selectedStyle === 'studio-quality'
-                ? 'Upload a reference image (for example, a professional studio photo). The AI will analyze the image and create a detailed prompt describing its style, lighting, composition, and aesthetics. Then it will use that prompt as a reference to create the final prompt based on your description, incorporating the same lighting style, composition, and professional quality.'
+                ? 'Upload up to 3 reference images. The AI will analyze each image and create detailed prompts describing their style, lighting, composition, and aesthetics. Then it will use those prompts as references to create the final prompt based on your description, incorporating the same lighting style, composition, and professional quality.'
                 : selectedStyle === 'copy-image'
-                ? 'Upload a reference image that you want to iterate on. The AI will analyze the image and create a prompt that varies it based on what you want to change or make different, while maintaining the core visual characteristics.'
-                : 'Upload a reference image (for example, a design or infographic). The AI will analyze the image and create a detailed prompt describing its design style, colors, typography, and composition. Then it will use that prompt as a reference to create the final prompt based on your description, incorporating the same design style, color palette, and visual aesthetics.'}
+                ? 'Upload up to 3 reference images that you want to iterate on. The AI will analyze each image and create a prompt that varies them based on what you want to change or make different, while maintaining the core visual characteristics.'
+                : 'Upload up to 3 reference images. The AI will analyze each image and create detailed prompts describing their design style, colors, typography, and composition. Then it will use those prompts as references to create the final prompt based on your description, incorporating the same design style, color palette, and visual aesthetics.'}
             </p>
-            <div className="space-y-4">
-              {!referenceImagePreview ? (
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
-                  <svg
-                    className="mb-3 h-10 w-10 text-zinc-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <span className="text-sm font-medium text-zinc-400">
-                    Click to upload or drag and drop
-                  </span>
-                  <span className="mt-1 text-xs text-zinc-500">
-                    PNG, JPG, WEBP up to 10MB
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp"
-                    onChange={handleReferenceImageUpload}
-                    className="hidden"
-                    disabled={isGenerating}
-                  />
-                </label>
-              ) : (
-                <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
-                  <div className="relative inline-block">
-                    <img
-                      src={referenceImagePreview}
-                      alt="Reference preview"
-                      className="max-h-64 rounded-lg object-contain"
-                    />
-                    <button
-                      onClick={() => {
-                        setReferenceImage(null);
-                        setReferenceImagePreview(null);
-                      }}
-                      disabled={isGenerating}
-                      className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Remove image"
-                    >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="space-y-2">
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">
+                    Image {index + 1}
+                  </label>
+                  {referenceImagePreviews[index] ? (
+                    <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                      <div className="relative inline-block w-full">
+                        <img
+                          src={referenceImagePreviews[index]}
+                          alt={`Reference ${index + 1} preview`}
+                          className="w-full max-h-48 rounded-lg object-contain"
+                        />
+                        <button
+                          onClick={() => removeReferenceImage(index)}
+                          disabled={isGenerating}
+                          className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Remove image"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-4 py-6 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
                       <svg
-                        className="h-4 w-4"
+                        className="mb-2 h-8 w-8 text-zinc-500"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -404,13 +430,26 @@ export default function ImagePromptGenerator() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                         />
                       </svg>
-                    </button>
-                  </div>
+                      <span className="text-xs font-medium text-zinc-400">
+                        Upload
+                      </span>
+                      <span className="mt-1 text-[10px] text-zinc-500">
+                        PNG, JPG, WEBP
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        onChange={(e) => handleReferenceImageUpload(e, index)}
+                        className="hidden"
+                        disabled={isGenerating}
+                      />
+                    </label>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
           </div>
         )}
