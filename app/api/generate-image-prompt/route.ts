@@ -38,14 +38,21 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { description, style, referenceImage, referenceImages, firstFrameFromVideo } = body;
+    const { description, style, referenceImage, referenceImages, characterProductImages, firstFrameFromVideo } = body;
     
-    // Support both old format (single image) and new format (array of images)
-    const imagesArray = referenceImages && Array.isArray(referenceImages) && referenceImages.length > 0
-      ? referenceImages
-      : referenceImage
-      ? [referenceImage]
-      : [];
+    // Support both old format (referenceImages array) and new format (referenceImage + characterProductImages)
+    let mainReferenceImage: string | null = null;
+    let characterProductImagesArray: string[] = [];
+    
+    if (referenceImage) {
+      // New format: separate reference image and character/product images
+      mainReferenceImage = referenceImage;
+      characterProductImagesArray = characterProductImages && Array.isArray(characterProductImages) ? characterProductImages : [];
+    } else if (referenceImages && Array.isArray(referenceImages) && referenceImages.length > 0) {
+      // Old format: first image is reference, rest are character/product
+      mainReferenceImage = referenceImages[0];
+      characterProductImagesArray = referenceImages.slice(1);
+    }
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -62,40 +69,131 @@ export async function POST(request: NextRequest) {
     }
 
     // Copy Image mode requires at least one reference image
-    if (style === 'copy-image' && imagesArray.length === 0) {
+    if (style === 'copy-image' && !mainReferenceImage) {
       return NextResponse.json(
-        { error: 'At least one reference image is required for Copy Image mode' },
+        { error: 'A reference image is required for Copy Image mode' },
         { status: 400 }
       );
     }
 
-    // Handle reference images upload if provided (for design, studio-quality, hyperrealistic, and copy-image styles)
-    const referenceImageFiles: any[] = [];
-    if (imagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+    // Handle main reference image upload if provided (for design, studio-quality, hyperrealistic, and copy-image styles)
+    let mainReferenceImageFile: any = null;
+    if (mainReferenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+      try {
+        console.log('Uploading main reference image to Gemini Files...');
+        const referenceBuffer = Buffer.from(mainReferenceImage.split(',')[1], 'base64');
+        let referenceMime = mainReferenceImage.split(';')[0].split(':')[1] || 'image/png';
+        
+        // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(referenceMime.toLowerCase())) {
+          console.log(`Converting unsupported format ${referenceMime} to PNG`);
+          referenceMime = 'image/png';
+        }
+        
+        const referenceUint8Array = new Uint8Array(referenceBuffer);
+        const referenceBlob = new Blob([referenceUint8Array], { type: referenceMime });
+        mainReferenceImageFile = await ai.files.upload({
+          file: referenceBlob,
+          config: { mimeType: referenceMime }
+        });
+        console.log('Main reference image uploaded:', mainReferenceImageFile.uri);
+        
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error('Timeout waiting for main reference image to be ready');
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status for ${fileName}:`, err);
+            }
+          }
+          return file;
+        };
+        
+        const referenceFileName = mainReferenceImageFile.name || mainReferenceImageFile.uri?.split('/').pop() || '';
+        if (referenceFileName) {
+          mainReferenceImageFile = await waitForFile(mainReferenceImageFile, referenceFileName);
+          if (!mainReferenceImageFile.uri) {
+            return NextResponse.json(
+              { error: 'Main reference image file is missing required URI property' },
+              { status: 500 }
+            );
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('Error uploading main reference image:', {
+          message: uploadError.message,
+          status: uploadError.status,
+          code: uploadError.code,
+          response: uploadError.response?.data,
+          stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+        });
+        
+        // Check for API key errors
+        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          return NextResponse.json(
+            { 
+              error: 'Google Gemini API key is not valid', 
+              details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+            },
+            { status: 401 }
+          );
+        }
+        
+        return NextResponse.json(
+          { 
+            error: 'Error uploading main reference image', 
+            details: uploadError.message || 'Could not upload main reference image to Gemini Files',
+            ...(process.env.NODE_ENV === 'development' && {
+              fullError: uploadError.toString(),
+              stack: uploadError.stack
+            })
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Handle character/product images upload if provided
+    const characterProductImageFiles: any[] = [];
+    if (characterProductImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
       // Limit to 3 images
-      const imagesToProcess = imagesArray.slice(0, 3);
+      const imagesToProcess = characterProductImagesArray.slice(0, 3);
       
       for (let i = 0; i < imagesToProcess.length; i++) {
-        const referenceImage = imagesToProcess[i];
+        const characterProductImage = imagesToProcess[i];
         try {
-          console.log(`Uploading reference image ${i + 1} of ${imagesToProcess.length} to Gemini Files...`);
-          const referenceBuffer = Buffer.from(referenceImage.split(',')[1], 'base64');
-          let referenceMime = referenceImage.split(';')[0].split(':')[1] || 'image/png';
+          console.log(`Uploading character/product image ${i + 1} of ${imagesToProcess.length} to Gemini Files...`);
+          const imageBuffer = Buffer.from(characterProductImage.split(',')[1], 'base64');
+          let imageMime = characterProductImage.split(';')[0].split(':')[1] || 'image/png';
           
           // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
           const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-          if (!supportedFormats.includes(referenceMime.toLowerCase())) {
-            console.log(`Converting unsupported format ${referenceMime} to PNG`);
-            referenceMime = 'image/png';
+          if (!supportedFormats.includes(imageMime.toLowerCase())) {
+            console.log(`Converting unsupported format ${imageMime} to PNG`);
+            imageMime = 'image/png';
           }
           
-          const referenceUint8Array = new Uint8Array(referenceBuffer);
-          const referenceBlob = new Blob([referenceUint8Array], { type: referenceMime });
-          let referenceImageFile = await ai.files.upload({
-            file: referenceBlob,
-            config: { mimeType: referenceMime }
+          const imageUint8Array = new Uint8Array(imageBuffer);
+          const imageBlob = new Blob([imageUint8Array], { type: imageMime });
+          let characterProductImageFile = await ai.files.upload({
+            file: imageBlob,
+            config: { mimeType: imageMime }
           });
-          console.log(`Reference image ${i + 1} uploaded:`, referenceImageFile.uri);
+          console.log(`Character/product image ${i + 1} uploaded:`, characterProductImageFile.uri);
           
           // Wait for file to be ACTIVE
           const maxWaitTime = 60000;
@@ -107,7 +205,7 @@ export async function POST(request: NextRequest) {
             
             while (file.state !== 'ACTIVE') {
               if (Date.now() - startTime > maxWaitTime) {
-                throw new Error(`Timeout waiting for reference image ${i + 1} to be ready`);
+                throw new Error(`Timeout waiting for character/product image ${i + 1} to be ready`);
               }
               await new Promise(resolve => setTimeout(resolve, checkInterval));
               
@@ -121,20 +219,20 @@ export async function POST(request: NextRequest) {
             return file;
           };
           
-          const referenceFileName = referenceImageFile.name || referenceImageFile.uri?.split('/').pop() || '';
-          if (referenceFileName) {
-            referenceImageFile = await waitForFile(referenceImageFile, referenceFileName);
-            if (!referenceImageFile.uri) {
+          const imageFileName = characterProductImageFile.name || characterProductImageFile.uri?.split('/').pop() || '';
+          if (imageFileName) {
+            characterProductImageFile = await waitForFile(characterProductImageFile, imageFileName);
+            if (!characterProductImageFile.uri) {
               return NextResponse.json(
-                { error: `Reference image ${i + 1} file is missing required URI property` },
+                { error: `Character/product image ${i + 1} file is missing required URI property` },
                 { status: 500 }
               );
             }
           }
           
-          referenceImageFiles.push(referenceImageFile);
+          characterProductImageFiles.push(characterProductImageFile);
         } catch (uploadError: any) {
-          console.error(`Error uploading reference image ${i + 1}:`, {
+          console.error(`Error uploading character/product image ${i + 1}:`, {
             message: uploadError.message,
             status: uploadError.status,
             code: uploadError.code,
@@ -155,8 +253,8 @@ export async function POST(request: NextRequest) {
           
           return NextResponse.json(
             { 
-              error: `Error uploading reference image ${i + 1}`, 
-              details: uploadError.message || `Could not upload reference image ${i + 1} to Gemini Files`,
+              error: `Error uploading character/product image ${i + 1}`, 
+              details: uploadError.message || `Could not upload character/product image ${i + 1} to Gemini Files`,
               ...(process.env.NODE_ENV === 'development' && {
                 fullError: uploadError.toString(),
                 stack: uploadError.stack
@@ -168,24 +266,127 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If reference images are provided, first generate detailed prompts for each reference image
-    const referenceImagePrompts: string[] = [];
-    if (referenceImageFiles.length > 0) {
-      console.log(`Processing ${referenceImageFiles.length} reference image(s)...`);
+    // If main reference image is provided, generate detailed prompt for it
+    let mainReferenceImagePrompt: string = '';
+    if (mainReferenceImageFile) {
+      console.log('Processing main reference image...');
       
-      for (let i = 0; i < referenceImageFiles.length; i++) {
-        const referenceImageFile = referenceImageFiles[i];
-        console.log(`Reference image ${i + 1} file available:`, {
-          hasUri: !!referenceImageFile.uri,
-          mimeType: referenceImageFile.mimeType,
-          state: referenceImageFile.state
+      if (mainReferenceImageFile.uri) {
+        console.log('Generating detailed prompt for main reference image...');
+        try {
+          const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (this is the MAIN REFERENCE IMAGE that will be uploaded to Nano Banana Pro model and placed FIRST) and create a detailed, comprehensive prompt that would generate this exact image. 
+
+**CRITICAL - THIS IS THE MAIN STYLE REFERENCE:**
+This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level. This image defines the PRIMARY visual style that must be replicated.
+
+**CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
+- **DO NOT invent or assume characteristics** that are not explicitly visible in the image
+- **DO NOT add device frames, borders, or UI elements** unless they are actually visible in the image
+- **DO NOT assume it's a screenshot** unless you can clearly see screen borders, UI elements, or device frames
+- **DO NOT assume it's taken with a specific device** (iPhone, camera, etc.) unless there are visible indicators
+- **ONLY describe what is actually present** in the image - the subject, lighting, composition, colors, textures, and visual quality as they appear
+- **If it looks like a regular photo**, describe it as a photo without adding device-specific characteristics unless visible
+- **If it looks like a selfie**, describe it as a selfie photo without inventing device frames or borders
+- **Be honest about what you see** - if you cannot determine the format/type from what's visible, describe it as a photo/image without assumptions
+
+**Your Task:**
+Create an extremely detailed prompt that describes ONLY what is actually visible in the image:
+1. **What you actually see**: Describe the subject, scene, and content exactly as it appears
+2. **Visual Style**: Describe the aesthetic quality (hyperrealistic, realistic, etc.) based on what you see
+3. **Lighting**: Describe the lighting you can actually observe (type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL as it must be replicated exactly
+4. **Camera Angle and Perspective**: Describe the EXACT camera angle, perspective, and composition - THIS IS CRITICAL as it must be replicated exactly
+5. **Textures**: Describe textures that are visible (skin, fabric, materials, surfaces) - only what you can see
+6. **Colors**: Describe the color palette, color temperature, saturation, contrast that are actually present
+7. **Composition**: Describe the framing, perspective, depth of field, focus that you can observe
+8. **Technical Details**: Describe the image quality, sharpness, grain/noise, post-processing style that are visible
+9. **Atmosphere/Mood**: Describe the overall feeling and mood based on what you see
+10. **Hyperrealism Level**: Describe the level of hyperrealism and photorealism present
+
+**Critical Requirements:**
+- **ONLY describe what is visible** - do not invent or assume
+- **If you cannot determine if it's a screenshot or photo**, describe it simply as a photo/image
+- **Do not add device-specific characteristics** (iPhone frames, borders, UI elements) unless they are actually visible
+- **Do not assume the camera/device** used unless there are clear visual indicators
+- The prompt must be extremely detailed about what IS visible, but must NOT include assumptions about what is NOT visible
+- **EMPHASIZE**: This image defines the EXACT style, angle, lighting, and hyperrealism that must be replicated in the final result
+
+**Output Format:**
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
+
+          const referenceParts: any[] = [
+            {
+              fileData: {
+                fileUri: mainReferenceImageFile.uri,
+                mimeType: mainReferenceImageFile.mimeType || 'image/png'
+              }
+            },
+            {
+              text: referenceImageAnalysisRequest
+            }
+          ];
+
+          const referenceResult = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: [
+              {
+                role: 'user',
+                parts: referenceParts
+              }
+            ]
+          });
+
+          // Extract the reference image prompt
+          let imagePrompt = '';
+          if (referenceResult.candidates && referenceResult.candidates[0]?.content?.parts) {
+            imagePrompt = referenceResult.candidates[0].content.parts
+              .map((part: any) => part.text || '')
+              .join('')
+              .trim();
+          } else if ((referenceResult as any).text) {
+            imagePrompt = (referenceResult as any).text.trim();
+          }
+
+          if (imagePrompt && imagePrompt.length > 0) {
+            console.log('Main reference image prompt generated, length:', imagePrompt.length);
+            mainReferenceImagePrompt = imagePrompt;
+          } else {
+            console.warn('Main reference image prompt generation returned empty result');
+            mainReferenceImagePrompt = '';
+          }
+        } catch (refError: any) {
+          console.error('Error generating main reference image prompt:', {
+            message: refError.message,
+            status: refError.status,
+            code: refError.code,
+            stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
+          });
+          // Continue without reference prompt if it fails - will use image directly as fallback
+          mainReferenceImagePrompt = '';
+        }
+      } else {
+        console.warn('Main reference image file URI is missing, skipping reference prompt generation');
+        mainReferenceImagePrompt = '';
+      }
+    }
+
+    // If character/product images are provided, generate detailed prompts for each
+    const characterProductImagePrompts: string[] = [];
+    if (characterProductImageFiles.length > 0) {
+      console.log(`Processing ${characterProductImageFiles.length} character/product image(s)...`);
+      
+      for (let i = 0; i < characterProductImageFiles.length; i++) {
+        const characterProductImageFile = characterProductImageFiles[i];
+        console.log(`Character/product image ${i + 1} file available:`, {
+          hasUri: !!characterProductImageFile.uri,
+          mimeType: characterProductImageFile.mimeType,
+          state: characterProductImageFile.state
         });
         
         // Verify the file is ready before using it
-        if (referenceImageFile.uri) {
-          console.log(`Generating detailed prompt for reference image ${i + 1}...`);
+        if (characterProductImageFile.uri) {
+          console.log(`Generating detailed prompt for character/product image ${i + 1}...`);
           try {
-            const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (Image ${i + 1} of ${referenceImageFiles.length}) and create a detailed, comprehensive prompt that would generate this exact image. 
+            const characterProductImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (Character/Product Image ${i + 1} of ${characterProductImageFiles.length}) and create a detailed, comprehensive prompt that would generate this exact image. 
 
 **CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
 - **DO NOT invent or assume characteristics** that are not explicitly visible in the image
@@ -219,66 +420,62 @@ Create an extremely detailed prompt that describes ONLY what is actually visible
 **Output Format:**
 Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
 
-            const referenceParts: any[] = [
+            const characterProductParts: any[] = [
               {
                 fileData: {
-                  fileUri: referenceImageFile.uri,
-                  mimeType: referenceImageFile.mimeType || 'image/png'
+                  fileUri: characterProductImageFile.uri,
+                  mimeType: characterProductImageFile.mimeType || 'image/png'
                 }
               },
               {
-                text: referenceImageAnalysisRequest
+                text: characterProductImageAnalysisRequest
               }
             ];
 
-            const referenceResult = await ai.models.generateContent({
+            const characterProductResult = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
               contents: [
                 {
                   role: 'user',
-                  parts: referenceParts
+                  parts: characterProductParts
                 }
               ]
             });
 
-            // Extract the reference image prompt
+            // Extract the character/product image prompt
             let imagePrompt = '';
-            if (referenceResult.candidates && referenceResult.candidates[0]?.content?.parts) {
-              imagePrompt = referenceResult.candidates[0].content.parts
+            if (characterProductResult.candidates && characterProductResult.candidates[0]?.content?.parts) {
+              imagePrompt = characterProductResult.candidates[0].content.parts
                 .map((part: any) => part.text || '')
                 .join('')
                 .trim();
-            } else if ((referenceResult as any).text) {
-              imagePrompt = (referenceResult as any).text.trim();
+            } else if ((characterProductResult as any).text) {
+              imagePrompt = (characterProductResult as any).text.trim();
             }
 
             if (imagePrompt && imagePrompt.length > 0) {
-              console.log(`Reference image ${i + 1} prompt generated, length:`, imagePrompt.length);
-              referenceImagePrompts.push(imagePrompt);
+              console.log(`Character/product image ${i + 1} prompt generated, length:`, imagePrompt.length);
+              characterProductImagePrompts.push(imagePrompt);
             } else {
-              console.warn(`Reference image ${i + 1} prompt generation returned empty result`);
-              referenceImagePrompts.push('');
+              console.warn(`Character/product image ${i + 1} prompt generation returned empty result`);
+              characterProductImagePrompts.push('');
             }
           } catch (refError: any) {
-            console.error(`Error generating reference image ${i + 1} prompt:`, {
+            console.error(`Error generating character/product image ${i + 1} prompt:`, {
               message: refError.message,
               status: refError.status,
               code: refError.code,
               stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
             });
             // Continue without reference prompt if it fails - will use image directly as fallback
-            referenceImagePrompts.push('');
+            characterProductImagePrompts.push('');
           }
         } else {
-          console.warn(`Reference image ${i + 1} file URI is missing, skipping reference prompt generation`);
-          referenceImagePrompts.push('');
+          console.warn(`Character/product image ${i + 1} file URI is missing, skipping reference prompt generation`);
+          characterProductImagePrompts.push('');
         }
       }
     }
-    
-    // For backward compatibility, keep single image reference prompt
-    const referenceImagePrompt = referenceImagePrompts.length > 0 ? referenceImagePrompts[0] : '';
-    const referenceImageFile = referenceImageFiles.length > 0 ? referenceImageFiles[0] : null;
 
     // Build style-specific instructions
     let styleInstructions = '';
@@ -328,94 +525,84 @@ Before applying any style, you MUST analyze the user's description to determine 
 - IF UGC is detected (explicitly or implied): Use iPhone/hyperrealistic UGC style (see UGC section below)
 - IF UGC is NOT detected: Use the selected style (${style}) but adapt it appropriately - can be cinematographic, professional, cinematic, or whatever best fits the description. DO NOT force iPhone/UGC characteristics if they're not appropriate.`;
 
-    // Build reference image note for multiple images
+    // Build reference image note - MAIN REFERENCE IMAGE is the primary style reference
     let referenceImageNote = '';
     if (style === 'hyperrealistic') {
-      if (referenceImageFiles.length > 0) {
-        const validPrompts = referenceImagePrompts.filter((p, idx) => p && p.trim().length > 0);
+      if (mainReferenceImageFile && mainReferenceImagePrompt) {
+        // Main reference image with prompt - this is the PRIMARY style reference
+        const validCharacterPrompts = characterProductImagePrompts.filter((p) => p && p.trim().length > 0);
         
-        if (validPrompts.length > 0) {
-          // Multiple reference images with prompts
-          if (validPrompts.length > 1) {
-            referenceImageNote = `\n\n**CRITICAL - REFERENCE IMAGES PROMPTS (USE AS STYLE REFERENCES):**
-${validPrompts.length} reference images have been provided and analyzed. Below are detailed prompts that describe each reference image's visual characteristics:
+        referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.
 
-${validPrompts.map((prompt, idx) => `**Reference Image ${idx + 1} Prompt (use this as style reference):**
-"${prompt}"`).join('\n\n')}
+**Main Reference Image Prompt (this defines the PRIMARY style that MUST be replicated exactly):**
+"${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST use ALL the reference image prompts above to create a prompt that generates an image that combines and incorporates the visual characteristics from ALL reference images. Each reference image prompt describes EXACTLY how that reference image appears. Your job is to:
+You MUST use the main reference image prompt above as the PRIMARY style reference. This image defines the EXACT visual style that must be replicated:
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL
+- **EXACT texture quality and appearance** (same level of detail, same material appearance) - ONLY what is visible
+- **EXACT color palette** (same color temperature, saturation, contrast, color harmony) - ONLY what is present
+- **EXACT depth of field and focus** (same blur/sharpness characteristics) - ONLY what is visible
+- **EXACT overall aesthetic and visual style** (same look and feel) - ONLY what is actually present
+- **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism from the main reference
 
-- **RESPECT ALL REFERENCE IMAGES**: Each reference image prompt describes ONLY what is actually visible in that reference image. You MUST respect and incorporate characteristics from ALL reference images, combining them intelligently based on what the user requests: "${description}":
-  - **EXACT camera angle and perspective** from the reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described
-  - **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described
-  - **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible
-  - **EXACT texture quality and appearance** (same level of detail, same material appearance) - ONLY what is visible
-  - **EXACT color palette** (same color temperature, saturation, contrast, color harmony) - ONLY what is present
-  - **EXACT depth of field and focus** (same blur/sharpness characteristics) - ONLY what is visible
-  - **EXACT overall aesthetic and visual style** (same look and feel) - ONLY what is actually present
-  
+${validCharacterPrompts.length > 0 ? `**Additional Character/Product Reference Images:**
+${validCharacterPrompts.map((prompt, idx) => `**Character/Product Image ${idx + 1} Prompt:**
+"${prompt}"`).join('\n\n')}
+
+These character/product images are additional references for content/subject matter. Use them to inform the content/subject, but the PRIMARY style (angle, lighting, hyperrealism) must come from the main reference image above.` : ''}
+
 - **DO NOT ADD CHARACTERISTICS NOT IN THE REFERENCE**: 
-  - **DO NOT add device frames, borders, or UI elements** unless the reference image prompt explicitly mentions them
-  - **DO NOT add "iPhone screenshot" or "iPhone frame"** unless the reference explicitly describes these elements
-  - **DO NOT assume device-specific characteristics** unless they are explicitly described in the reference prompt
-  - **ONLY use what is actually described** in the reference image prompt
+  - **DO NOT add device frames, borders, or UI elements** unless the main reference image prompt explicitly mentions them
+  - **DO NOT add "iPhone screenshot" or "iPhone frame"** unless the main reference explicitly describes these elements
+  - **DO NOT assume device-specific characteristics** unless they are explicitly described in the main reference prompt
+  - **ONLY use what is actually described** in the main reference image prompt
   
-- **Apply to user's description**: While respecting the EXACT visual characteristics described in the reference image prompt, adapt the CONTENT to match what the user described: "${description}"
-  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the reference (as described)
+- **Apply to user's description**: While respecting the EXACT visual characteristics from the main reference image (angle, lighting, hyperrealism), adapt the CONTENT to match what the user described: "${description}"
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the main reference (as described)
   - Change only the CONTENT/SUBJECT to match the user's description
-  - The result should look like the reference image but with the content/subject the user requested
-  - **DO NOT add any characteristics** (device frames, borders, etc.) that were not in the reference image prompt
+  - The result should look like the main reference image in terms of style, angle, lighting, and hyperrealism, but with the content/subject the user requested
+  - **DO NOT add any characteristics** (device frames, borders, etc.) that were not in the main reference image prompt
 
-- **CRITICAL**: The generated prompt must describe an image that looks EXACTLY like the reference image in terms of:
-  - Camera angle and perspective (only if described in reference)
-  - Composition and framing (only if described in reference)
-  - Lighting style and characteristics (only what was visible)
-  - Texture quality and appearance (only what was visible)
-  - Color palette and color characteristics (only what was present)
-  - Overall aesthetic and visual style (only what was actually there)
-  - But with the content/subject from the user's description
-  - **WITHOUT adding any elements** (frames, borders, device-specific features) that were not in the reference
-
-**Example**: If the reference image prompt describes "a photo of a person from the side with natural lighting", and the user describes "person exercising", the prompt should describe "a photo of a person exercising from the side with natural lighting" - NOT "an iPhone screenshot" or "iPhone frame" unless the reference explicitly mentioned those elements.
-
-**Important**: Match ONLY what is actually described in the reference image prompt. Do not add device frames, borders, or device-specific characteristics unless they were explicitly described in the reference.`;
-          }
-        } else if (referenceImageFiles.length > 0) {
-          // Images provided but no prompts generated - use images directly
-          referenceImageNote = `\n\n**CRITICAL - REFERENCE IMAGE${referenceImageFiles.length > 1 ? 'S' : ''} ATTACHED:**
-${referenceImageFiles.length > 1 ? `${referenceImageFiles.length} reference images have` : 'A reference image has'} been attached. You MUST:
-A reference image has been attached. You MUST:
-- **Analyze the attached reference image** to understand EXACTLY how it looks:
+- **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.`;
+      } else if (mainReferenceImageFile) {
+        // Main reference image provided but no prompt generated - use image directly
+        referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+- **Analyze the attached main reference image** to understand EXACTLY how it looks:
   - Camera angle and perspective (frontal, side, three-quarter, from above, from below, etc.)
   - Composition and framing (close-up, medium shot, wide shot, etc.)
-  - Lighting style (type, direction, intensity, color temperature, shadows, highlights)
+  - Lighting style (type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL
   - Texture quality and appearance
   - Color palette (color temperature, saturation, contrast, color harmony)
   - Depth of field and focus characteristics
   - Overall aesthetic and visual style
+  - Hyperrealism level and photorealism quality
   - If there's a person: their appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
 
-- **RESPECT THE REFERENCE IMAGE EXACTLY**: Your generated prompt must describe an image that looks EXACTLY like the reference image in terms of:
-  - **EXACT camera angle and perspective** - match the reference image's camera angle precisely
-  - **EXACT composition and framing** - match the reference image's framing and composition
-  - **EXACT lighting style** - match the reference image's lighting characteristics
-  - **EXACT texture quality** - match the reference image's texture appearance
-  - **EXACT color palette** - match the reference image's colors
-  - **EXACT depth of field** - match the reference image's focus/blur characteristics
-  - **EXACT overall aesthetic** - match the reference image's visual style and look
+- **RESPECT THE MAIN REFERENCE IMAGE EXACTLY**: Your generated prompt must specify that the result must match this EXACT style, angle, lighting, and hyperrealism. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication:
+  - **EXACT camera angle and perspective** - match the main reference image's camera angle precisely
+  - **EXACT composition and framing** - match the main reference image's framing and composition
+  - **EXACT lighting style** - match the main reference image's lighting characteristics - THIS IS CRITICAL
+  - **EXACT texture quality** - match the main reference image's texture appearance
+  - **EXACT color palette** - match the main reference image's colors
+  - **EXACT depth of field** - match the main reference image's focus/blur characteristics
+  - **EXACT overall aesthetic** - match the main reference image's visual style and look
+  - **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism
 
-- **Apply to user's description**: While respecting the EXACT visual characteristics of the reference image, adapt the CONTENT to match what the user described: "${description}"
-  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the reference
+- **Apply to user's description**: While respecting the EXACT visual characteristics of the main reference image, adapt the CONTENT to match what the user described: "${description}"
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the main reference
   - Change only the CONTENT/SUBJECT to match the user's description
-  - If the reference has a person and the user's description also involves a person: maintain the same person's appearance from the reference, but adapt them to the new action/environment described
-  - The result should look like the reference image but with the content/subject the user requested
+  - If the main reference has a person and the user's description also involves a person: maintain the same person's appearance from the reference, but adapt them to the new action/environment described
+  - The result should look like the main reference image in terms of style, angle, lighting, and hyperrealism, but with the content/subject the user requested
 
-- **CRITICAL**: The generated prompt must create an image that looks EXACTLY like the reference image visually (angle, composition, lighting, textures, colors, aesthetic), but with the content/subject from the user's description.`;
-        }
+- **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.`;
       }
     } else {
-      // No reference images
+      // No main reference image
       referenceImageNote = '';
     }
 
@@ -493,7 +680,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
     - As if someone is casually documenting or capturing a moment
   - **User description priority**: Follow the user's description for the specific scene/action, and choose the most natural camera angle and framing that fits that scene
   - **No forced frontal**: Do NOT default to frontal/selfie style unless it naturally fits the description or the user explicitly requests it
-  - **Reference image priority**: ${referenceImageFile && referenceImagePrompt ? 'If a reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the reference image. The reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description.' : 'Choose the most natural camera angle and framing that fits the scene described.'}
+  - **Reference image priority**: ${mainReferenceImageFile && mainReferenceImagePrompt ? 'If a main reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the main reference image. The main reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'Choose the most natural camera angle and framing that fits the scene described.'}
   - iPhone camera quality and characteristics - must look like a real iPhone photo taken casually
 
 **iPhone Photography Quality Requirements:**
@@ -510,7 +697,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
 - **Perspective clarification**:
   - If description mentions people: The image should look like a casual, amateur photo taken with an iPhone - can be ANY angle (frontal, side, three-quarter, from above, from below, etc.) that feels natural and casual. NOT always frontal/selfie style. Should feel like someone casually taking a photo with their iPhone.
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
-  - **Reference image priority**: ${referenceImageFile && referenceImagePrompt ? 'If a reference image is provided, match the EXACT camera angle and perspective from the reference image. The reference image prompt describes exactly how the reference looks - respect that EXACTLY.' : 'Choose the most natural camera angle that fits the scene.'}
+  - **Reference image priority**: ${mainReferenceImageFile && mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'Choose the most natural camera angle that fits the scene.'}
 
 The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**
 
@@ -549,31 +736,32 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM but with cinem
 
 The goal is absolute photorealism with professional/cinematic quality - the image should look like it was captured with professional camera equipment. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, but with professional, polished, high-production aesthetic - NOT iPhone/UGC style.${referenceImageNote}`;
     } else if (style === 'studio-quality') {
-      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
-A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+      const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, lighting, and professional quality.
 
-**Reference Image Prompt (use this as style reference):**
-"${referenceImagePrompt}"
+**Main Reference Image Prompt (use this as PRIMARY style reference):**
+"${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST use the reference image prompt above as a guide to incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality into your generated prompt. Specifically:
+You MUST use the main reference image prompt above as the PRIMARY style guide. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly. Incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality:
 
-- **Mimic the lighting style**: Use the same type of lighting described in the reference prompt (studio, natural, artificial, etc.), same direction, intensity, color temperature, shadows, and highlights
-- **Match the texture quality**: Incorporate the same texture characteristics and material appearance as described in the reference
-- **Match the color palette**: Use similar color temperature, saturation, contrast, and color harmony as described in the reference
-- **Match the composition style**: Use similar camera angles, framing, perspective, depth of field as the reference
-- **Match the overall aesthetic**: If the reference is studio-quality, maintain studio quality; match the overall visual style and professional photography approach
-- **Apply to user's description**: While using the reference as style guide, create a prompt for what the user described: "${description}"
-- **Combine both**: The final prompt should describe the user's request but with the visual style, lighting, textures, and aesthetic of the reference image
+- **Mimic the lighting style**: Use the EXACT same type of lighting described in the main reference prompt (studio, natural, artificial, etc.), same direction, intensity, color temperature, shadows, and highlights - THIS IS CRITICAL
+- **Match the texture quality**: Incorporate the EXACT same texture characteristics and material appearance as described in the main reference
+- **Match the color palette**: Use the EXACT same color temperature, saturation, contrast, and color harmony as described in the main reference
+- **Match the composition style**: Use the EXACT same camera angles, framing, perspective, depth of field as the main reference
+- **Match the overall aesthetic**: If the main reference is studio-quality, maintain studio quality; match the overall visual style and professional photography approach
+- **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
+- **Combine both**: The final prompt should describe the user's request but with the EXACT visual style, lighting, textures, and aesthetic of the main reference image
 
-**Important**: The reference prompt describes the STYLE and VISUAL CHARACTERISTICS of the reference image. Use these characteristics to style the user's description, not to copy the reference image's content.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
-A reference image has been attached. You MUST:
-- **Analyze the attached reference image** to understand its composition, colors, style, lighting, and aesthetic
-- **Base your prompt on the reference image** - use it as a guide for composition, colors, lighting style, and overall aesthetic
-- **Maintain consistency with the reference** - if the reference shows specific colors, lighting, composition, or style elements, incorporate those into the prompt
-- **Enhance while preserving essence** - build upon the reference image's aesthetic while applying professional studio photography quality
-- **Mention the reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the aesthetic, composition, colors, lighting, and style of the attached reference image
-- **Professional studio enhancement** - Apply professional studio photography principles (studio lighting, professional composition, controlled environment) while respecting the reference image's visual language` : '';
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+- **Analyze the attached main reference image** to understand its composition, colors, style, lighting, and aesthetic - THIS IS CRITICAL
+- **Base your prompt on the main reference image** - use it as the PRIMARY guide for composition, colors, lighting style, and overall aesthetic
+- **Maintain EXACT consistency with the main reference** - if the main reference shows specific colors, lighting, composition, or style elements, incorporate those EXACTLY into the prompt
+- **Enhance while preserving essence** - build upon the main reference image's aesthetic while applying professional studio photography quality
+- **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT aesthetic, composition, colors, lighting, and style of the attached main reference image
+- **Professional studio enhancement** - Apply professional studio photography principles (studio lighting, professional composition, controlled environment) while respecting the main reference image's visual language
+- **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication` : '';
 
       styleInstructions = `**STUDIO QUALITY PHOTOGRAPHY STYLE REQUIREMENTS (CRITICAL):**
 You MUST generate a prompt that creates professional studio photography quality:
@@ -589,32 +777,33 @@ You MUST generate a prompt that creates professional studio photography quality:
 
 The image should look like a professional studio photograph - hyperrealistic but with the controlled, polished aesthetic of professional photography. Everything should be perfectly lit, composed, and detailed as if shot in a professional photography studio.`;
     } else if (style === 'design') {
-      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (USE AS STYLE REFERENCE):**
-A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+      const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT design style, colors, and visual aesthetics.
 
-**Reference Image Prompt (use this as style reference):**
-"${referenceImagePrompt}"
+**Main Reference Image Prompt (use this as PRIMARY style reference):**
+"${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST use the reference image prompt above as a guide to incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality into your generated prompt. Specifically:
+You MUST use the main reference image prompt above as the PRIMARY style guide. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly. Incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality:
 
-- **Mimic the design style**: Use the same design approach, layout style, visual hierarchy, and design language as described in the reference prompt
-- **Match the color palette**: Use similar color schemes, color harmony, saturation, and contrast as described in the reference
-- **Match the typography style**: If the reference mentions typography, use similar typography choices, font styles, and text treatment
-- **Match the composition**: Use similar layout structure, element placement, and composition principles as the reference
-- **Match the overall aesthetic**: If the reference is a design/infographic style, maintain that design aesthetic; match the overall visual style
-- **Match lighting and textures**: If applicable, use similar lighting effects, texture treatments, and material appearances as described in the reference
-- **Apply to user's description**: While using the reference as style guide, create a prompt for what the user described: "${description}"
-- **Combine both**: The final prompt should describe the user's request but with the design style, colors, layout, typography, and aesthetic of the reference image
+- **Mimic the design style**: Use the EXACT same design approach, layout style, visual hierarchy, and design language as described in the main reference prompt
+- **Match the color palette**: Use the EXACT same color schemes, color harmony, saturation, and contrast as described in the main reference
+- **Match the typography style**: If the main reference mentions typography, use the EXACT same typography choices, font styles, and text treatment
+- **Match the composition**: Use the EXACT same layout structure, element placement, and composition principles as the main reference
+- **Match the overall aesthetic**: If the main reference is a design/infographic style, maintain that design aesthetic; match the overall visual style
+- **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference
+- **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
+- **Combine both**: The final prompt should describe the user's request but with the EXACT design style, colors, layout, typography, and aesthetic of the main reference image
 
-**Important**: The reference prompt describes the STYLE and VISUAL CHARACTERISTICS of the reference image. Use these characteristics to style the user's description, not to copy the reference image's content.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:**
-A reference image has been attached. You MUST:
-- **Analyze the attached reference image** to understand its design style, layout, colors, typography, and visual elements
-- **Base your prompt on the reference image** - use it as a guide for design style, composition, color palette, typography choices, and overall aesthetic
-- **Maintain consistency with the reference** - if the reference shows specific design patterns, color schemes, layout structures, or style elements, incorporate those into the prompt
-- **Enhance while preserving essence** - build upon the reference image's design aesthetic while applying professional design principles
-- **Mention the reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the design style, layout, colors, typography, and aesthetic of the attached reference image
-- **Professional design enhancement** - Apply professional design principles (visual hierarchy, balanced composition, color harmony) while respecting the reference image's design language` : '';
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+- **Analyze the attached main reference image** to understand its design style, layout, colors, typography, and visual elements - THIS IS CRITICAL
+- **Base your prompt on the main reference image** - use it as the PRIMARY guide for design style, composition, color palette, typography choices, and overall aesthetic
+- **Maintain EXACT consistency with the main reference** - if the main reference shows specific design patterns, color schemes, layout structures, or style elements, incorporate those EXACTLY into the prompt
+- **Enhance while preserving essence** - build upon the main reference image's design aesthetic while applying professional design principles
+- **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT design style, layout, colors, typography, and aesthetic of the attached main reference image
+- **Professional design enhancement** - Apply professional design principles (visual hierarchy, balanced composition, color harmony) while respecting the main reference image's design language
+- **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication` : '';
 
       styleInstructions = `**DESIGN STYLE REQUIREMENTS (CRITICAL):**
 You MUST generate a prompt that creates professional design work (infographics, static ads, creative designs):
@@ -633,39 +822,40 @@ The image should look like professional design work - infographics, static ads, 
     } else if (style === 'copy-image') {
       // Copy Image mode: iterate/vary the reference image based on user's description
       // CRITICAL: Must maintain the EXACT format/type of image (screenshot, photo, etc.) unless user explicitly asks to change it
-      const referenceImageNote = referenceImageFile && referenceImagePrompt ? `\n\n**CRITICAL - REFERENCE IMAGE PROMPT (BASE FOR ITERATION):**
-A reference image has been provided and analyzed. Below is a detailed prompt that describes the reference image's visual characteristics:
+      const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.
 
-**Reference Image Prompt (this is the base image):**
-"${referenceImagePrompt}"
+**Main Reference Image Prompt (this is the base image):**
+"${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST create a prompt that iterates on the reference image based on what the user wants to change: "${description}"
+You MUST create a prompt that iterates on the main reference image based on what the user wants to change: "${description}". This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.
 
 **ABSOLUTELY CRITICAL REQUIREMENTS - FORMAT PRESERVATION:**
-- **MAINTAIN EXACT IMAGE FORMAT/TYPE**: The reference image prompt describes the EXACT type and format of the image. You MUST preserve this EXACTLY unless the user explicitly asks to change the format/type. Examples:
-  - If the reference is a "screenshot of iPhone screen" → The output MUST be "screenshot of iPhone screen" (unless user says "change to photo" or similar)
-  - If the reference is a "photo taken with iPhone" → The output MUST be "photo taken with iPhone" (unless user says "change to screenshot" or similar)
-  - If the reference is a "design mockup" → The output MUST be "design mockup" (unless user says "change to photo" or similar)
-  - If the reference is a "product photo" → The output MUST be "product photo" (unless user explicitly changes it)
+- **MAINTAIN EXACT IMAGE FORMAT/TYPE**: The main reference image prompt describes the EXACT type and format of the image. You MUST preserve this EXACTLY unless the user explicitly asks to change the format/type. Examples:
+  - If the main reference is a "screenshot of iPhone screen" → The output MUST be "screenshot of iPhone screen" (unless user says "change to photo" or similar)
+  - If the main reference is a "photo taken with iPhone" → The output MUST be "photo taken with iPhone" (unless user says "change to screenshot" or similar)
+  - If the main reference is a "design mockup" → The output MUST be "design mockup" (unless user says "change to photo" or similar)
+  - If the main reference is a "product photo" → The output MUST be "product photo" (unless user explicitly changes it)
 
-- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the reference image prompt EXACTLY as described:
+- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image prompt EXACTLY as described:
   - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
   - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
   - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
-  - **EXACT lighting style** (same type, direction, intensity, color temperature)
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL
   - **EXACT texture quality and appearance** (same level of detail, same material appearance)
   - **EXACT color palette** (same color temperature, saturation, contrast)
   - **EXACT overall aesthetic and visual style** (same look and feel)
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL
 
 - **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
   - If user says "change background to beach" → Keep the EXACT format (e.g., "screenshot of iPhone screen") but change the background content
   - If user says "change text to X" → Keep the EXACT format but change the text content
   - If user says "change colors" → Keep the EXACT format but change colors
   - If user says "change to photo" or "change format" → THEN you can change the format/type
-  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM REFERENCE
+  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE
 
-- **FORMAT DETECTION**: Analyze the reference image prompt carefully to identify:
+- **FORMAT DETECTION**: Analyze the main reference image prompt carefully to identify:
   - Is it a screenshot? (iPhone screen, computer screen, app interface, etc.)
   - Is it a photo? (taken with camera, iPhone camera, etc.)
   - Is it a design/mockup? (digital design, UI mockup, etc.)
@@ -673,47 +863,48 @@ You MUST create a prompt that iterates on the reference image based on what the 
   - Then MAINTAIN that exact format/type in your output unless user explicitly changes it
 
 **Examples:**
-- Reference: "screenshot of iPhone screen showing app interface" + User: "change background color to blue" → Output: "screenshot of iPhone screen showing app interface with blue background" (KEEPS screenshot format)
-- Reference: "screenshot of iPhone screen" + User: "change to photo" → Output: "photo taken with iPhone showing..." (CHANGES format because user requested it)
-- Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
-- Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
+- Main Reference: "screenshot of iPhone screen showing app interface" + User: "change background color to blue" → Output: "screenshot of iPhone screen showing app interface with blue background" (KEEPS screenshot format)
+- Main Reference: "screenshot of iPhone screen" + User: "change to photo" → Output: "photo taken with iPhone showing..." (CHANGES format because user requested it)
+- Main Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
+- Main Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
 
-**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining the EXACT format/type and all other characteristics unless explicitly changed by the user.` : referenceImageFile ? `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED (BASE FOR ITERATION):**
-A reference image has been attached. You MUST:
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
 
 **Your Task:**
-Create a prompt that iterates on the reference image based on what the user wants to change: "${description}"
+Create a prompt that iterates on the main reference image based on what the user wants to change: "${description}". This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.
 
 **ABSOLUTELY CRITICAL REQUIREMENTS - FORMAT PRESERVATION:**
-- **ANALYZE THE EXACT IMAGE FORMAT/TYPE**: First, carefully analyze the reference image to determine its EXACT format and type:
+- **ANALYZE THE EXACT IMAGE FORMAT/TYPE**: First, carefully analyze the main reference image to determine its EXACT format and type:
   - Is it a screenshot? (iPhone screen, computer screen, app interface, mobile app screenshot, etc.)
   - Is it a photo? (taken with camera, iPhone camera, professional photo, etc.)
   - Is it a design/mockup? (digital design, UI mockup, graphic design, etc.)
   - What device/medium is shown or used? (iPhone, computer, tablet, etc.)
   - What is the exact visual structure? (screen layout, photo composition, design layout, etc.)
 
-- **MAINTAIN EXACT IMAGE FORMAT/TYPE**: You MUST preserve the EXACT format/type of the reference image UNLESS the user explicitly asks to change the format/type. Examples:
-  - If reference is a screenshot of iPhone screen → Output MUST be "screenshot of iPhone screen" (unless user says "change to photo" or "change format")
-  - If reference is a photo taken with iPhone → Output MUST be "photo taken with iPhone" (unless user explicitly changes it)
-  - If reference is a design mockup → Output MUST be "design mockup" (unless user explicitly changes it)
+- **MAINTAIN EXACT IMAGE FORMAT/TYPE**: You MUST preserve the EXACT format/type of the main reference image UNLESS the user explicitly asks to change the format/type. Examples:
+  - If main reference is a screenshot of iPhone screen → Output MUST be "screenshot of iPhone screen" (unless user says "change to photo" or "change format")
+  - If main reference is a photo taken with iPhone → Output MUST be "photo taken with iPhone" (unless user explicitly changes it)
+  - If main reference is a design mockup → Output MUST be "design mockup" (unless user explicitly changes it)
 
-- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the reference image EXACTLY:
+- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image EXACTLY:
   - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
   - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
   - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
-  - **EXACT lighting style** (same type, direction, intensity, color temperature)
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL
   - **EXACT texture quality** (same level of detail, same material appearance)
   - **EXACT color palette** (same color temperature, saturation, contrast)
   - **EXACT overall aesthetic** (same look and feel)
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL
 
 - **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
   - If user says "change background" → Keep the EXACT format but change the background content
   - If user says "change text" → Keep the EXACT format but change the text content
   - If user says "change colors" → Keep the EXACT format but change colors
   - If user says "change to photo" or "change format" → THEN you can change the format/type
-  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM REFERENCE
+  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE
 
-**Output**: Create a prompt that describes the reference image with the requested modifications applied, maintaining the EXACT format/type and all other characteristics unless explicitly changed by the user.` : '';
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.` : '';
 
       styleInstructions = `**COPY IMAGE MODE - EXACT FORMAT PRESERVATION:**
 
@@ -799,27 +990,50 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
 
     let result;
     try {
-      // Build parts array - include image if provided
-      // For copy-image mode, always include the image even if we have a reference prompt
-      // For other modes, only include image if we don't have a reference prompt (fallback case)
+      // Build parts array - include images if provided
+      // MAIN REFERENCE IMAGE goes FIRST (will be uploaded to Nano Banana Pro and placed first)
+      // Then character/product images if provided
       const parts: any[] = [];
       
-      // Include images if:
-      // 1. We're in copy-image mode (always include all images)
-      // 2. We don't have reference prompts (fallback case for other modes)
-      const validPrompts = referenceImagePrompts.filter(p => p && p.trim().length > 0);
-      if (referenceImageFiles.length > 0 && (style === 'copy-image' || validPrompts.length === 0)) {
-        console.log(`Adding ${referenceImageFiles.length} reference image(s) to prompt:`, {
-          hasUris: referenceImageFiles.map(f => !!f.uri),
-          mimeTypes: referenceImageFiles.map(f => f.mimeType)
+      // Include main reference image if provided (always include for copy-image, or if no prompt was generated)
+      if (mainReferenceImageFile && (style === 'copy-image' || !mainReferenceImagePrompt)) {
+        console.log('Adding main reference image to prompt (will be placed FIRST in Nano Banana Pro):', {
+          hasUri: !!mainReferenceImageFile.uri,
+          mimeType: mainReferenceImageFile.mimeType
         });
         
-        // Add all reference images
-        for (const imageFile of referenceImageFiles) {
+        if (!mainReferenceImageFile.uri) {
+          console.error('Main reference image file missing URI');
+          return NextResponse.json(
+            { error: 'Main reference image file is missing URI property', details: 'The uploaded main reference image file does not have a valid URI' },
+            { status: 500 }
+          );
+        }
+        
+        // Add main reference image FIRST
+        parts.push({
+          fileData: {
+            fileUri: mainReferenceImageFile.uri,
+            mimeType: mainReferenceImageFile.mimeType || 'image/png'
+          }
+        });
+      } else if (mainReferenceImagePrompt) {
+        console.log('Using main reference image prompt instead of image (length:', mainReferenceImagePrompt.length, ')');
+      }
+      
+      // Include character/product images if provided
+      if (characterProductImageFiles.length > 0) {
+        console.log(`Adding ${characterProductImageFiles.length} character/product image(s) to prompt:`, {
+          hasUris: characterProductImageFiles.map(f => !!f.uri),
+          mimeTypes: characterProductImageFiles.map(f => f.mimeType)
+        });
+        
+        // Add all character/product images
+        for (const imageFile of characterProductImageFiles) {
           if (!imageFile.uri) {
-            console.error('Reference image file missing URI');
+            console.error('Character/product image file missing URI');
             return NextResponse.json(
-              { error: 'Reference image file is missing URI property', details: 'The uploaded image file does not have a valid URI' },
+              { error: 'Character/product image file is missing URI property', details: 'The uploaded character/product image file does not have a valid URI' },
               { status: 500 }
             );
           }
@@ -831,8 +1045,6 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
             }
           });
         }
-      } else if (validPrompts.length > 0) {
-        console.log('Using reference image prompt instead of image (length:', referenceImagePrompt.length, ')');
       }
       
       parts.push({
@@ -841,7 +1053,8 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
 
       console.log('Calling Gemini API with:', {
         model: 'gemini-3-flash-preview',
-        hasImage: !!referenceImageFile,
+        hasMainReferenceImage: !!mainReferenceImageFile,
+        hasCharacterProductImages: characterProductImageFiles.length > 0,
         promptLength: promptGenerationRequest.length
       });
 

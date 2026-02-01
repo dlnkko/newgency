@@ -15,8 +15,10 @@ export default function ImagePromptGenerator() {
   const [error, setError] = useState<string | null>(null);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
   const [costInfo, setCostInfo] = useState<any>(null);
-  const [referenceImages, setReferenceImages] = useState<File[]>([]);
-  const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
+  const [characterProductImages, setCharacterProductImages] = useState<File[]>([]);
+  const [characterProductPreviews, setCharacterProductPreviews] = useState<string[]>([]);
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
 
   // Compress and resize image to reduce file size
@@ -87,11 +89,28 @@ export default function ImagePromptGenerator() {
     });
   };
 
-  const handleReferenceImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleReferenceImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const newImages = [...referenceImages];
-      const newPreviews = [...referenceImagePreviews];
+      setReferenceImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReferenceImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeReferenceImage = () => {
+    setReferenceImage(null);
+    setReferenceImagePreview(null);
+  };
+
+  const handleCharacterProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const newImages = [...characterProductImages];
+      const newPreviews = [...characterProductPreviews];
       
       // Replace image at index or add new one
       if (index < newImages.length) {
@@ -105,7 +124,7 @@ export default function ImagePromptGenerator() {
         newImages.splice(3);
       }
       
-      setReferenceImages(newImages);
+      setCharacterProductImages(newImages);
       
       // Update previews
       const reader = new FileReader();
@@ -118,19 +137,19 @@ export default function ImagePromptGenerator() {
         if (newPreviews.length > 3) {
           newPreviews.splice(3);
         }
-        setReferenceImagePreviews(newPreviews);
+        setCharacterProductPreviews(newPreviews);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const removeReferenceImage = (index: number) => {
-    const newImages = [...referenceImages];
-    const newPreviews = [...referenceImagePreviews];
+  const removeCharacterProductImage = (index: number) => {
+    const newImages = [...characterProductImages];
+    const newPreviews = [...characterProductPreviews];
     newImages.splice(index, 1);
     newPreviews.splice(index, 1);
-    setReferenceImages(newImages);
-    setReferenceImagePreviews(newPreviews);
+    setCharacterProductImages(newImages);
+    setCharacterProductPreviews(newPreviews);
   };
 
   const handleGenerate = async () => {
@@ -144,8 +163,8 @@ export default function ImagePromptGenerator() {
       return;
     }
 
-    if (selectedStyle === 'copy-image' && referenceImages.length === 0) {
-      setError('Please upload at least one reference image for Copy Image mode');
+    if (selectedStyle === 'copy-image' && !referenceImage) {
+      setError('Please upload a reference image for Copy Image mode');
       return;
     }
 
@@ -156,17 +175,54 @@ export default function ImagePromptGenerator() {
     setCostInfo(null);
 
     try {
-      // Convert reference images to base64 if provided
-      const referenceImagesBase64: string[] = [];
+      // Convert reference image to base64 if provided
+      let referenceImageBase64: string | null = null;
       const maxSizeBytes = 3 * 1024 * 1024; // 3MB per image
       
-      for (let i = 0; i < referenceImages.length; i++) {
-        const image = referenceImages[i];
+      if (referenceImage) {
+        let imageToProcess = referenceImage;
+        
+        // If image is too large, compress it
+        if (referenceImage.size > maxSizeBytes) {
+          console.log(`Reference image size (${(referenceImage.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          try {
+            imageToProcess = await compressImage(referenceImage, 1920, 1920, 0.85);
+            console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            
+            // If still too large after compression, compress more aggressively
+            if (imageToProcess.size > maxSizeBytes) {
+              console.log('Still too large, compressing more aggressively...');
+              imageToProcess = await compressImage(referenceImage, 1280, 1280, 0.75);
+              console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            }
+          } catch (compressError) {
+            console.error('Error compressing reference image:', compressError);
+            setError('Failed to compress reference image. Please try a smaller image file.');
+            return;
+          }
+        }
+        
+        // Convert to base64
+        referenceImageBase64 = await fileToBase64(imageToProcess);
+        
+        // Check final base64 size (should be ~33% larger than original)
+        const base64Size = new Blob([referenceImageBase64]).size;
+        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
+          setError('Reference image is too large even after compression. Please use images smaller than 3MB.');
+          return;
+        }
+      }
+
+      // Convert character/product images to base64 if provided
+      const characterProductImagesBase64: string[] = [];
+      
+      for (let i = 0; i < characterProductImages.length; i++) {
+        const image = characterProductImages[i];
         let imageToProcess = image;
         
         // If image is too large, compress it
         if (image.size > maxSizeBytes) {
-          console.log(`Image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          console.log(`Character/Product image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
           try {
             imageToProcess = await compressImage(image, 1920, 1920, 0.85);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
@@ -178,8 +234,8 @@ export default function ImagePromptGenerator() {
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
-            console.error(`Error compressing image ${i + 1}:`, compressError);
-            setError(`Failed to compress image ${i + 1}. Please try a smaller image file.`);
+            console.error(`Error compressing character/product image ${i + 1}:`, compressError);
+            setError(`Failed to compress character/product image ${i + 1}. Please try a smaller image file.`);
             return;
           }
         }
@@ -190,11 +246,11 @@ export default function ImagePromptGenerator() {
         // Check final base64 size (should be ~33% larger than original)
         const base64Size = new Blob([base64]).size;
         if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError(`Image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+          setError(`Character/Product image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
           return;
         }
         
-        referenceImagesBase64.push(base64);
+        characterProductImagesBase64.push(base64);
       }
 
       const response = await fetch('/api/generate-image-prompt', {
@@ -205,7 +261,8 @@ export default function ImagePromptGenerator() {
         body: JSON.stringify({
           description: description.trim(),
           style: selectedStyle,
-          referenceImages: referenceImagesBase64,
+          referenceImage: referenceImageBase64,
+          characterProductImages: characterProductImagesBase64,
           firstFrameFromVideo: veo3FirstFrame
         }),
       });
@@ -367,37 +424,111 @@ export default function ImagePromptGenerator() {
           </div>
         </div>
 
-        {/* Reference Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
+        {/* Reference Image Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
         {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-              Reference Images (Optional - Up to 3)
+              Reference Image
             </label>
             <p className="mb-3 text-xs text-zinc-400">
               {selectedStyle === 'hyperrealistic' 
-                ? 'Upload up to 3 reference images. The AI will analyze each image and create detailed prompts describing their style, light, texture, and aesthetics. Then it will use those prompts as references to create the final prompt based on your description, incorporating the same level of hyperrealism, lighting, and texture quality from the reference images.'
+                ? 'Upload a reference image that defines the style (lighting, angle, hyperrealism). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact style, angle, lighting, and hyperrealism level.'
                 : selectedStyle === 'studio-quality'
-                ? 'Upload up to 3 reference images. The AI will analyze each image and create detailed prompts describing their style, lighting, composition, and aesthetics. Then it will use those prompts as references to create the final prompt based on your description, incorporating the same lighting style, composition, and professional quality.'
+                ? 'Upload a reference image that defines the style (lighting, composition, professional quality). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact style, lighting, and professional quality.'
                 : selectedStyle === 'copy-image'
-                ? 'Upload up to 3 reference images that you want to iterate on. The AI will analyze each image and create a prompt that varies them based on what you want to change or make different, while maintaining the core visual characteristics.'
-                : 'Upload up to 3 reference images. The AI will analyze each image and create detailed prompts describing their design style, colors, typography, and composition. Then it will use those prompts as references to create the final prompt based on your description, incorporating the same design style, color palette, and visual aesthetics.'}
+                ? 'Upload a reference image that you want to iterate on. This image will be uploaded to Nano Banana Pro model and placed first. The AI will analyze it and create a prompt that varies it based on what you want to change, while maintaining the core visual characteristics.'
+                : 'Upload a reference image that defines the design style (colors, typography, composition). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact design style, colors, and visual aesthetics.'}
+            </p>
+            <div className="max-w-md">
+              {referenceImagePreview ? (
+                <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                  <div className="relative inline-block w-full">
+                    <img
+                      src={referenceImagePreview}
+                      alt="Reference image preview"
+                      className="w-full max-h-64 rounded-lg object-contain"
+                    />
+                    <button
+                      onClick={removeReferenceImage}
+                      disabled={isGenerating}
+                      className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Remove image"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-4 py-6 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                  <svg
+                    className="mb-2 h-8 w-8 text-zinc-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <span className="text-xs font-medium text-zinc-400">
+                    Upload Reference Image
+                  </span>
+                  <span className="mt-1 text-[10px] text-zinc-500">
+                    PNG, JPG, WEBP
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={handleReferenceImageUpload}
+                    className="hidden"
+                    disabled={isGenerating}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Characters/Products Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
+          <div className="mb-8">
+            <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+              Characters / Products (Optional - Up to 3)
+            </label>
+            <p className="mb-3 text-xs text-zinc-400">
+              Upload up to 3 additional reference images for characters or products. These will be used as additional references alongside the main reference image.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[0, 1, 2].map((index) => (
                 <div key={index} className="space-y-2">
                   <label className="block text-xs font-medium text-zinc-500 mb-1">
-                    Image {index + 1}
+                    {index === 0 ? 'Character/Product 1' : index === 1 ? 'Character/Product 2' : 'Character/Product 3'}
                   </label>
-                  {referenceImagePreviews[index] ? (
+                  {characterProductPreviews[index] ? (
                     <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
                       <div className="relative inline-block w-full">
                         <img
-                          src={referenceImagePreviews[index]}
-                          alt={`Reference ${index + 1} preview`}
+                          src={characterProductPreviews[index]}
+                          alt={`Character/Product ${index + 1} preview`}
                           className="w-full max-h-48 rounded-lg object-contain"
                         />
                         <button
-                          onClick={() => removeReferenceImage(index)}
+                          onClick={() => removeCharacterProductImage(index)}
                           disabled={isGenerating}
                           className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Remove image"
@@ -442,7 +573,7 @@ export default function ImagePromptGenerator() {
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/jpg,image/webp"
-                        onChange={(e) => handleReferenceImageUpload(e, index)}
+                        onChange={(e) => handleCharacterProductImageUpload(e, index)}
                         className="hidden"
                         disabled={isGenerating}
                       />

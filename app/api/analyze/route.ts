@@ -71,20 +71,110 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { metaAdUrl, socialMediaUrl } = body;
+    const { metaAdUrl, socialMediaUrl, video } = body;
 
-    if ((!metaAdUrl || !metaAdUrl.trim()) && (!socialMediaUrl || !socialMediaUrl.trim())) {
+    if ((!metaAdUrl || !metaAdUrl.trim()) && (!socialMediaUrl || !socialMediaUrl.trim()) && !video) {
       return NextResponse.json(
-        { error: 'Either Meta Ad URL or Instagram/TikTok URL is required' },
+        { error: 'Either Meta Ad URL, Instagram/TikTok URL, or uploaded video is required' },
         { status: 400 }
       );
     }
 
     let videoFile: any = null;
-    let contentType: 'metaAd' | 'socialMedia' = metaAdUrl ? 'metaAd' : 'socialMedia';
+    let contentType: 'metaAd' | 'socialMedia' | 'uploaded' = metaAdUrl ? 'metaAd' : (socialMediaUrl ? 'socialMedia' : 'uploaded');
+    
+    // Handle uploaded video first
+    if (video) {
+      try {
+        console.log('Processing uploaded video...');
+        const videoBuffer = Buffer.from(video.split(',')[1], 'base64');
+        const videoUint8Array = new Uint8Array(videoBuffer);
+        const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
+        
+        // Upload video to Gemini Files
+        console.log('Uploading video to Gemini Files...');
+        let myfile = await ai.files.upload({
+          file: videoBlob,
+          config: { mimeType: 'video/mp4' }
+        });
+        
+        console.log('Video uploaded to Gemini:', myfile.uri);
+        
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        
+        let fileName = myfile.name;
+        if (!fileName && myfile.uri) {
+          const uriParts = myfile.uri.split('/');
+          fileName = uriParts[uriParts.length - 1];
+        }
+        
+        if (myfile.state === 'ACTIVE') {
+          console.log('File already ACTIVE, proceeding...');
+        } else {
+          console.log(`Initial state: ${myfile.state}, waiting for ACTIVE...`);
+          
+          while (myfile.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              return NextResponse.json(
+                { 
+                  error: 'Timeout waiting for file to be ready',
+                  details: `File did not reach ACTIVE state after ${maxWaitTime / 1000} seconds. Current state: ${myfile.state}`
+                },
+                { status: 500 }
+              );
+            }
 
-    // Handle Social Media URL (Instagram/TikTok)
-    if (socialMediaUrl && socialMediaUrl.trim()) {
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              if (fileName) {
+                const fileInfo = await ai.files.get({ name: fileName });
+                myfile = fileInfo;
+                console.log(`File state: ${myfile.state} (waiting for ACTIVE)...`);
+              } else {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                break;
+              }
+            } catch (checkError: any) {
+              console.error('Error checking file status:', checkError);
+            }
+          }
+          
+          console.log('File ready in ACTIVE state, proceeding with analysis...');
+        }
+        
+        videoFile = myfile;
+        console.log('Video file ready for analysis:', videoFile.uri);
+      } catch (uploadError: any) {
+        console.error('Error uploading video:', uploadError);
+        
+        if (uploadError.message?.includes('API key not valid') || 
+            uploadError.message?.includes('API_KEY_INVALID') ||
+            uploadError.status === 400 && uploadError.message?.includes('API key')) {
+          return NextResponse.json(
+            { 
+              error: 'Google Gemini API key is not valid',
+              details: 'The Google Gemini API key is not valid or has expired. Please verify your API key in the .env.local file and restart the server. Get a new API key at: https://aistudio.google.com/apikey'
+            },
+            { status: 401 }
+          );
+        }
+        
+        return NextResponse.json(
+          { 
+            error: 'Error processing uploaded video',
+            details: uploadError.message || 'Could not upload the video to Gemini Files. The video may be too large.'
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Handle Social Media URL (Instagram/TikTok) - only if no video was uploaded
+    if (socialMediaUrl && socialMediaUrl.trim() && !videoFile) {
       const isInstagram = socialMediaUrl.includes('instagram.com/reel') || socialMediaUrl.includes('instagram.com/p/');
       const isTikTok = socialMediaUrl.includes('tiktok.com');
 
@@ -331,8 +421,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle Meta Ad URL
-    if (metaAdUrl && metaAdUrl.trim()) {
+    // Handle Meta Ad URL - only if no video was uploaded
+    if (metaAdUrl && metaAdUrl.trim() && !videoFile) {
       // Extraer el ID de la URL de Facebook Ads Library
       let adId: string | null = null;
       try {
@@ -841,7 +931,9 @@ export async function POST(request: NextRequest) {
     // Create unified analysis prompt
     const contentDescription = contentType === 'metaAd' 
       ? 'this video ad' 
-      : 'this social media video post';
+      : contentType === 'socialMedia'
+      ? 'this social media video post'
+      : 'this uploaded video';
     
     const contentInput = videoFile
       ? `You have access to a video file. Analyze the video visually and any audio/transcript available.`

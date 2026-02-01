@@ -116,14 +116,49 @@ function formatAnalysisText(text: string): string {
 export default function ReverseEngineer() {
   const [metaAdUrl, setMetaAdUrl] = useState('');
   const [socialMediaUrl, setSocialMediaUrl] = useState('');
+  const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('video/')) {
+        setError('Please upload a valid video file.');
+        return;
+      }
+      setUploadedVideo(file);
+      setError(null);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVideoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeVideo = () => {
+    setUploadedVideo(null);
+    setVideoPreview(null);
+  };
+
   const handleGenerate = async () => {
-    if (!metaAdUrl.trim() && !socialMediaUrl.trim()) {
-      setError('Please provide either a Meta Ad URL or Instagram/TikTok URL.');
+    if (!metaAdUrl.trim() && !socialMediaUrl.trim() && !uploadedVideo) {
+      setError('Please provide either a Meta Ad URL, Instagram/TikTok URL, or upload a video file.');
       return;
     }
 
@@ -133,6 +168,12 @@ export default function ReverseEngineer() {
     setResult(null);
 
     try {
+      let videoBase64 = null;
+      if (uploadedVideo) {
+        // Convert video to base64
+        videoBase64 = await fileToBase64(uploadedVideo);
+      }
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -141,6 +182,7 @@ export default function ReverseEngineer() {
         body: JSON.stringify({
           metaAdUrl: metaAdUrl.trim() || undefined,
           socialMediaUrl: socialMediaUrl.trim() || undefined,
+          video: videoBase64,
         }),
       });
 
@@ -184,7 +226,9 @@ export default function ReverseEngineer() {
   const isMetaAd = metaAdUrl.includes('facebook.com/ads/library');
 
   const canGenerate = 
-    isValidUrl(metaAdUrl) || (isValidUrl(socialMediaUrl) && (isInstagram || isTikTok));
+    isValidUrl(metaAdUrl) || 
+    (isValidUrl(socialMediaUrl) && (isInstagram || isTikTok)) ||
+    uploadedVideo !== null;
 
   return (
     <DashboardLayout>
@@ -196,7 +240,7 @@ export default function ReverseEngineer() {
           Deconstruct high‑performing ads like an innovation lab
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-          Paste a Meta Ad URL or Instagram/TikTok URL and get deep psychological insights about why the video worked, what connected with the audience, and what you can replicate.
+          Paste a Meta Ad URL or Instagram/TikTok URL, or upload a video file directly, and get deep psychological insights about why the video worked, what connected with the audience, and what you can replicate.
         </p>
       </div>
 
@@ -251,6 +295,76 @@ export default function ReverseEngineer() {
           )}
         </div>
 
+        {/* Video Upload */}
+        <div className="mb-6">
+          <label
+            htmlFor="videoUpload"
+            className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400"
+          >
+            Upload Video (Optional)
+          </label>
+          {!videoPreview ? (
+            <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+              <svg
+                className="mb-3 h-10 w-10 text-zinc-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+              <span className="text-sm font-medium text-zinc-400">
+                Click to upload or drag and drop
+              </span>
+              <span className="mt-1 text-xs text-zinc-500">
+                MP4, MOV, AVI up to 100MB
+              </span>
+              <input
+                id="videoUpload"
+                type="file"
+                accept="video/mp4,video/mov,video/avi,video/quicktime"
+                onChange={handleVideoUpload}
+                className="hidden"
+                disabled={isAnalyzing}
+              />
+            </label>
+          ) : (
+            <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+              <div className="relative inline-block">
+                <video
+                  src={videoPreview}
+                  controls
+                  className="max-h-64 rounded-lg"
+                />
+                <button
+                  onClick={removeVideo}
+                  disabled={isAnalyzing}
+                  className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Remove video"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Generate Button */}
         <button
