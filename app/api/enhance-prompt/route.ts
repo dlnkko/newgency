@@ -120,11 +120,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract person and location from first scene if available
+    // For scenes 4+, use more concise consistency rules to save tokens
     let consistencyRules = '';
     if (allScenes && Array.isArray(allScenes) && allScenes.length > 0 && currentSceneIndex !== undefined) {
       const firstScene = allScenes[0];
       if (firstScene && firstScene.action) {
-        consistencyRules = `\n\n**CRITICAL CONSISTENCY RULES (MANDATORY):**
+        const isScene4Plus = currentSceneIndex >= 3; // Scene 4, 5, etc. (0-indexed)
+        
+        if (isScene4Plus) {
+          // Concise version for scenes 4+ to save tokens
+          const firstActionPreview = firstScene.action.length > 100 
+            ? firstScene.action.substring(0, 100) + '...' 
+            : firstScene.action;
+          consistencyRules = `\n\n**CONSISTENCY (Scene ${currentSceneIndex + 1}/${allScenes.length}):**
+- Same person as Scene 1 (appearance, age, gender, clothing)
+- Same location as Scene 1 unless action text specifies different
+- First scene context: "${firstActionPreview}"
+- Maintain consistency unless action text explicitly overrides`;
+        } else {
+          // Full version for scenes 1-3
+          consistencyRules = `\n\n**CRITICAL CONSISTENCY RULES (MANDATORY):**
 1. **SAME PERSON**: You MUST maintain the exact same person across ALL scenes. If the first scene describes a person (their appearance, age, gender, clothing, etc.), you MUST use the SAME person description in this scene. Do NOT change the person's characteristics unless explicitly stated in the action text.
 
 2. **SAME LOCATION**: If the first scene (Scene 1) takes place in a specific location (e.g., "in a car", "at home", "in a kitchen", "outdoors", etc.), you MUST keep the SAME location in this scene UNLESS the current action text explicitly states a different location. Only change locations if the user explicitly mentions a location change in the action text.
@@ -135,6 +150,7 @@ export async function POST(request: NextRequest) {
    - Apply these consistently to the current scene unless explicitly overridden in the action text.
 
 **Current Scene Index**: ${currentSceneIndex + 1} of ${allScenes.length}`;
+        }
       }
     }
 
@@ -248,10 +264,15 @@ ${hasPOV ? '- **POV DETECTION**: Since "POV" is mentioned in the action text, yo
 
     // Get total number of scenes to adjust conciseness
     const totalScenes = allScenes && Array.isArray(allScenes) ? allScenes.length : 1;
+    const isScene4Plus = currentSceneIndex !== undefined && currentSceneIndex >= 3;
     
     // Conciseness instructions based on total scenes
+    // IMPORTANT: For scenes 4+, we still need detailed prompts, just more efficient wording
     const concisenessInstructions = totalScenes > 1
-      ? `\n\n**CRITICAL CONCISENESS REQUIREMENT:**
+      ? (isScene4Plus 
+          ? `\n\n**EFFICIENCY REQUIREMENT (Scene ${currentSceneIndex + 1}/${totalScenes}):**
+Use efficient, high-impact language while maintaining FULL detail and power. Combine related details into single phrases. Target: ~80-100 words. CRITICAL: Still include ALL technical details (camera, lighting, hyperrealism, composition) - just express them more efficiently.`
+          : `\n\n**CRITICAL CONCISENESS REQUIREMENT:**
 This is scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of ${totalScenes} total scenes. You MUST be more concise than usual while maintaining full power and detail:
 
 - **For 2-3 scenes**: Be concise but comprehensive. Use efficient, high-impact language. Combine related details into single phrases. Avoid redundancy. Target: ~100-120 words per scene.
@@ -260,15 +281,21 @@ This is scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of 
 
 - **For 5+ scenes**: Be extremely concise. Use maximum density. Combine all related information into tight phrases. Focus only on critical visual and narrative elements. Target: ~50-70 words per scene.
 
-**Your task**: Maintain ALL the power, detail, and authenticity requirements, but express them with maximum efficiency. Every word must carry maximum weight. Use compound adjectives, merged clauses, and efficient phrasing. The prompt must be shorter but equally powerful and detailed.`
+**Your task**: Maintain ALL the power, detail, and authenticity requirements, but express them with maximum efficiency. Every word must carry maximum weight. Use compound adjectives, merged clauses, and efficient phrasing. The prompt must be shorter but equally powerful and detailed.`)
       : '';
 
     // Calculate effective duration (default is 15 seconds)
     const effectiveDuration = duration && duration > 0 ? duration : 15;
     
     // Script integration instructions
+    // For scenes 4+, use more concise script instructions
     const scriptInstructions = script && script.trim()
-      ? `\n\n**CRITICAL - SCRIPT INTEGRATION WITH ACTIONS (MANDATORY):**
+      ? (isScene4Plus
+          ? `\n\n**SCRIPT INTEGRATION (REQUIRED):**
+Script: "${script}". Action: "${actionText}". 
+REQUIRED: Identify all actions/B-roll from action text. Pair script portions with corresponding actions. Script word count: ~${script.split(/\s+/).length} words (~${Math.round(script.split(/\s+/).length / 2.5)}-${Math.round(script.split(/\s+/).length / 2.2)}s). Duration: ${effectiveDuration}s.
+Integration: "while [action], says [script portion]". If script too long, adapt but maintain coherence. Distribute script throughout scene synchronized with actions.`
+          : `\n\n**CRITICAL - SCRIPT INTEGRATION WITH ACTIONS (MANDATORY):**
 A script/dialogue has been provided for this scene. You MUST integrate it seamlessly and coherently with the actions described.
 
 **Script provided:**
@@ -362,7 +389,7 @@ Example 3 - Action-script coherence:
    - Pairs each script portion with its corresponding action coherently
    - Ensures script portions are spoken DURING the relevant actions
    - Maintains natural flow and coherence between script and actions
-   - Fits within ${effectiveDuration} seconds`
+   - Fits within ${effectiveDuration} seconds`)
       : '';
 
     // Duration-based instructions
@@ -400,10 +427,15 @@ Since "UGC Close-up" composition is selected, you MUST focus the shot on the pro
 Since "UGC Close-up" is NOT selected, you MUST show the product and person together in the scene as a whole, maintaining a natural wide-to-medium shot that captures the complete scene context. DO NOT focus exclusively on the product or person in close-up. Instead, show them integrated naturally within the environment, maintaining the full scene context. The shot should feel like a natural, casual mobile recording that captures the entire scene organically, as if recorded from the iPhone of the AI avatar. Keep everything visible together in the frame, respecting the natural composition of the scene while maintaining 100% UGC hyperrealism. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
 
     // Lighting-specific instructions for hyperrealistic UGC
+    // For scenes 4+, use more concise lighting instructions to save tokens
+    const isScene4Plus = currentSceneIndex !== undefined && currentSceneIndex >= 3;
     const lightingInstructions = lighting
       ? (() => {
           const lightingLower = lighting.toLowerCase();
-          const hyperrealismBase = `\n\n**CRITICAL HYPERREALISM REQUIREMENTS (APPLIES TO ALL LIGHTING):**
+          const hyperrealismBase = isScene4Plus
+            ? `\n\n**HYPERREALISM (REQUIRED):**
+100% iPhone realism: ultra-realistic shadows with proper falloff, photorealistic lighting with natural diffusion, hyperrealistic textures (skin pores, fabric weave, product details), iPhone camera characteristics (grain, color science, exposure), real-world imperfections (motion blur, focus breathing), environmental authenticity. Background must be sharp and in focus.`
+            : `\n\n**CRITICAL HYPERREALISM REQUIREMENTS (APPLIES TO ALL LIGHTING):**
 The video MUST maintain 100% hyperrealism in ALL aspects, making it indistinguishable from a real iPhone-recorded video:
 - **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source
 - **Hyperrealistic lighting**: Natural light behavior, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
@@ -414,13 +446,22 @@ The video MUST maintain 100% hyperrealism in ALL aspects, making it indistinguis
 The goal is absolute photorealism - the video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic.`;
           
           if (lightingLower.includes('night outside')) {
-            return `${hyperrealismBase}\n\n**LIGHTING: NIGHT OUTSIDE (HYPERREALISTIC UGC):**
+            return isScene4Plus
+              ? `${hyperrealismBase}\n\n**LIGHTING: NIGHT OUTSIDE:**
+Authentic iPhone night recording: streetlights/car headlights with realistic falloff, moonlight casting soft hyperrealistic shadows, authentic grain/noise/lower exposure, warm artificial lights with realistic color temperature. Background sharp and in focus.`
+              : `${hyperrealismBase}\n\n**LIGHTING: NIGHT OUTSIDE (HYPERREALISTIC UGC):**
 The lighting MUST be authentic nighttime outdoor lighting as if someone is genuinely recording outside at night with their iPhone. Include: streetlights and car headlights visible in background with realistic light falloff and authentic shadows, natural moonlight casting soft, hyperrealistic shadows with proper edge softness, realistic iPhone recording at night with authentic grain, natural noise, and lower exposure typical of nighttime smartphone footage, warm artificial lights from buildings or streetlamps with realistic color temperature and light diffusion, authentic night atmosphere with hyperrealistic light interaction. The video should look exactly like real nighttime footage recorded on an iPhone - not professional lighting, but genuine iPhone night recording with all its characteristic qualities (authentic grain, natural noise, realistic exposure, hyperrealistic shadows with proper density and softness, genuine light sources with realistic falloff, etc.). Every shadow must be hyperrealistic with natural softness and proper density. Every light source must have realistic diffusion and color temperature. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
           } else if (lightingLower.includes('day outside')) {
-            return `${hyperrealismBase}\n\n**LIGHTING: DAY OUTSIDE (HYPERREALISTIC UGC):**
+            return isScene4Plus
+              ? `${hyperrealismBase}\n\n**LIGHTING: DAY OUTSIDE:**
+Authentic iPhone day recording: bright natural sunlight with hyperrealistic diffusion, ultra-realistic shadows with proper softness/density, natural color science, slight overexposure in highlights. Background sharp and in focus.`
+              : `${hyperrealismBase}\n\n**LIGHTING: DAY OUTSIDE (HYPERREALISTIC UGC):**
 The lighting MUST be authentic daytime outdoor lighting as if someone is genuinely recording outside during the day with their iPhone. Include: bright and clear natural sunlight with hyperrealistic light diffusion and realistic color temperature, ultra-realistic shadows cast by natural light with proper edge softness, authentic density, and natural shadow color, authentic iPhone recording during daytime with natural color science typical of iPhone cameras, genuine outdoor ambient lighting with realistic light scattering, slight overexposure in bright areas typical of iPhone cameras with authentic highlight rolloff, hyperrealistic light interaction with all surfaces. The video should look exactly like real daytime footage recorded on an iPhone - not professional lighting, but genuine iPhone day recording with all its characteristic qualities (natural shadows with hyperrealistic softness and density, bright sunlight with realistic diffusion, slight overexposure in highlights with authentic rolloff, etc.). Every shadow must be hyperrealistic. Every light interaction must be photorealistic. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
           } else if (lightingLower.includes('artificial light inside')) {
-            return `${hyperrealismBase}\n\n**LIGHTING: ARTIFICIAL LIGHT INSIDE (HYPERREALISTIC UGC - CRITICAL):**
+            return isScene4Plus
+              ? `${hyperrealismBase}\n\n**LIGHTING: ARTIFICIAL LIGHT INSIDE:**
+Authentic iPhone indoor artificial lighting: warm/cool LED/incandescent with realistic color temperature/diffusion, ultra-realistic shadows matching light source, photorealistic textures (skin pores, fabric weave), iPhone color science, natural exposure/grain. Background sharp and in focus.`
+              : `${hyperrealismBase}\n\n**LIGHTING: ARTIFICIAL LIGHT INSIDE (HYPERREALISTIC UGC - CRITICAL):**
 The lighting MUST be authentic indoor artificial lighting as if someone is genuinely recording inside with artificial lights using their iPhone, while maintaining ABSOLUTE HYPERREALISM in shadows, lights, and textures. Include: 
 - **Hyperrealistic artificial light sources**: Warm or cool LED/incandescent lights with realistic color temperature, authentic light diffusion, genuine light falloff, natural light intensity distribution
 - **Ultra-realistic shadows**: Natural shadows from indoor lights with proper edge softness, authentic shadow density that matches the light source, realistic shadow color (warm shadows from warm lights, cool shadows from cool lights), natural shadow falloff and softness
@@ -430,14 +471,21 @@ The lighting MUST be authentic indoor artificial lighting as if someone is genui
 - **Real-world imperfections**: Natural motion blur, authentic focus characteristics, realistic chromatic aberration, genuine lens characteristics typical of iPhone cameras
 The video should look exactly like real indoor footage recorded on an iPhone with artificial lighting - not professional lighting, but genuine iPhone indoor recording with ABSOLUTE HYPERREALISM. Every shadow must be hyperrealistic with natural softness, proper density, and authentic color. Every light must have realistic diffusion, color temperature, and falloff. Every texture must be photorealistic and respond authentically to the artificial light. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.** The goal is to make it impossible to distinguish from a real iPhone recording.`;
           } else if (lightingLower.includes('natural light inside')) {
-            return `${hyperrealismBase}\n\n**LIGHTING: NATURAL LIGHT INSIDE (HYPERREALISTIC UGC):**
+            return isScene4Plus
+              ? `${hyperrealismBase}\n\n**LIGHTING: NATURAL LIGHT INSIDE:**
+Authentic iPhone indoor natural window light: hyperrealistic diffusion/color temperature, soft diffused daylight with authentic falloff, ultra-realistic shadows with proper softness/density, bright/airy atmosphere. Background sharp and in focus.`
+              : `${hyperrealismBase}\n\n**LIGHTING: NATURAL LIGHT INSIDE (HYPERREALISTIC UGC):**
 The lighting MUST be authentic indoor natural lighting as if someone is genuinely recording inside near a window with their iPhone, maintaining absolute hyperrealism. Include: natural window light streaming indoors with hyperrealistic light diffusion and realistic color temperature, soft diffused daylight through windows with authentic light falloff, ultra-realistic indoor natural lighting with proper light scattering, authentic iPhone recording indoors with natural light showing genuine iPhone color science, hyperrealistic shadows from window light with natural edge softness, proper density, and authentic shadow color, bright and airy atmosphere with realistic atmospheric perspective. The video should look exactly like real indoor footage recorded on an iPhone near a window - not professional lighting, but genuine iPhone indoor recording with natural window light and all its characteristic qualities (soft diffused light with hyperrealistic diffusion, window shadows with ultra-realistic softness and density, bright and airy feel with authentic light interaction, etc.). Every shadow must be hyperrealistic. Every light interaction must be photorealistic. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
           }
           return hyperrealismBase;
         })()
       : '';
 
-    const productImageInstructions = productImageFile ? `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
+    const productImageInstructions = productImageFile 
+      ? (isScene4Plus
+          ? `\n\n**PRODUCT IMAGE (REQUIRED):**
+Analyze attached image: appearance, colors, materials, textures, design, branding. Include detailed product descriptions in prompt. Match image exactly. DO NOT return original action text.`
+          : `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
 A product image has been attached. You MUST:
 - **CRITICAL: You MUST generate an ENHANCED prompt, NOT return the original action text**
 - **Analyze the attached product image** to understand the exact product appearance, colors, materials, textures, design, branding, and all visual details
@@ -446,18 +494,28 @@ A product image has been attached. You MUST:
 - **Reference the image explicitly** - In your enhanced prompt, explicitly mention that the product should match the attached image, including its appearance, colors, materials, and visual characteristics
 - **Accurate product description** - Ensure the product description in your prompt accurately reflects what is shown in the attached image
 - **MANDATORY: You MUST enhance and expand the action text with detailed product descriptions based on the image. DO NOT simply return the original action text. You MUST create a comprehensive, detailed prompt that incorporates product details from the image.**
-- **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**` : '';
-
-    const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
-
-**CRITICAL REQUIREMENT - YOU MUST ENHANCE THE PROMPT (MANDATORY):**
+- **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**`)
+      : '';
+    const criticalEnhancementSection = isScene4Plus
+      ? `**CRITICAL - YOU MUST ENHANCE (Scene ${currentSceneIndex + 1}):**
+- FORBIDDEN: Returning original action text unchanged
+- REQUIRED: Transform into detailed prompt with camera, lighting, composition, hyperrealism details
+- REQUIRED: Include all technical specifications (movements, textures, shadows, iPhone characteristics)
+- REQUIRED: ${productImageFile ? 'Analyze product image and include detailed product descriptions' : 'Include product details if mentioned'}
+- MINIMUM: Enhanced prompt must be 2-3x longer than original with full technical details
+- FAILURE: If response is similar to original, you have FAILED`
+      : `**CRITICAL REQUIREMENT - YOU MUST ENHANCE THE PROMPT (MANDATORY):**
 - **ABSOLUTE PROHIBITION**: You are FORBIDDEN from returning the original action text unchanged or with minimal modifications
 - **MANDATORY ENHANCEMENT**: You MUST transform the basic action text into a comprehensive, detailed, professional prompt
 - **EXPANSION REQUIRED**: The enhanced prompt MUST be significantly longer and more detailed than the original action text
 - **TECHNICAL DETAILS REQUIRED**: You MUST incorporate all camera movements, lighting details, composition details, hyperrealism requirements, and visual descriptions
 - **PRODUCT DETAILS REQUIRED**: ${productImageFile ? 'You MUST analyze the attached product image and include detailed product descriptions (colors, materials, textures, design, appearance) in your enhanced prompt. The product details from the image are MANDATORY.' : 'If product details are mentioned, include them in detail.'}
 - **FAILURE CONDITION**: If your response is similar to or identical to the original action text, you have COMPLETELY FAILED the task
-- **SUCCESS CONDITION**: Your response must be a complete, professional, detailed prompt that is ready for AI video generation - it should be 3-5x longer than the original action text and include all technical and visual details
+- **SUCCESS CONDITION**: Your response must be a complete, professional, detailed prompt that is ready for AI video generation - it should be 3-5x longer than the original action text and include all technical and visual details`;
+
+    const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
+
+${criticalEnhancementSection}
 
 **EXAMPLE OF WHAT NOT TO DO:**
 - Original: "mujer muestra sus gomitas de creatina"
@@ -536,7 +594,8 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
 - The enhanced text MUST be significantly different from and more detailed than: "${actionText}"
 - If your response is too similar to the original action text above, you have FAILED
 - The enhanced prompt must include: camera movements, lighting details, composition details, product descriptions (if image provided), hyperrealism requirements, visual aesthetics, and all technical specifications
-- Minimum length: The enhanced prompt should be at least 3-5x longer than the original action text`;
+- Minimum length: The enhanced prompt should be at least ${isScene4Plus ? '2-3x' : '3-5x'} longer than the original action text
+- ${isScene4Plus ? '**CRITICAL FOR SCENE 4+**: Even though you need to be efficient, you MUST still include ALL technical details. Just express them more compactly. Do NOT skip any details.' : ''}`;
 
     // Llamar a Gemini 3 Flash Preview
     let result;
@@ -641,7 +700,11 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         }
         
         // Validar que el texto mejorado sea significativamente más largo y detallado
-        if (enhancedLength < originalLength * 1.3) {
+        // For scenes 4+, use a slightly lower threshold (1.2x) since they're more concise
+        const isScene4Plus = currentSceneIndex !== undefined && currentSceneIndex >= 3;
+        const minLengthMultiplier = isScene4Plus ? 1.2 : 1.3;
+        
+        if (enhancedLength < originalLength * minLengthMultiplier) {
           console.error('CRITICAL: Enhanced text is too short');
           return NextResponse.json(
             { 
