@@ -192,16 +192,18 @@ The video MUST be recorded as if the character is holding the phone/camera thems
 - **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be more pronounced if there's movement in the action (e.g., running, walking, active movements), but the content must remain clear and hyperrealistic. The shake should feel authentic and natural, not excessive or distracting.
 - **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.`;
             } else if (angle === 'Frontal Camera') {
-              return `\n\n**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA (MANDATORY):**
-The video MUST be recorded as if the character is using the rear camera of their phone to record themselves (frontal perspective, like POV). This means:
-- The character is holding the phone with the rear camera facing them, recording themselves from a frontal perspective
-- The camera angle should be as if the character is holding their phone in front of them, using the rear camera to capture themselves and the product/actions
-- This gives a POV-like perspective where the viewer sees the character from the front, as if looking through the phone's rear camera
-- Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone rear camera recording
-- The character can interact with the camera, speaking to it, demonstrating, and showing things
-- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld rear camera recording. The shake should be more pronounced if there's movement in the action, but the content must remain clear and hyperrealistic. The shake should feel authentic and natural, not excessive or distracting.
+              return `\n\n**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA / POV (MANDATORY):**
+The video MUST be recorded as a POV (Point of View) perspective - the character is NOT visible in the frame, only their perspective from behind the camera. This means:
+- **ABSOLUTE POV PERSPECTIVE**: The character is holding the phone and recording, but they are NOT visible in the video. The viewer sees ONLY what the character sees, as if looking through their eyes/phone camera
+- The camera angle is as if the character is holding their phone in front of them, using the rear camera, but the character themselves is completely out of frame - only their hands, the product, and what they're looking at are visible
+- This is a true first-person POV where the character is the "camera operator" but never appears in the shot
+- The viewer experiences the scene from the character's perspective, seeing only what the character sees (hands, product, environment, actions)
+- Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone rear camera recording from a POV perspective
+- The character's hands may be visible when holding/showing the product, but the character's face, body, or any part of themselves (except hands/arms when relevant) must NOT be visible
+- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld POV recording. The shake should be more pronounced if there's movement in the action (e.g., running, walking), but the content must remain clear and hyperrealistic. The shake should feel authentic and natural, not excessive or distracting.
 - **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.
-- **POV DETECTION**: ${hasPOV ? 'Since "POV" is mentioned in the action text, this camera angle is MANDATORY and must be used.' : ''}`;
+- **POV DETECTION**: ${hasPOV ? 'Since "POV" is mentioned in the action text, this camera angle is MANDATORY and must be used.' : ''}
+- **NO CHARACTER VISIBILITY**: The character must NEVER appear in the frame. This is a pure POV perspective where only what the character sees is visible.`;
             } else if (angle === 'Steady') {
               return `\n\n**CRITICAL - CAMERA ANGLE: STEADY (MANDATORY):**
 The video MUST be recorded as if the phone was placed in a fixed position (e.g., on a table, shelf, tripod, or surface) where the characters are recording themselves in third person. This means:
@@ -224,7 +226,7 @@ ${uniqueAngles.map((angle, idx) => `${idx + 1}. ${angle}`).join('\n')}
 
 1. **Selfie Camera**: The character is holding the phone themselves while recording (selfie-style). Natural shaky camera movements, more pronounced during movement. Best for: actions where the character can hold the phone (e.g., "she records herself running", "showing outfit while holding phone", "talking directly to camera").
 
-2. **Frontal Camera**: The character is using the rear camera of their phone to record themselves from a frontal perspective (POV-like). Natural shaky camera movements, more pronounced during movement. Best for: POV perspectives, actions where the character wants to show themselves from the front (e.g., "POV of using product", "showing face and product together").
+2. **Frontal Camera**: POV (Point of View) perspective - the character is NOT visible, only their perspective from behind the camera. The viewer sees only what the character sees (hands, product, environment), as if looking through their eyes. Natural shaky camera movements, more pronounced during movement. Best for: POV perspectives, first-person actions (e.g., "POV of using product", "POV walking", "POV showing product").
 
 3. **Steady**: The phone is placed in a fixed position (on a table, shelf, etc.) recording the characters in third person. Stable camera with minimal shake. Best for: actions where the character needs both hands or is in a position where holding the phone is impractical (e.g., "she shows outfit" while both hands are busy, "cooking while recording", "exercising").
 
@@ -232,7 +234,7 @@ ${uniqueAngles.map((angle, idx) => `${idx + 1}. ${angle}`).join('\n')}
 ${hasPOV ? '- **POV DETECTION**: Since "POV" is mentioned in the action text, you MUST use "Frontal Camera" - this is MANDATORY.\n' : ''}- **Analyze the action text**: "${actionText}"
 - **Context-based selection**: Choose the camera angle that best fits the action described:
   - If the action requires the character to hold the phone (e.g., "records herself", "showing while holding"), use "Selfie Camera"
-  - If the action mentions "POV" or requires a frontal perspective, use "Frontal Camera" (MANDATORY if POV is mentioned)
+  - If the action mentions "POV" or requires a first-person perspective where the character is not visible, use "Frontal Camera" (MANDATORY if POV is mentioned)
   - If the action requires both hands or the character cannot hold the phone (e.g., "shows outfit" while hands are busy, "cooking", "exercising"), use "Steady"
   - If multiple angles could work, choose the one that best fits the context and action described
 - **Single angle selection**: You must choose ONE camera angle from the available options and use it consistently throughout the scene
