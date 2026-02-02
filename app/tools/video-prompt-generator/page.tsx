@@ -212,7 +212,17 @@ export default function VideoPromptGenerator() {
   };
 
   const enhanceActionWithAI = async (actionText: string, script: string | null, compositions: string[], cameraAngles: string[], lighting: string | null, duration: number | null, updateState: boolean = false, sceneId?: number, allScenes?: Scene[], currentSceneIndex?: number) => {
-    if (!compositions || compositions.length === 0 || !lighting || !actionText) {
+    // Validate inputs with detailed logging
+    if (!actionText || !actionText.trim()) {
+      console.warn(`enhanceActionWithAI: Scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown'} - No action text provided`);
+      return actionText;
+    }
+    if (!compositions || compositions.length === 0) {
+      console.warn(`enhanceActionWithAI: Scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown'} - No compositions provided`);
+      return actionText;
+    }
+    if (!lighting) {
+      console.warn(`enhanceActionWithAI: Scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown'} - No lighting provided`);
       return actionText;
     }
 
@@ -260,10 +270,26 @@ export default function VideoPromptGenerator() {
           // Insufficient credits - throw a special error that can be caught
           throw new Error('Insufficient credits');
         }
-        throw new Error(data.error || 'Error enhancing prompt');
+        const errorMessage = data.error || data.details || 'Error enhancing prompt';
+        const sceneNum = currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown';
+        console.error(`API error for scene ${sceneNum}:`, errorMessage, data);
+        throw new Error(`Scene ${sceneNum}: ${errorMessage}`);
       }
 
       const enhancedText = data.enhancedText || actionText;
+      
+      // Validate that we got an enhanced text
+      if (!enhancedText || !enhancedText.trim()) {
+        const errorMsg = `API returned empty enhanced text for scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown'}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      // Validate that the enhanced text is actually different (not just the same)
+      if (enhancedText.trim() === actionText.trim()) {
+        console.warn(`API returned same text as input for scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown'}. This might indicate an issue.`);
+        // Don't throw - return it anyway, but log the warning
+      }
       
       // If updateState is true, update with enhanced text
       if (updateState && sceneId !== undefined) {
@@ -365,26 +391,31 @@ export default function VideoPromptGenerator() {
 
     try {
       // Enhance each scene with AI before generating the prompt
-      const enhancedScenes = await Promise.all(
-        scenes.map(async (scene, index) => {
-          let finalAction = scene.action;
+      // Process scenes sequentially to ensure all are enhanced and catch errors properly
+      const enhancedScenes = [];
+      for (let index = 0; index < scenes.length; index++) {
+        const scene = scenes[index];
+        let finalAction = scene.action;
 
-          // If composition and lighting exist, enhance text with AI
-          // Camera angle is optional but recommended
-          if (scene.composition && scene.composition.length > 0 && scene.lighting) {
-            // If no action text, use default from first composition or lighting
-            if (!finalAction) {
-              finalAction = DEFAULT_COMPOSITION_TEXTS[scene.composition[0]] || 
-                           DEFAULT_LIGHTING_TEXTS[scene.lighting] || 
-                           'A scene showing the product';
-            }
-            
+        // If composition and lighting exist, enhance text with AI
+        // Camera angle is optional but recommended
+        if (scene.composition && scene.composition.length > 0 && scene.lighting) {
+          // If no action text, use default from first composition or lighting
+          if (!finalAction || !finalAction.trim()) {
+            finalAction = DEFAULT_COMPOSITION_TEXTS[scene.composition[0]] || 
+                         DEFAULT_LIGHTING_TEXTS[scene.lighting] || 
+                         'A scene showing the product';
+          }
+          
+          // Ensure we have action text before enhancing
+          if (finalAction && finalAction.trim()) {
             // Enhance with AI (without updating state, just get enhanced text)
             // Pass all scenes and current index for consistency
             // If duration is 1 (default), pass null to not include it in prompt
             const effectiveDuration = scene.duration === 1 ? null : scene.duration;
             try {
-              finalAction = await enhanceActionWithAI(
+              console.log(`Enhancing scene ${index + 1} with action: "${finalAction.substring(0, 50)}..."`);
+              const enhanced = await enhanceActionWithAI(
                 finalAction,
                 scene.script,
                 scene.composition,
@@ -396,6 +427,37 @@ export default function VideoPromptGenerator() {
                 scenes,
                 index
               );
+              
+              // Verify that the enhanced text is actually different from the original
+              if (enhanced && enhanced.trim() && enhanced !== finalAction) {
+                finalAction = enhanced;
+                console.log(`Scene ${index + 1} successfully enhanced`);
+              } else {
+                console.warn(`Scene ${index + 1} enhancement returned same or empty text, retrying...`);
+                // Retry once if enhancement failed
+                try {
+                  const retryEnhanced = await enhanceActionWithAI(
+                    finalAction,
+                    scene.script,
+                    scene.composition,
+                    scene.cameraAngle || [],
+                    scene.lighting,
+                    effectiveDuration,
+                    false,
+                    scene.id,
+                    scenes,
+                    index
+                  );
+                  if (retryEnhanced && retryEnhanced.trim() && retryEnhanced !== finalAction) {
+                    finalAction = retryEnhanced;
+                    console.log(`Scene ${index + 1} successfully enhanced on retry`);
+                  } else {
+                    console.error(`Scene ${index + 1} enhancement failed after retry, using original text`);
+                  }
+                } catch (retryError: any) {
+                  console.error(`Scene ${index + 1} retry failed:`, retryError);
+                }
+              }
             } catch (enhanceError: any) {
               // If error is about insufficient credits, throw it to stop the process
               if (enhanceError.message && enhanceError.message.includes('Insufficient credits')) {
@@ -403,23 +465,26 @@ export default function VideoPromptGenerator() {
               }
               // For other errors, log and use original text but show warning
               console.error(`Error enhancing scene ${index + 1}:`, enhanceError);
-              console.warn(`Scene ${index + 1} will use original action text due to enhancement error`);
+              console.warn(`Scene ${index + 1} will use original action text due to enhancement error:`, enhanceError.message || enhanceError);
+              // Don't throw - continue with other scenes
             }
-          } else if (!finalAction) {
-            // If not both parameters but one exists, use default text
-            if (scene.composition && scene.composition.length > 0) {
-              finalAction = DEFAULT_COMPOSITION_TEXTS[scene.composition[0]] || 'A scene showing the product';
-            } else if (scene.lighting) {
-              finalAction = DEFAULT_LIGHTING_TEXTS[scene.lighting] || 'A scene with special lighting';
-            }
+          } else {
+            console.warn(`Scene ${index + 1} has no action text to enhance`);
           }
+        } else if (!finalAction || !finalAction.trim()) {
+          // If not both parameters but one exists, use default text
+          if (scene.composition && scene.composition.length > 0) {
+            finalAction = DEFAULT_COMPOSITION_TEXTS[scene.composition[0]] || 'A scene showing the product';
+          } else if (scene.lighting) {
+            finalAction = DEFAULT_LIGHTING_TEXTS[scene.lighting] || 'A scene with special lighting';
+          }
+        }
 
-          return {
-            ...scene,
-            action: finalAction
-          };
-        })
-      );
+        enhancedScenes.push({
+          ...scene,
+          action: finalAction || scene.action
+        });
+      }
 
       // Generate final prompt with enhanced scenes
       let prompt = '';

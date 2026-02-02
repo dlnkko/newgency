@@ -600,20 +600,14 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
       
       // Si no se obtuvo texto mejorado
       if (!enhancedText || enhancedText === '') {
-        console.warn('No enhanced text extracted from Gemini response');
-        if (productImageFile) {
-          // Si hay imagen de referencia, esto es un error crítico
-          console.error('CRITICAL: Product image provided but no enhanced text returned');
-          return NextResponse.json(
-            { 
-              error: 'Failed to enhance prompt with reference image',
-              details: 'The AI did not return an enhanced prompt. Please try again.'
-            },
-            { status: 500 }
-          );
-        }
-        // Solo usar fallback si NO hay imagen de referencia
-        enhancedText = actionText;
+        console.error('CRITICAL: No enhanced text extracted from Gemini response');
+        return NextResponse.json(
+          { 
+            error: 'Failed to enhance prompt',
+            details: 'The AI did not return an enhanced prompt. Please try again.'
+          },
+          { status: 500 }
+        );
       } else {
         // Validar que el texto mejorado sea significativamente diferente y más largo
         const originalLength = actionText.length;
@@ -634,19 +628,32 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
           isTooShort: enhancedLength < originalLength * 1.5
         });
         
-        // Validaciones estrictas cuando hay imagen de referencia
+        // Validaciones estrictas - siempre validar que el texto mejorado sea diferente y más detallado
+        if (enhancedText === actionText || enhancedText.trim() === actionText.trim()) {
+          console.error('CRITICAL: Enhanced text is identical to original');
+          return NextResponse.json(
+            { 
+              error: 'Failed to enhance prompt',
+              details: 'The AI returned the original text instead of an enhanced prompt. Please try again.'
+            },
+            { status: 500 }
+          );
+        }
+        
+        // Validar que el texto mejorado sea significativamente más largo y detallado
+        if (enhancedLength < originalLength * 1.3) {
+          console.error('CRITICAL: Enhanced text is too short');
+          return NextResponse.json(
+            { 
+              error: 'Failed to enhance prompt',
+              details: 'The enhanced prompt is too short. It must be significantly longer and more detailed than the original. Please try again.'
+            },
+            { status: 500 }
+          );
+        }
+        
+        // Validaciones adicionales cuando hay imagen de referencia
         if (productImageFile) {
-          if (enhancedText === actionText || enhancedText.trim() === actionText.trim()) {
-            console.error('CRITICAL: Product image provided but enhanced text is identical to original');
-            return NextResponse.json(
-              { 
-                error: 'Failed to enhance prompt with reference image',
-                details: 'The AI returned the original text instead of an enhanced prompt. Please try again.'
-              },
-              { status: 500 }
-            );
-          }
-          
           if (similarity > similarityThreshold && enhancedLength < originalLength * 2) {
             console.error('CRITICAL: Product image provided but enhanced text is too similar to original');
             return NextResponse.json(
@@ -657,32 +664,18 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
               { status: 500 }
             );
           }
-          
-          if (enhancedLength < originalLength * 1.5) {
-            console.error('CRITICAL: Product image provided but enhanced text is too short');
-            return NextResponse.json(
-              { 
-                error: 'Failed to enhance prompt with reference image',
-                details: 'The enhanced prompt is too short. It must be significantly longer and more detailed than the original. Please try again.'
-              },
-              { status: 500 }
-            );
-          }
         }
       }
     } catch (err) {
       console.error('Error extracting text from response:', err);
-      if (productImageFile) {
-        // Si hay imagen de referencia, no usar fallback
-        return NextResponse.json(
-          { 
-            error: 'Error processing enhanced prompt with reference image',
-            details: (err as Error).message || 'Could not extract enhanced text from AI response'
-          },
-          { status: 500 }
-        );
-      }
-      enhancedText = actionText; // Fallback to original text only if no image
+      // Always return error - never use fallback to original text
+      return NextResponse.json(
+        { 
+          error: 'Error processing enhanced prompt',
+          details: (err as Error).message || 'Could not extract enhanced text from AI response'
+        },
+        { status: 500 }
+      );
     }
 
     // Extraer información de uso y calcular costo
