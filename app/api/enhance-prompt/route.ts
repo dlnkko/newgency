@@ -428,7 +428,6 @@ Since "UGC Close-up" is NOT selected, you MUST show the product and person toget
 
     // Lighting-specific instructions for hyperrealistic UGC
     // For scenes 4+, use more concise lighting instructions to save tokens
-    const isScene4Plus = currentSceneIndex !== undefined && currentSceneIndex >= 3;
     const lightingInstructions = lighting
       ? (() => {
           const lightingLower = lighting.toLowerCase();
@@ -701,7 +700,6 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         
         // Validar que el texto mejorado sea significativamente más largo y detallado
         // For scenes 4+, use a slightly lower threshold (1.2x) since they're more concise
-        const isScene4Plus = currentSceneIndex !== undefined && currentSceneIndex >= 3;
         const minLengthMultiplier = isScene4Plus ? 1.2 : 1.3;
         
         if (enhancedLength < originalLength * minLengthMultiplier) {
