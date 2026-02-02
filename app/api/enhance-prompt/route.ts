@@ -524,6 +524,7 @@ The goal is to simulate the maximum authenticity and credibility of real-life, n
 
 [CAMERA AND LIGHTING DETAILS TO INCORPORATE]:
 - Camera composition(s): ${compositionsList}
+${cameraAnglesArray.length > 0 ? `- Camera angle(s): ${cameraAnglesArray.join(', ')}` : '- Camera angle: Not specified (use default handheld selfie style)'}
 - Lighting/Ambience: ${lighting}
 ${duration ? `- Scene Duration: ${duration} seconds` : ''}
 

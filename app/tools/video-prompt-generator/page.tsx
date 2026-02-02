@@ -370,7 +370,8 @@ export default function VideoPromptGenerator() {
           let finalAction = scene.action;
 
           // If composition and lighting exist, enhance text with AI
-          if (scene.composition && scene.composition.length > 0 && scene.lighting && scene.cameraAngle && scene.cameraAngle.length > 0) {
+          // Camera angle is optional but recommended
+          if (scene.composition && scene.composition.length > 0 && scene.lighting) {
             // If no action text, use default from first composition or lighting
             if (!finalAction) {
               finalAction = DEFAULT_COMPOSITION_TEXTS[scene.composition[0]] || 
@@ -400,8 +401,9 @@ export default function VideoPromptGenerator() {
               if (enhanceError.message && enhanceError.message.includes('Insufficient credits')) {
                 throw enhanceError;
               }
-              // For other errors, use original text
-              console.error('Error enhancing scene:', enhanceError);
+              // For other errors, log and use original text but show warning
+              console.error(`Error enhancing scene ${index + 1}:`, enhanceError);
+              console.warn(`Scene ${index + 1} will use original action text due to enhancement error`);
             }
           } else if (!finalAction) {
             // If not both parameters but one exists, use default text
