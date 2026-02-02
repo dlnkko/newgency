@@ -15,6 +15,7 @@ interface Scene {
   action: string;
   script: string | null; // Script text for the scene
   composition: Composition[];
+  cameraAngle: string[]; // Camera angle options (multiple selection)
   lighting: Lighting | null;
   duration: number | null; // Duration in seconds
   isEnhancing?: boolean;
@@ -26,6 +27,14 @@ const COMPOSITION_OPTIONS = {
     'Product in Real Use',
     'Everyday Life',
     'Authentic Unboxing'
+  ]
+};
+
+const CAMERA_ANGLE_OPTIONS = {
+  hyperrealistic: [
+    'Selfie Camera',
+    'Frontal Camera',
+    'Steady'
   ]
 };
 
@@ -66,7 +75,7 @@ export default function VideoPromptGenerator() {
   
   // Manual mode state
   const [sceneCount, setSceneCount] = useState<number>(1);
-  const [scenes, setScenes] = useState<Scene[]>([{ id: 1, action: '', script: null, composition: [], lighting: null, duration: 1 }]);
+  const [scenes, setScenes] = useState<Scene[]>([{ id: 1, action: '', script: null, composition: [], cameraAngle: [], lighting: null, duration: 1 }]);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   
   // Automatic mode state
@@ -91,7 +100,7 @@ export default function VideoPromptGenerator() {
     const newScenes: Scene[] = [];
     for (let i = 1; i <= count; i++) {
       newScenes.push(
-        scenes[i - 1] || { id: i, action: '', script: null, composition: [], lighting: null, duration: 1 }
+        scenes[i - 1] || { id: i, action: '', script: null, composition: [], cameraAngle: [], lighting: null, duration: 1 }
       );
     }
     setScenes(newScenes);
@@ -202,7 +211,7 @@ export default function VideoPromptGenerator() {
     }
   };
 
-  const enhanceActionWithAI = async (actionText: string, script: string | null, compositions: string[], lighting: string | null, duration: number | null, updateState: boolean = false, sceneId?: number, allScenes?: Scene[], currentSceneIndex?: number) => {
+  const enhanceActionWithAI = async (actionText: string, script: string | null, compositions: string[], cameraAngles: string[], lighting: string | null, duration: number | null, updateState: boolean = false, sceneId?: number, allScenes?: Scene[], currentSceneIndex?: number) => {
     if (!compositions || compositions.length === 0 || !lighting || !actionText) {
       return actionText;
     }
@@ -233,6 +242,7 @@ export default function VideoPromptGenerator() {
           actionText,
           script,
           compositions,
+          cameraAngles,
           lighting,
           duration: effectiveDuration,
           mainStyle,
@@ -315,7 +325,7 @@ export default function VideoPromptGenerator() {
     setScenes(prevScenes => {
       const scene = prevScenes.find(s => s.id === id);
       if (!scene) return prevScenes;
-
+      
       const currentCompositions = scene.composition || [];
       const isSelected = currentCompositions.includes(composition);
       
@@ -325,6 +335,24 @@ export default function VideoPromptGenerator() {
 
       return prevScenes.map(s => 
         s.id === id ? { ...s, composition: newCompositions } : s
+      );
+    });
+  };
+
+  const toggleCameraAngle = (id: number, cameraAngle: string) => {
+    setScenes(prevScenes => {
+      const scene = prevScenes.find(s => s.id === id);
+      if (!scene) return prevScenes;
+      
+      const currentCameraAngles = scene.cameraAngle || [];
+      const isSelected = currentCameraAngles.includes(cameraAngle);
+      
+      const newCameraAngles = isSelected
+        ? currentCameraAngles.filter(c => c !== cameraAngle)
+        : [...currentCameraAngles, cameraAngle];
+
+      return prevScenes.map(s => 
+        s.id === id ? { ...s, cameraAngle: newCameraAngles } : s
       );
     });
   };
@@ -342,7 +370,7 @@ export default function VideoPromptGenerator() {
           let finalAction = scene.action;
 
           // If composition and lighting exist, enhance text with AI
-          if (scene.composition && scene.composition.length > 0 && scene.lighting) {
+          if (scene.composition && scene.composition.length > 0 && scene.lighting && scene.cameraAngle && scene.cameraAngle.length > 0) {
             // If no action text, use default from first composition or lighting
             if (!finalAction) {
               finalAction = DEFAULT_COMPOSITION_TEXTS[scene.composition[0]] || 
@@ -358,7 +386,8 @@ export default function VideoPromptGenerator() {
               finalAction = await enhanceActionWithAI(
                 finalAction,
                 scene.script,
-                scene.composition, 
+                scene.composition,
+                scene.cameraAngle || [],
                 scene.lighting,
                 effectiveDuration,
                 false,
@@ -481,6 +510,7 @@ export default function VideoPromptGenerator() {
   };
 
   const compositionOptions = mainStyle ? COMPOSITION_OPTIONS[mainStyle] : [];
+  const cameraAngleOptions = mainStyle ? CAMERA_ANGLE_OPTIONS[mainStyle] : [];
   const lightingOptions = mainStyle ? LIGHTING_OPTIONS[mainStyle] : [];
 
   // Funciones de navegación
@@ -692,11 +722,11 @@ export default function VideoPromptGenerator() {
                     </p>
                   </div>
                   <div className={`rounded-full px-4 py-1.5 text-xs font-semibold ${
-                    scene.composition && scene.composition.length > 0 && scene.lighting 
+                    scene.composition && scene.composition.length > 0 && scene.lighting && scene.cameraAngle && scene.cameraAngle.length > 0
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
                       : 'bg-zinc-800/50 text-zinc-500 border border-zinc-700/50'
                   }`}>
-                    {scene.composition && scene.composition.length > 0 && scene.lighting ? '✓ Complete' : 'Pending'}
+                    {scene.composition && scene.composition.length > 0 && scene.lighting && scene.cameraAngle && scene.cameraAngle.length > 0 ? '✓ Complete' : 'Pending'}
                   </div>
                 </div>
 
@@ -809,6 +839,39 @@ export default function VideoPromptGenerator() {
                   {scene.composition && scene.composition.length > 0 && (
                     <p className="mt-3 text-xs text-zinc-400 italic">
                       Selected: {scene.composition.join(', ')}. The AI will intelligently distribute these compositions throughout your scene based on the action description.
+                    </p>
+                  )}
+                </div>
+
+                {/* Camera Angle Buttons - Multiple Selection */}
+                <div className="mb-8">
+                  <label className="mb-5 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                    Camera Angle <span className="text-xs font-normal text-zinc-500">(Select multiple - AI will decide which to use based on action)</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {cameraAngleOptions.map((option) => {
+                      const isSelected = scene.cameraAngle?.includes(option) || false;
+                      return (
+                        <button
+                          key={option}
+                          onClick={() => toggleCameraAngle(scene.id, option)}
+                          className={`group relative rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
+                            isSelected
+                              ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_20px_rgba(250,204,21,0.25)] ring-2 ring-amber-500/30'
+                              : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90 hover:shadow-[0_0_10px_rgba(250,204,21,0.1)]'
+                          }`}
+                        >
+                          <span className="relative z-10">{option}</span>
+                          {isSelected && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-400">✓</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {scene.cameraAngle && scene.cameraAngle.length > 0 && (
+                    <p className="mt-3 text-xs text-zinc-400 italic">
+                      Selected: {scene.cameraAngle.join(', ')}. The AI will intelligently choose which camera angle to use based on the action description. If "POV" is mentioned in the action, "Frontal Camera" will be used automatically.
                     </p>
                   )}
                 </div>

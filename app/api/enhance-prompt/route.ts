@@ -38,10 +38,13 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, script, compositions, composition, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
+    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
+    
+    // Support camera angles (array)
+    const cameraAnglesArray = cameraAngles && Array.isArray(cameraAngles) ? cameraAngles : [];
 
     // Handle product image upload if provided
     let productImageFile = null;
@@ -156,6 +159,89 @@ ${compositionArray.map((comp: string, idx: number) => `${idx + 1}. ${comp}`).joi
 - The distribution should feel natural and logical based on the action described
 - Incorporate the composition details at the appropriate moments in your enhanced prompt
 - Make it clear which composition applies to which part of the action through your descriptive language`
+      : '';
+
+    // Camera Angle instructions
+    const cameraAngleInstructions = cameraAnglesArray.length > 0
+      ? (() => {
+          // Check if action text contains "POV" - if so, MUST use Frontal Camera
+          const actionTextLower = (actionText || '').toLowerCase();
+          const hasPOV = actionTextLower.includes('pov') || actionTextLower.includes('point of view');
+          
+          // If POV is mentioned, prioritize Frontal Camera
+          let effectiveCameraAngles = cameraAnglesArray;
+          if (hasPOV && !cameraAnglesArray.includes('Frontal Camera')) {
+            effectiveCameraAngles = ['Frontal Camera', ...cameraAnglesArray];
+          } else if (hasPOV && cameraAnglesArray.includes('Frontal Camera')) {
+            effectiveCameraAngles = ['Frontal Camera', ...cameraAnglesArray.filter(a => a !== 'Frontal Camera')];
+          }
+          
+          const uniqueAngles = [...new Set(effectiveCameraAngles)];
+          
+          if (uniqueAngles.length === 1) {
+            // Single camera angle selected
+            const angle = uniqueAngles[0];
+            if (angle === 'Selfie Camera') {
+              return `\n\n**CRITICAL - CAMERA ANGLE: SELFIE CAMERA (MANDATORY):**
+The video MUST be recorded as if the character is holding the phone/camera themselves while recording (selfie-style). This means:
+- The character is actively holding the phone and recording themselves while performing the actions
+- The camera angle should be as if the character is holding their phone in front of them, showing themselves and the product/actions
+- Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone selfie recording
+- The character is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
+- The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
+- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be more pronounced if there's movement in the action (e.g., running, walking, active movements), but the content must remain clear and hyperrealistic. The shake should feel authentic and natural, not excessive or distracting.
+- **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.`;
+            } else if (angle === 'Frontal Camera') {
+              return `\n\n**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA (MANDATORY):**
+The video MUST be recorded as if the character is using the rear camera of their phone to record themselves (frontal perspective, like POV). This means:
+- The character is holding the phone with the rear camera facing them, recording themselves from a frontal perspective
+- The camera angle should be as if the character is holding their phone in front of them, using the rear camera to capture themselves and the product/actions
+- This gives a POV-like perspective where the viewer sees the character from the front, as if looking through the phone's rear camera
+- Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone rear camera recording
+- The character can interact with the camera, speaking to it, demonstrating, and showing things
+- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld rear camera recording. The shake should be more pronounced if there's movement in the action, but the content must remain clear and hyperrealistic. The shake should feel authentic and natural, not excessive or distracting.
+- **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.
+- **POV DETECTION**: ${hasPOV ? 'Since "POV" is mentioned in the action text, this camera angle is MANDATORY and must be used.' : ''}`;
+            } else if (angle === 'Steady') {
+              return `\n\n**CRITICAL - CAMERA ANGLE: STEADY (MANDATORY):**
+The video MUST be recorded as if the phone was placed in a fixed position (e.g., on a table, shelf, tripod, or surface) where the characters are recording themselves in third person. This means:
+- The phone is stationary, placed on a surface or mount, not being held by the character
+- The camera angle is as if someone left the phone recording in a position where it captures the characters and actions
+- This gives a third-person perspective where the viewer sees the characters from an external, steady camera position
+- The camera should be stable with minimal shake, as if the phone is resting on a surface
+- The characters can still interact with the camera (looking at it, talking to it), but the phone itself is stationary
+- **HYPERREALISM WITH STEADY CAMERA**: The camera must be hyperrealistic and stable, with minimal shake. The video should look like authentic UGC content recorded with a phone placed in a fixed position. All content must be clear, sharp, and hyperrealistic.`;
+            }
+          } else {
+            // Multiple camera angles selected - AI must decide
+            return `\n\n**CRITICAL - CAMERA ANGLE SELECTION (MULTIPLE OPTIONS - AI MUST DECIDE):**
+Multiple camera angles have been selected. You MUST analyze the action text and intelligently choose which camera angle to use based on the context and action described.
+
+**Available camera angles:**
+${uniqueAngles.map((angle, idx) => `${idx + 1}. ${angle}`).join('\n')}
+
+**Camera Angle Descriptions:**
+
+1. **Selfie Camera**: The character is holding the phone themselves while recording (selfie-style). Natural shaky camera movements, more pronounced during movement. Best for: actions where the character can hold the phone (e.g., "she records herself running", "showing outfit while holding phone", "talking directly to camera").
+
+2. **Frontal Camera**: The character is using the rear camera of their phone to record themselves from a frontal perspective (POV-like). Natural shaky camera movements, more pronounced during movement. Best for: POV perspectives, actions where the character wants to show themselves from the front (e.g., "POV of using product", "showing face and product together").
+
+3. **Steady**: The phone is placed in a fixed position (on a table, shelf, etc.) recording the characters in third person. Stable camera with minimal shake. Best for: actions where the character needs both hands or is in a position where holding the phone is impractical (e.g., "she shows outfit" while both hands are busy, "cooking while recording", "exercising").
+
+**CRITICAL DECISION RULES:**
+${hasPOV ? '- **POV DETECTION**: Since "POV" is mentioned in the action text, you MUST use "Frontal Camera" - this is MANDATORY.\n' : ''}- **Analyze the action text**: "${actionText}"
+- **Context-based selection**: Choose the camera angle that best fits the action described:
+  - If the action requires the character to hold the phone (e.g., "records herself", "showing while holding"), use "Selfie Camera"
+  - If the action mentions "POV" or requires a frontal perspective, use "Frontal Camera" (MANDATORY if POV is mentioned)
+  - If the action requires both hands or the character cannot hold the phone (e.g., "shows outfit" while hands are busy, "cooking", "exercising"), use "Steady"
+  - If multiple angles could work, choose the one that best fits the context and action described
+- **Single angle selection**: You must choose ONE camera angle from the available options and use it consistently throughout the scene
+- **Justify your choice**: The camera angle you choose must make logical sense based on the action described
+
+**Your task**: Analyze the action text, determine which camera angle is most appropriate, and incorporate that camera angle's characteristics into your prompt. Use only ONE camera angle throughout the scene.`;
+          }
+          return '';
+        })()
       : '';
 
     // Get total number of scenes to adjust conciseness
@@ -379,7 +465,7 @@ A product image has been attached. You MUST:
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}
+${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}
 
 **CRITICAL DEFAULT INSTRUCTION - CAMERA POSITION (PRIORITIZE HYPERREALISM):**
 **DEFAULT BEHAVIOR - HANDHELD SELFIE (PRIORITY):**
