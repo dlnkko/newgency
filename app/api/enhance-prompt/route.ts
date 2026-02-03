@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue } = body;
+    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue, productPhotoWillBeAttached } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
@@ -350,8 +350,14 @@ This is scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of 
 **Your task**: Maintain ALL the power, detail, and authenticity requirements, but express them with maximum efficiency. Every word must carry maximum weight. Use compound adjectives, merged clauses, and efficient phrasing. The prompt must be shorter but equally powerful and detailed.`)
       : '';
 
-    // Calculate effective duration (default is 15 seconds)
-    const effectiveDuration = duration && duration > 0 ? duration : 15;
+    // Calculate effective duration
+    // IMPORTANT: If duration is not specified (null or 1), the total video is 15 seconds, not per scene
+    // We need to calculate the duration per scene based on total scenes
+    const totalScenesForDuration = allScenes && Array.isArray(allScenes) ? allScenes.length : 1;
+    const totalVideoDuration = 15; // Total video duration in seconds
+    const effectiveDuration = duration && duration > 0 
+      ? duration 
+      : Math.max(1, Math.floor(totalVideoDuration / totalScenesForDuration)); // Distribute total duration across scenes
     
     // Script integration instructions
     // For scenes 4+, use more concise script instructions
@@ -459,9 +465,10 @@ Example 3 - Action-script coherence:
       : '';
 
     // Duration-based instructions
+    // IMPORTANT: Total video is 15 seconds, not per scene. Duration per scene is calculated above.
     const durationInstructions = duration && duration > 0
       ? `\n\n**CRITICAL DURATION CONSTRAINT:**
-This scene has a duration of **${duration} seconds**. You MUST adjust your prompt accordingly:
+This scene has a duration of **${duration} seconds** (Scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of ${totalScenesForDuration}). The TOTAL video duration is **${totalVideoDuration} seconds**, distributed across ${totalScenesForDuration} scene(s). You MUST adjust your prompt accordingly:
 
 - **For short durations (1-3 seconds)**: Focus on a single, impactful moment. Use concise, high-impact descriptions. Prioritize the most essential visual elements. Keep the action description tight and focused on one key action or moment.
 
@@ -469,16 +476,17 @@ This scene has a duration of **${duration} seconds**. You MUST adjust your promp
 
 - **For longer durations (11+ seconds)**: You can include more detailed descriptions, multiple actions, transitions, and richer visual storytelling. Include more nuanced details about movements, expressions, and environmental elements. Allow for a more complete narrative arc within the scene.
 
-**Your task**: Adjust the density and pacing of your prompt description to match the ${duration}-second duration. Ensure the action described can realistically unfold within this timeframe. If the action is too complex for the duration, simplify it. If the duration allows for more detail, enrich the description appropriately. The prompt should feel neither rushed (too much action for the time) nor stretched (too little action for the time).`
-      : `\n\n**CRITICAL DURATION CONSTRAINT (DEFAULT):**
-This scene uses the default duration of **15 seconds**. You MUST adjust your prompt accordingly:
+**Your task**: Adjust the density and pacing of your prompt description to match the ${duration}-second duration for this scene. Ensure the action described can realistically unfold within this timeframe. If the action is too complex for the duration, simplify it. If the duration allows for more detail, enrich the description appropriately. The prompt should feel neither rushed (too much action for the time) nor stretched (too little action for the time). Remember: This is part of a ${totalVideoDuration}-second total video with ${totalScenesForDuration} scene(s).`
+      : `\n\n**CRITICAL DURATION CONSTRAINT:**
+This scene is part of a **${totalVideoDuration}-second total video** with **${totalScenesForDuration} scene(s)**. This specific scene has approximately **${effectiveDuration} seconds**. You MUST adjust your prompt accordingly:
 
-- Include multiple actions, transitions, and detailed visual storytelling
-- Allow for a complete narrative arc within the scene
-- Include nuanced details about movements, expressions, and environmental elements
-- Balance detail with pacing to fit comfortably within 15 seconds
+- The total video is ${totalVideoDuration} seconds, NOT ${totalVideoDuration} seconds per scene
+- This scene (Scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of ${totalScenesForDuration}) has approximately ${effectiveDuration} seconds
+- Focus on concise, impactful descriptions that fit within this scene's allocated time
+- Balance detail with pacing to fit comfortably within the scene's duration
+- Ensure the action can realistically unfold within approximately ${effectiveDuration} seconds
 
-**Your task**: Create a prompt that describes actions and visual elements that can realistically unfold within 15 seconds, with appropriate pacing and detail level.`;
+**Your task**: Create a prompt that describes actions and visual elements that can realistically unfold within approximately ${effectiveDuration} seconds for this scene, as part of a ${totalVideoDuration}-second total video.`;
 
     // Check if "UGC Close-up" is in the compositions
     const hasUgcCloseUp = compositionArray.some((comp: string) => 
@@ -547,10 +555,11 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
       : '';
 
     const productImageInstructions = productImageFile 
-      ? (isScene4Plus
-          ? `\n\n**PRODUCT IMAGE (REQUIRED):**
+      ? (() => {
+          const baseInstructions = isScene4Plus
+            ? `\n\n**PRODUCT IMAGE (REQUIRED):**
 Analyze attached image: appearance, colors, materials, textures, design, branding. Include detailed product descriptions in prompt. Match image exactly. DO NOT return original action text.`
-          : `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
+            : `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
 A product image has been attached. You MUST:
 - **CRITICAL: You MUST generate an ENHANCED prompt, NOT return the original action text**
 - **Analyze the attached product image** to understand the exact product appearance, colors, materials, textures, design, branding, and all visual details
@@ -559,7 +568,21 @@ A product image has been attached. You MUST:
 - **Reference the image explicitly** - In your enhanced prompt, explicitly mention that the product should match the attached image, including its appearance, colors, materials, and visual characteristics
 - **Accurate product description** - Ensure the product description in your prompt accurately reflects what is shown in the attached image
 - **MANDATORY: You MUST enhance and expand the action text with detailed product descriptions based on the image. DO NOT simply return the original action text. You MUST create a comprehensive, detailed prompt that incorporates product details from the image.**
-- **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**`)
+- **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**`;
+          
+          if (productPhotoWillBeAttached) {
+            return baseInstructions + (isScene4Plus
+              ? `\n\n**CRITICAL - PRODUCT PHOTO WILL BE ATTACHED:**
+When referring to the product in your prompt, ALWAYS refer to "the attached product image" or "the product shown in the attached image". NEVER describe the product generically - ALWAYS specify that it matches the attached product image exactly. Every product reference must explicitly mention the attached image.`
+              : `\n\n**CRITICAL - PRODUCT PHOTO WILL BE ATTACHED (MANDATORY):**
+When referring to the product in your prompt, you MUST ALWAYS refer to "the attached product image" or "the product shown in the attached image". 
+- **ABSOLUTE REQUIREMENT**: Every time you mention the product, you MUST specify that it refers to the attached product image
+- **NO GENERIC DESCRIPTIONS**: Never describe the product generically - always specify that it matches the attached product image exactly
+- **EXPLICIT REFERENCES**: Use phrases like "the product shown in the attached image", "the attached product image", "the product from the attached image" when describing the product
+- **MANDATORY**: All product references must explicitly mention the attached image for maximum accuracy`);
+          }
+          return baseInstructions;
+        })()
       : '';
 
     // Reference image instructions
@@ -638,6 +661,17 @@ ${criticalEnhancementSection}
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
 ${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}
+
+**CRITICAL - CONTENT MODERATION COMPLIANCE (MANDATORY):**
+You MUST ensure the generated prompt complies with content moderation policies and will NOT trigger moderation filters:
+- **NO harmful content**: Avoid any descriptions that could be interpreted as harmful, violent, dangerous, or inappropriate
+- **NO sensitive topics**: Avoid controversial, political, or sensitive subject matter
+- **NO explicit content**: Avoid any sexual, adult, or explicit content or references
+- **NO illegal activities**: Avoid descriptions of illegal activities, drugs, or harmful substances
+- **Safe and appropriate**: All content must be safe, appropriate, and suitable for general audiences
+- **Professional tone**: Maintain a professional, clean, and appropriate tone throughout
+- **Product-focused**: Keep the focus on the product and its legitimate use cases in a positive, appropriate manner
+- **MANDATORY**: If the action text contains any potentially problematic content, adapt it to be safe and appropriate while maintaining the core intent
 
 **CRITICAL DEFAULT INSTRUCTION - CAMERA POSITION (PRIORITIZE HYPERREALISM):**
 **DEFAULT BEHAVIOR - HANDHELD SELFIE (PRIORITY):**

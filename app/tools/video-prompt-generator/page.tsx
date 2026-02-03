@@ -110,6 +110,7 @@ export default function VideoPromptGenerator() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [productImage, setProductImage] = useState<File | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
+  const [productPhotoWillBeAttached, setProductPhotoWillBeAttached] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
 
@@ -315,7 +316,8 @@ export default function VideoPromptGenerator() {
           referenceImage: referenceImageBase64,
           copyLighting: copyLighting || false,
           copyCameraAngle: copyCameraAngle || false,
-          noDialogue: noDialogue || false
+          noDialogue: noDialogue || false,
+          productPhotoWillBeAttached: productPhotoWillBeAttached
         }),
       });
 
@@ -1253,6 +1255,23 @@ export default function VideoPromptGenerator() {
               <p className="mb-4 text-sm text-zinc-400">
                 Upload a product image to make the prompt more accurate.
               </p>
+              <div className="mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={productPhotoWillBeAttached}
+                    onChange={(e) => setProductPhotoWillBeAttached(e.target.checked)}
+                    disabled={isGenerating}
+                    className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-sm text-zinc-300">Product photo will be attached</span>
+                </label>
+                {productPhotoWillBeAttached && (
+                  <p className="mt-2 text-xs text-amber-300 italic">
+                    When checked, all product references in prompts will refer to the attached product image for maximum accuracy.
+                  </p>
+                )}
+              </div>
               <div className="space-y-4">
                 {!productPreview ? (
                   <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
@@ -1538,6 +1557,23 @@ export default function VideoPromptGenerator() {
               <p className="mb-4 text-sm text-zinc-400">
                 Upload a product image to make the prompt more accurate. The generated prompt will reference this image for better results.
               </p>
+              <div className="mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={productPhotoWillBeAttached}
+                    onChange={(e) => setProductPhotoWillBeAttached(e.target.checked)}
+                    disabled={isGenerating}
+                    className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-sm text-zinc-300">Product photo will be attached</span>
+                </label>
+                {productPhotoWillBeAttached && (
+                  <p className="mt-2 text-xs text-amber-300 italic">
+                    When checked, all product references in prompts will refer to the attached product image for maximum accuracy.
+                  </p>
+                )}
+              </div>
               <div className="space-y-4">
                 {!productPreview ? (
                   <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
