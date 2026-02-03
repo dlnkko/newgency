@@ -225,8 +225,10 @@ export async function POST(request: NextRequest) {
       ? compositionArray[0]
       : compositionArray.join(', ');
     
-    // Detect multiple actions/phases in action text
+    // Define actionTextLower once for use throughout the function
     const actionTextLower = (actionText || '').toLowerCase();
+    
+    // Detect multiple actions/phases in action text
     const hasMultipleActions = actionTextLower.includes(' and then ') || 
                               actionTextLower.includes(' then ') ||
                               actionTextLower.includes(' other scene') ||
@@ -258,7 +260,6 @@ ${hasMultipleActions ? '- **MANDATORY**: Use ALL selected compositions and ensur
     const cameraAngleInstructions = cameraAnglesArray.length > 0
       ? (() => {
           // Check if action text contains "POV" - if so, MUST use Frontal Camera
-          const actionTextLower = (actionText || '').toLowerCase();
           const hasPOV = actionTextLower.includes('pov') || actionTextLower.includes('point of view');
           
           // If POV is mentioned, prioritize Frontal Camera
@@ -309,12 +310,7 @@ The video MUST be recorded as if the phone was placed in a fixed position (e.g.,
             }
           } else {
             // Multiple camera angles selected - distribute based on actions
-            const hasMultipleActions = actionTextLower.includes(' and then ') || 
-                                      actionTextLower.includes(' then ') ||
-                                      actionTextLower.includes(' other scene') ||
-                                      actionTextLower.includes(' another scene') ||
-                                      actionTextLower.includes(' first ') && actionTextLower.includes(' second ') ||
-                                      actionTextLower.includes(' primero ') && actionTextLower.includes(' segundo ');
+            // hasMultipleActions is already defined above, reuse it
 
             if (hasMultipleActions) {
               // Multiple actions detected - distribute camera angles
@@ -608,7 +604,7 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
       : '';
 
     // Detect if action text mentions "product" or similar terms
-    const actionTextLower = (actionText || '').toLowerCase();
+    // actionTextLower is already defined above
     const mentionsProduct = actionTextLower.includes('product') || 
                            actionTextLower.includes('el producto') || 
                            actionTextLower.includes('producto') ||
