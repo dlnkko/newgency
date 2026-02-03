@@ -24,6 +24,8 @@ interface Scene {
   copyLighting: boolean; // Copy lighting from reference image
   copyCameraAngle: boolean; // Copy camera angle from reference image
   noDialogue: boolean; // No dialogue in this scene
+  lipSync: boolean; // Lip sync mode - character visibly speaks the words
+  voiceover: boolean; // Voiceover mode - voice plays while actions happen, character doesn't visibly speak
 }
 
 const COMPOSITION_OPTIONS = {
@@ -92,7 +94,9 @@ export default function VideoPromptGenerator() {
     referenceImagePreview: null,
     copyLighting: false,
     copyCameraAngle: false,
-    noDialogue: false
+    noDialogue: false,
+    lipSync: false,
+    voiceover: false
   }]);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   
@@ -131,7 +135,9 @@ export default function VideoPromptGenerator() {
           referenceImagePreview: null,
           copyLighting: false,
           copyCameraAngle: false,
-          noDialogue: false
+          noDialogue: false,
+          lipSync: false,
+          voiceover: false
         }
       );
     }
@@ -257,7 +263,9 @@ export default function VideoPromptGenerator() {
     referenceImage?: File | null,
     copyLighting?: boolean,
     copyCameraAngle?: boolean,
-    noDialogue?: boolean
+    noDialogue?: boolean,
+    lipSync?: boolean,
+    voiceover?: boolean
   ) => {
     // Validate inputs with detailed logging
     if (!actionText || !actionText.trim()) {
@@ -317,6 +325,8 @@ export default function VideoPromptGenerator() {
           copyLighting: copyLighting || false,
           copyCameraAngle: copyCameraAngle || false,
           noDialogue: noDialogue || false,
+          lipSync: lipSync || false,
+          voiceover: voiceover || false,
           productPhotoWillBeAttached: productPhotoWillBeAttached
         }),
       });
@@ -503,7 +513,9 @@ export default function VideoPromptGenerator() {
                 scene.referenceImage,
                 scene.copyLighting,
                 scene.copyCameraAngle,
-                scene.noDialogue
+                scene.noDialogue,
+                scene.lipSync,
+                scene.voiceover
               );
               
               // Verify that the enhanced text is actually different from the original
@@ -528,7 +540,9 @@ export default function VideoPromptGenerator() {
                     scene.referenceImage,
                     scene.copyLighting,
                     scene.copyCameraAngle,
-                    scene.noDialogue
+                    scene.noDialogue,
+                    scene.lipSync,
+                    scene.voiceover
                   );
                   if (retryEnhanced && retryEnhanced.trim() && retryEnhanced !== finalAction) {
                     finalAction = retryEnhanced;
@@ -1125,24 +1139,93 @@ export default function VideoPromptGenerator() {
                   )}
                 </div>
 
-                {/* No Dialogue Button */}
+                {/* Dialogue Options */}
                 <div className="mb-6">
                   <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
                     Dialogue Options
                   </label>
-                  <button
-                    onClick={() => updateScene(scene.id, 'noDialogue', !scene.noDialogue)}
-                    className={`w-full rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
-                      scene.noDialogue
-                        ? 'border-red-500/80 bg-gradient-to-br from-red-500/20 to-red-500/10 text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)] ring-2 ring-red-500/30'
-                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-red-500/50 hover:bg-zinc-800/50 hover:text-red-300/90 hover:shadow-[0_0_10px_rgba(239,68,68,0.1)]'
-                    }`}
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      {scene.noDialogue ? '✓' : ''}
-                      <span>No Dialogue</span>
-                    </span>
-                  </button>
+                  <div className="space-y-3">
+                    {/* No Dialogue Button */}
+                    <button
+                      onClick={() => {
+                        if (!scene.noDialogue) {
+                          updateScene(scene.id, 'noDialogue', true);
+                          updateScene(scene.id, 'lipSync', false);
+                          updateScene(scene.id, 'voiceover', false);
+                        } else {
+                          updateScene(scene.id, 'noDialogue', false);
+                        }
+                      }}
+                      className={`w-full rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
+                        scene.noDialogue
+                          ? 'border-red-500/80 bg-gradient-to-br from-red-500/20 to-red-500/10 text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)] ring-2 ring-red-500/30'
+                          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-red-500/50 hover:bg-zinc-800/50 hover:text-red-300/90 hover:shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+                      }`}
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        {scene.noDialogue ? '✓' : ''}
+                        <span>No Dialogue</span>
+                      </span>
+                    </button>
+
+                    {/* Lip Sync Button */}
+                    <button
+                      onClick={() => {
+                        if (!scene.lipSync) {
+                          updateScene(scene.id, 'lipSync', true);
+                          updateScene(scene.id, 'voiceover', false);
+                          updateScene(scene.id, 'noDialogue', false);
+                        } else {
+                          updateScene(scene.id, 'lipSync', false);
+                        }
+                      }}
+                      disabled={scene.noDialogue}
+                      className={`w-full rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
+                        scene.lipSync
+                          ? 'border-blue-500/80 bg-gradient-to-br from-blue-500/20 to-blue-500/10 text-blue-200 shadow-[0_0_20px_rgba(59,130,246,0.25)] ring-2 ring-blue-500/30'
+                          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-blue-500/50 hover:bg-zinc-800/50 hover:text-blue-300/90 hover:shadow-[0_0_10px_rgba(59,130,246,0.1)]'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        {scene.lipSync ? '✓' : ''}
+                        <span>Lip Sync</span>
+                      </span>
+                    </button>
+                    {scene.lipSync && (
+                      <p className="text-xs text-blue-300 italic">
+                        The character will visibly speak the words. Their mouth movements must match the dialogue.
+                      </p>
+                    )}
+
+                    {/* Voiceover Button */}
+                    <button
+                      onClick={() => {
+                        if (!scene.voiceover) {
+                          updateScene(scene.id, 'voiceover', true);
+                          updateScene(scene.id, 'lipSync', false);
+                          updateScene(scene.id, 'noDialogue', false);
+                        } else {
+                          updateScene(scene.id, 'voiceover', false);
+                        }
+                      }}
+                      disabled={scene.noDialogue}
+                      className={`w-full rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
+                        scene.voiceover
+                          ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90 hover:shadow-[0_0_10px_rgba(168,85,247,0.1)]'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        {scene.voiceover ? '✓' : ''}
+                        <span>Voiceover</span>
+                      </span>
+                    </button>
+                    {scene.voiceover && (
+                      <p className="text-xs text-purple-300 italic">
+                        The voice will play while actions happen. The character does not need to visibly speak - voice plays over the scene.
+                      </p>
+                    )}
+                  </div>
                   {scene.noDialogue && (
                     <p className="mt-2 text-xs text-red-300 italic">
                       No dialogue will be included in this scene. The prompt will explicitly specify that no words should be spoken.

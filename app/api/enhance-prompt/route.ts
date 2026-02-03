@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue, productPhotoWillBeAttached } = body;
+    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue, lipSync, voiceover, productPhotoWillBeAttached } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
@@ -631,6 +631,36 @@ This scene MUST have ABSOLUTELY NO DIALOGUE, SPEECH, NARRATION, OR ANY SPOKEN CO
 - **No script integration**: Do NOT integrate any script or dialogue, even if provided
 - **MANDATORY**: The prompt must explicitly state that there is no dialogue, no speech, and complete silence`)
       : '';
+
+    // Lip Sync instructions
+    const lipSyncInstructions = lipSync && !noDialogue
+      ? (isScene4Plus
+          ? `\n\n**LIP SYNC MODE (MANDATORY):**
+Character MUST visibly speak the words. Mouth movements must match dialogue exactly. Character's lips, jaw, and facial expressions must synchronize with spoken words. Show character speaking clearly.`
+          : `\n\n**CRITICAL - LIP SYNC MODE (MANDATORY):**
+This scene uses LIP SYNC mode. The character MUST visibly speak the words from the script:
+- **VISIBLE SPEECH**: The character's mouth movements MUST match the dialogue exactly
+- **Synchronization**: The character's lips, jaw, and facial expressions must synchronize perfectly with the spoken words
+- **Clear visibility**: The character's face and mouth must be clearly visible while speaking
+- **Natural movements**: Mouth movements should be natural and match the pronunciation of each word
+- **Facial expressions**: Facial expressions should match the tone and emotion of the dialogue
+- **MANDATORY**: The prompt must explicitly describe that the character is visibly speaking, with mouth movements matching the dialogue word-for-word`)
+      : '';
+
+    // Voiceover instructions
+    const voiceoverInstructions = voiceover && !noDialogue
+      ? (isScene4Plus
+          ? `\n\n**VOICEOVER MODE (MANDATORY):**
+Voice plays while actions happen. Character does NOT visibly speak. Voice narrates over the scene. Character performs actions without mouth movements matching dialogue.`
+          : `\n\n**CRITICAL - VOICEOVER MODE (MANDATORY):**
+This scene uses VOICEOVER mode. The voice plays while actions happen, but the character does NOT visibly speak:
+- **NO VISIBLE SPEECH**: The character does NOT move their mouth to match the dialogue
+- **Voice narration**: The voice plays as narration over the scene while actions occur
+- **Character actions**: The character performs actions, movements, and expressions WITHOUT speaking
+- **No lip sync**: The character's mouth should be closed or in a neutral position, NOT matching the words
+- **Voice over scene**: The dialogue is heard as a voiceover while the character performs visual actions
+- **MANDATORY**: The prompt must explicitly state that the voice plays as narration/voiceover, and the character does NOT visibly speak the words`)
+      : '';
     const criticalEnhancementSection = isScene4Plus
       ? `**CRITICAL - YOU MUST ENHANCE (Scene ${currentSceneIndex + 1}):**
 - FORBIDDEN: Returning original action text unchanged
@@ -660,7 +690,7 @@ ${criticalEnhancementSection}
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}
+${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}${lipSyncInstructions}${voiceoverInstructions}
 
 **CRITICAL - CONTENT MODERATION COMPLIANCE (MANDATORY):**
 You MUST ensure the generated prompt complies with content moderation policies and will NOT trigger moderation filters:
