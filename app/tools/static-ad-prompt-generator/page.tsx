@@ -289,7 +289,7 @@ export default function StaticAdPromptGenerator() {
         {/* Copywriting Input */}
         <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Copywriting / Product Page URL <span className="text-xs font-normal text-zinc-500">(Optional)</span>
+            Product Page URL <span className="text-xs font-normal text-zinc-500">(Optional)</span>
           </label>
           <textarea
             value={copywriting}

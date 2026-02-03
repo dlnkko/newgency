@@ -22,36 +22,106 @@ function verifyWhopSignature(body: string, signature: string): boolean {
 }
 
 /**
- * Obtiene el ID del usuario desde el email o ID de Whop
+ * Obtiene o crea el usuario completo en todas las tablas necesarias
  */
-async function getUserIdFromWhopData(whopData: any, supabase: any): Promise<string | null> {
-  // Intentar obtener por email
-  if (whopData.user?.email) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', whopData.user.email.toLowerCase())
-      .single();
-    
-    if (profile) {
-      return profile.id;
+async function getOrCreateUserFromWhopData(whopData: any, supabaseAdmin: any): Promise<string | null> {
+  const email = whopData.user?.email?.toLowerCase().trim();
+  const whopUserId = whopData.user?.id?.toString();
+  
+  if (!email) {
+    console.error('No email found in Whop data');
+    return null;
+  }
+
+  // 1. Actualizar/crear en whop_users con status='active'
+  const { error: whopUsersError } = await supabaseAdmin
+    .from('whop_users')
+    .upsert({
+      whop_user_id: whopUserId || null,
+      email: email,
+      status: 'active',
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: whopUserId ? 'whop_user_id' : 'email'
+    });
+
+  if (whopUsersError) {
+    console.error('Error updating whop_users:', whopUsersError);
+    // Continuar de todas formas
+  }
+
+  // 2. Buscar o crear usuario en Authentication
+  let authUserId: string | null = null;
+  
+  // Buscar usuario existente en auth por email
+  const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+  
+  if (!listError && users) {
+    const existingUser = users.find((u: any) => u.email?.toLowerCase() === email);
+    if (existingUser) {
+      authUserId = existingUser.id;
     }
   }
 
-  // Intentar obtener por whop_user_id si existe
-  if (whopData.user?.id) {
-    const { data: profile } = await supabase
+  // Si no existe, crear usuario en Authentication
+  if (!authUserId) {
+    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email: email,
+      email_confirm: true, // Confirmar email automáticamente
+      user_metadata: {
+        whop_user_id: whopUserId
+      }
+    });
+
+    if (createError) {
+      console.error('Error creating user in Authentication:', createError);
+      return null;
+    }
+
+    authUserId = newUser.user.id;
+    console.log(`Created user in Authentication: ${authUserId} for email: ${email}`);
+  }
+
+  // 3. Buscar o crear perfil en profiles
+  const { data: existingProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('id', authUserId)
+    .single();
+
+  if (!existingProfile) {
+    // Crear perfil si no existe
+    const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('id')
-      .eq('whop_user_id', whopData.user.id.toString())
-      .single();
-    
-    if (profile) {
-      return profile.id;
+      .insert({
+        id: authUserId,
+        email: email,
+        credits: 0, // Se agregarán los créditos después
+        whop_user_id: whopUserId || null
+      });
+
+    if (profileError) {
+      console.error('Error creating profile:', profileError);
+      // Continuar de todas formas, puede que ya exista
+    } else {
+      console.log(`Created profile for user: ${authUserId}`);
+    }
+  } else {
+    // Actualizar email y whop_user_id si es necesario
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        email: email,
+        whop_user_id: whopUserId || null
+      })
+      .eq('id', authUserId);
+
+    if (updateError) {
+      console.error('Error updating profile:', updateError);
     }
   }
 
-  return null;
+  return authUserId;
 }
 
 export async function POST(request: NextRequest) {
@@ -97,14 +167,14 @@ export async function POST(request: NextRequest) {
     // Crear cliente de Supabase con service role (bypass RLS)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // Obtener el ID del usuario
-    const userId = await getUserIdFromWhopData(whopData, supabaseAdmin);
+    // Obtener o crear el usuario completo (whop_users, auth, profiles)
+    const userId = await getOrCreateUserFromWhopData(whopData, supabaseAdmin);
 
     if (!userId) {
-      console.error('Could not find user for Whop data:', whopData.user);
+      console.error('Could not create/find user for Whop data:', whopData.user);
       return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
+        { error: 'Failed to create or find user' },
+        { status: 500 }
       );
     }
 
