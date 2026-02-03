@@ -19,6 +19,11 @@ interface Scene {
   lighting: Lighting | null;
   duration: number | null; // Duration in seconds
   isEnhancing?: boolean;
+  referenceImage: File | null; // Reference image for this scene
+  referenceImagePreview: string | null; // Preview URL for reference image
+  copyLighting: boolean; // Copy lighting from reference image
+  copyCameraAngle: boolean; // Copy camera angle from reference image
+  noDialogue: boolean; // No dialogue in this scene
 }
 
 const COMPOSITION_OPTIONS = {
@@ -75,7 +80,20 @@ export default function VideoPromptGenerator() {
   
   // Manual mode state
   const [sceneCount, setSceneCount] = useState<number>(1);
-  const [scenes, setScenes] = useState<Scene[]>([{ id: 1, action: '', script: null, composition: [], cameraAngle: [], lighting: null, duration: 1 }]);
+  const [scenes, setScenes] = useState<Scene[]>([{ 
+    id: 1, 
+    action: '', 
+    script: null, 
+    composition: [], 
+    cameraAngle: [], 
+    lighting: null, 
+    duration: 1,
+    referenceImage: null,
+    referenceImagePreview: null,
+    copyLighting: false,
+    copyCameraAngle: false,
+    noDialogue: false
+  }]);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   
   // Automatic mode state
@@ -100,7 +118,20 @@ export default function VideoPromptGenerator() {
     const newScenes: Scene[] = [];
     for (let i = 1; i <= count; i++) {
       newScenes.push(
-        scenes[i - 1] || { id: i, action: '', script: null, composition: [], cameraAngle: [], lighting: null, duration: 1 }
+        scenes[i - 1] || { 
+          id: i, 
+          action: '', 
+          script: null, 
+          composition: [], 
+          cameraAngle: [], 
+          lighting: null, 
+          duration: 1,
+          referenceImage: null,
+          referenceImagePreview: null,
+          copyLighting: false,
+          copyCameraAngle: false,
+          noDialogue: false
+        }
       );
     }
     setScenes(newScenes);
@@ -211,7 +242,22 @@ export default function VideoPromptGenerator() {
     }
   };
 
-  const enhanceActionWithAI = async (actionText: string, script: string | null, compositions: string[], cameraAngles: string[], lighting: string | null, duration: number | null, updateState: boolean = false, sceneId?: number, allScenes?: Scene[], currentSceneIndex?: number) => {
+  const enhanceActionWithAI = async (
+    actionText: string, 
+    script: string | null, 
+    compositions: string[], 
+    cameraAngles: string[], 
+    lighting: string | null, 
+    duration: number | null, 
+    updateState: boolean = false, 
+    sceneId?: number, 
+    allScenes?: Scene[], 
+    currentSceneIndex?: number,
+    referenceImage?: File | null,
+    copyLighting?: boolean,
+    copyCameraAngle?: boolean,
+    noDialogue?: boolean
+  ) => {
     // Validate inputs with detailed logging
     if (!actionText || !actionText.trim()) {
       console.warn(`enhanceActionWithAI: Scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : sceneId || 'unknown'} - No action text provided`);
@@ -243,6 +289,12 @@ export default function VideoPromptGenerator() {
         productImageBase64 = await fileToBase64(productImage);
       }
 
+      // Convert reference image to base64 if provided
+      let referenceImageBase64 = null;
+      if (referenceImage) {
+        referenceImageBase64 = await fileToBase64(referenceImage);
+      }
+
       const response = await fetch('/api/enhance-prompt', {
         method: 'POST',
         headers: {
@@ -250,7 +302,7 @@ export default function VideoPromptGenerator() {
         },
         body: JSON.stringify({
           actionText,
-          script,
+          script: noDialogue ? null : script, // If noDialogue is true, don't send script
           compositions,
           cameraAngles,
           lighting,
@@ -259,7 +311,11 @@ export default function VideoPromptGenerator() {
           productFocus,
           allScenes: allScenes || scenes,
           currentSceneIndex: currentSceneIndex !== undefined ? currentSceneIndex : (sceneId ? sceneId - 1 : 0),
-          productImage: productImageBase64
+          productImage: productImageBase64,
+          referenceImage: referenceImageBase64,
+          copyLighting: copyLighting || false,
+          copyCameraAngle: copyCameraAngle || false,
+          noDialogue: noDialogue || false
         }),
       });
 
@@ -315,7 +371,7 @@ export default function VideoPromptGenerator() {
     }
   };
 
-  const updateScene = (id: number, field: keyof Scene, value: string | null | string[] | number | null) => {
+  const updateScene = (id: number, field: keyof Scene, value: string | null | string[] | number | null | boolean | File) => {
     setScenes(prevScenes => {
       const scene = prevScenes.find(s => s.id === id);
       if (!scene) return prevScenes;
@@ -345,6 +401,22 @@ export default function VideoPromptGenerator() {
 
       return updatedScenes;
     });
+  };
+
+  const handleReferenceImageChange = async (id: number, file: File | null) => {
+    if (!file) {
+      updateScene(id, 'referenceImage', null);
+      updateScene(id, 'referenceImagePreview', null);
+      return;
+    }
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      updateScene(id, 'referenceImagePreview', reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    updateScene(id, 'referenceImage', file);
   };
 
   const toggleComposition = (id: number, composition: string) => {
@@ -425,7 +497,11 @@ export default function VideoPromptGenerator() {
                 false,
                 scene.id,
                 scenes,
-                index
+                index,
+                scene.referenceImage,
+                scene.copyLighting,
+                scene.copyCameraAngle,
+                scene.noDialogue
               );
               
               // Verify that the enhanced text is actually different from the original
@@ -446,7 +522,11 @@ export default function VideoPromptGenerator() {
                     false,
                     scene.id,
                     scenes,
-                    index
+                    index,
+                    scene.referenceImage,
+                    scene.copyLighting,
+                    scene.copyCameraAngle,
+                    scene.noDialogue
                   );
                   if (retryEnhanced && retryEnhanced.trim() && retryEnhanced !== finalAction) {
                     finalAction = retryEnhanced;
@@ -966,6 +1046,106 @@ export default function VideoPromptGenerator() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Reference Image Upload */}
+                <div className="mb-6">
+                  <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                    Reference Image (Optional)
+                  </label>
+                  <div className="space-y-4">
+                    {scene.referenceImagePreview ? (
+                      <div className="relative">
+                        <img 
+                          src={scene.referenceImagePreview} 
+                          alt="Reference" 
+                          className="w-full max-w-md rounded-xl border-2 border-zinc-700/50"
+                        />
+                        <button
+                          onClick={() => handleReferenceImageChange(scene.id, null)}
+                          className="absolute top-2 right-2 rounded-full bg-red-500/80 hover:bg-red-500 text-white p-2 transition-colors"
+                          title="Remove image"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 p-8 transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                        <svg className="mb-2 h-8 w-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span className="text-sm text-zinc-400">Click to upload reference image</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            if (file) handleReferenceImageChange(scene.id, file);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    
+                    {scene.referenceImagePreview && (
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={scene.copyLighting}
+                            onChange={(e) => updateScene(scene.id, 'copyLighting', e.target.checked)}
+                            className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500/50"
+                          />
+                          <span className="text-sm text-zinc-300">Copy Lighting</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={scene.copyCameraAngle}
+                            onChange={(e) => updateScene(scene.id, 'copyCameraAngle', e.target.checked)}
+                            className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500/50"
+                          />
+                          <span className="text-sm text-zinc-300">Copy Camera Angle</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  {scene.referenceImagePreview && (
+                    <p className="mt-2 text-xs text-zinc-400 italic">
+                      {scene.copyLighting && scene.copyCameraAngle 
+                        ? 'Will copy lighting and camera angle from reference image'
+                        : scene.copyLighting 
+                        ? 'Will copy lighting (textures, shadows, light sources) from reference image'
+                        : scene.copyCameraAngle
+                        ? 'Will copy camera angle (position, framing, character placement) from reference image'
+                        : 'Reference image uploaded but no copy options selected'}
+                    </p>
+                  )}
+                </div>
+
+                {/* No Dialogue Button */}
+                <div className="mb-6">
+                  <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                    Dialogue Options
+                  </label>
+                  <button
+                    onClick={() => updateScene(scene.id, 'noDialogue', !scene.noDialogue)}
+                    className={`w-full rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
+                      scene.noDialogue
+                        ? 'border-red-500/80 bg-gradient-to-br from-red-500/20 to-red-500/10 text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)] ring-2 ring-red-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-red-500/50 hover:bg-zinc-800/50 hover:text-red-300/90 hover:shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+                    }`}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      {scene.noDialogue ? '✓' : ''}
+                      <span>No Dialogue</span>
+                    </span>
+                  </button>
+                  {scene.noDialogue && (
+                    <p className="mt-2 text-xs text-red-300 italic">
+                      No dialogue will be included in this scene. The prompt will explicitly specify that no words should be spoken.
+                    </p>
+                  )}
                 </div>
               </div>
               

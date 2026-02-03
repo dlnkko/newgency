@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage } = body;
+    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
@@ -107,6 +107,72 @@ export async function POST(request: NextRequest) {
         console.error('Error uploading product image:', uploadError);
         return NextResponse.json(
           { error: 'Error uploading product image', details: uploadError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Handle reference image upload if provided
+    let referenceImageFile = null;
+    if (referenceImage) {
+      try {
+        console.log('Uploading reference image to Gemini Files...');
+        const referenceBuffer = Buffer.from(referenceImage.split(',')[1], 'base64');
+        let referenceMime = referenceImage.split(';')[0].split(':')[1] || 'image/png';
+        
+        // Convert unsupported formats to PNG
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(referenceMime.toLowerCase())) {
+          console.log(`Converting unsupported format ${referenceMime} to PNG`);
+          referenceMime = 'image/png';
+        }
+        
+        const referenceUint8Array = new Uint8Array(referenceBuffer);
+        const referenceBlob = new Blob([referenceUint8Array], { type: referenceMime });
+        referenceImageFile = await ai.files.upload({
+          file: referenceBlob,
+          config: { mimeType: referenceMime }
+        });
+        console.log('Reference image uploaded:', referenceImageFile.uri);
+        
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error(`Timeout waiting for reference image to be ready`);
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status for ${fileName}:`, err);
+            }
+          }
+          return file;
+        };
+        
+        const referenceFileName = referenceImageFile.name || referenceImageFile.uri?.split('/').pop() || '';
+        if (referenceFileName) {
+          referenceImageFile = await waitForFile(referenceImageFile, referenceFileName);
+          if (!referenceImageFile.uri) {
+            return NextResponse.json(
+              { error: 'Reference image file is missing required URI property' },
+              { status: 500 }
+            );
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('Error uploading reference image:', uploadError);
+        return NextResponse.json(
+          { error: 'Error uploading reference image', details: uploadError.message },
           { status: 500 }
         );
       }
@@ -495,6 +561,53 @@ A product image has been attached. You MUST:
 - **MANDATORY: You MUST enhance and expand the action text with detailed product descriptions based on the image. DO NOT simply return the original action text. You MUST create a comprehensive, detailed prompt that incorporates product details from the image.**
 - **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**`)
       : '';
+
+    // Reference image instructions
+    const referenceImageInstructions = referenceImageFile
+      ? (() => {
+          let instructions = isScene4Plus
+            ? `\n\n**REFERENCE IMAGE (ATTACHED):`
+            : `\n\n**CRITICAL - REFERENCE IMAGE ATTACHED:`;
+          
+          if (copyLighting && copyCameraAngle) {
+            instructions += isScene4Plus
+              ? `\nAnalyze reference image. COPY LIGHTING (shadows, textures, light sources, color temperature, diffusion) AND CAMERA ANGLE (position, framing, character placement, perspective) from reference. Match exactly.`
+              : `\nA reference image has been attached. You MUST analyze it and COPY BOTH the lighting AND camera angle from the reference image:
+- **COPY LIGHTING (MANDATORY)**: Analyze the lighting in the reference image (light sources, shadows, textures, color temperature, light diffusion, shadow softness, highlight characteristics) and replicate it EXACTLY in your prompt. Match the lighting style, shadows, and all lighting characteristics.
+- **COPY CAMERA ANGLE (MANDATORY)**: Analyze the camera angle in the reference image (camera position, framing, character placement, perspective, shot composition) and replicate it EXACTLY in your prompt. Match the camera position, angle, and framing.`;
+          } else if (copyLighting) {
+            instructions += isScene4Plus
+              ? `\nAnalyze reference image. COPY LIGHTING (shadows, textures, light sources, color temperature, diffusion) from reference. Match exactly.`
+              : `\nA reference image has been attached. You MUST analyze it and COPY the lighting from the reference image:
+- **COPY LIGHTING (MANDATORY)**: Analyze the lighting in the reference image (light sources, shadows, textures, color temperature, light diffusion, shadow softness, highlight characteristics) and replicate it EXACTLY in your prompt. Match the lighting style, shadows, and all lighting characteristics.`;
+          } else if (copyCameraAngle) {
+            instructions += isScene4Plus
+              ? `\nAnalyze reference image. COPY CAMERA ANGLE (position, framing, character placement, perspective) from reference. Match exactly.`
+              : `\nA reference image has been attached. You MUST analyze it and COPY the camera angle from the reference image:
+- **COPY CAMERA ANGLE (MANDATORY)**: Analyze the camera angle in the reference image (camera position, framing, character placement, perspective, shot composition) and replicate it EXACTLY in your prompt. Match the camera position, angle, and framing.`;
+          } else {
+            instructions += isScene4Plus
+              ? `\nReference image attached for visual reference. Use as general visual guide.`
+              : `\nA reference image has been attached. Use it as a visual reference for the scene, but you are not required to copy specific lighting or camera angle unless explicitly requested.`;
+          }
+          
+          return instructions;
+        })()
+      : '';
+
+    // No dialogue instructions
+    const noDialogueInstructions = noDialogue
+      ? (isScene4Plus
+          ? `\n\n**NO DIALOGUE (MANDATORY):**
+ABSOLUTE PROHIBITION: No words, speech, dialogue, narration, or any spoken content. Complete silence. Only visual elements and actions.`
+          : `\n\n**CRITICAL - NO DIALOGUE (ABSOLUTE PROHIBITION):**
+This scene MUST have ABSOLUTELY NO DIALOGUE, SPEECH, NARRATION, OR ANY SPOKEN CONTENT:
+- **ABSOLUTE PROHIBITION**: No words, speech, dialogue, narration, voice-over, or any spoken content whatsoever
+- **Complete silence**: The scene must be completely silent in terms of dialogue
+- **Visual only**: Only visual elements, actions, and movements should be described
+- **No script integration**: Do NOT integrate any script or dialogue, even if provided
+- **MANDATORY**: The prompt must explicitly state that there is no dialogue, no speech, and complete silence`)
+      : '';
     const criticalEnhancementSection = isScene4Plus
       ? `**CRITICAL - YOU MUST ENHANCE (Scene ${currentSceneIndex + 1}):**
 - FORBIDDEN: Returning original action text unchanged
@@ -524,7 +637,7 @@ ${criticalEnhancementSection}
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}
+${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}
 
 **CRITICAL DEFAULT INSTRUCTION - CAMERA POSITION (PRIORITIZE HYPERREALISM):**
 **DEFAULT BEHAVIOR - HANDHELD SELFIE (PRIORITY):**
@@ -599,7 +712,7 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
     // Llamar a Gemini 3 Flash Preview
     let result;
     try {
-      // Build parts array - include image if provided
+      // Build parts array - include images if provided
       const parts: any[] = [];
       
       if (productImageFile) {
@@ -607,6 +720,15 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
           fileData: {
             fileUri: productImageFile.uri,
             mimeType: productImageFile.mimeType
+          }
+        });
+      }
+      
+      if (referenceImageFile) {
+        parts.push({
+          fileData: {
+            fileUri: referenceImageFile.uri,
+            mimeType: referenceImageFile.mimeType
           }
         });
       }
