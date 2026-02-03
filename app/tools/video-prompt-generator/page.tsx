@@ -655,7 +655,59 @@ export default function VideoPromptGenerator() {
         throw new Error(data.error || 'Error generating prompt');
       }
 
-      setGeneratedPrompt(data.prompt || '');
+      // If scenes are returned, populate the scenes automatically
+      if (data.scenes && Array.isArray(data.scenes) && data.scenes.length > 0) {
+        // Update scene count if needed
+        if (data.scenes.length !== scenes.length) {
+          setSceneCount(data.scenes.length);
+        }
+
+        // Create updated scenes with auto-generated data
+        const updatedScenes = data.scenes.map((autoScene: any, index: number) => {
+          const existingScene = scenes[index] || {
+            id: `scene-${index}`,
+            action: '',
+            script: null,
+            composition: [],
+            cameraAngle: [],
+            lighting: null,
+            duration: 1,
+            referenceImage: null,
+            referenceImagePreview: null,
+            copyLighting: false,
+            copyCameraAngle: false,
+            noDialogue: false,
+            lipSync: false,
+            voiceover: false
+          };
+
+          return {
+            ...existingScene,
+            action: autoScene.action || existingScene.action,
+            script: autoScene.script || existingScene.script,
+            composition: Array.isArray(autoScene.composition) ? autoScene.composition : existingScene.composition,
+            cameraAngle: Array.isArray(autoScene.cameraAngle) ? autoScene.cameraAngle : existingScene.cameraAngle,
+            lighting: autoScene.lighting || existingScene.lighting,
+            duration: autoScene.duration || existingScene.duration,
+            lipSync: autoScene.lipSync !== undefined ? autoScene.lipSync : existingScene.lipSync,
+            voiceover: autoScene.voiceover !== undefined ? autoScene.voiceover : existingScene.voiceover,
+            noDialogue: autoScene.noDialogue !== undefined ? autoScene.noDialogue : existingScene.noDialogue
+          };
+        });
+
+        // Update scenes state
+        setScenes(updatedScenes);
+
+        // Show success message
+        setError(null);
+        setIsInsufficientCredits(false);
+        
+        // Optionally show a message that scenes were auto-filled
+        alert(`¡Éxito! Se generaron ${data.scenes.length} escena(s) con todos los parámetros. Revisa las escenas y genera el prompt cuando estés listo.`);
+      } else {
+        // Fallback to old format if prompt is returned
+        setGeneratedPrompt(data.prompt || '');
+      }
     } catch (error: any) {
       console.error('Error generating automatic prompt:', error);
       // Check if it's a credit error from the response

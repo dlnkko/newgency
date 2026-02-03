@@ -225,6 +225,15 @@ export async function POST(request: NextRequest) {
       ? compositionArray[0]
       : compositionArray.join(', ');
     
+    // Detect multiple actions/phases in action text
+    const actionTextLower = (actionText || '').toLowerCase();
+    const hasMultipleActions = actionTextLower.includes(' and then ') || 
+                              actionTextLower.includes(' then ') ||
+                              actionTextLower.includes(' other scene') ||
+                              actionTextLower.includes(' another scene') ||
+                              actionTextLower.includes(' first ') && actionTextLower.includes(' second ') ||
+                              actionTextLower.includes(' primero ') && actionTextLower.includes(' segundo ');
+
     const compositionInstructions = compositionArray.length > 1
       ? `\n\n**CRITICAL COMPOSITION DISTRIBUTION TASK:**
 You have been provided with MULTIPLE camera compositions that should be intelligently distributed throughout the action described. Your task is to analyze the action text and determine WHEN and WHERE each composition should be applied based on the logical flow of the action.
@@ -235,12 +244,14 @@ ${compositionArray.map((comp: string, idx: number) => `${idx + 1}. ${comp}`).joi
 **Your job:** Read the action text carefully and identify different moments or phases within the same scene. Then, assign the most appropriate composition to each moment. For example:
 - If the action is "person grabs the product and then consumes it", you might use "Everyday Life" for the grabbing moment and "Product in Real Use" for the consumption moment.
 - If the action has multiple phases or transitions, distribute the compositions logically across those phases.
+${hasMultipleActions ? '\n**CRITICAL - MULTIPLE ACTIONS DETECTED:**\nThe action text contains multiple distinct actions or scenes (e.g., "and then", "other scene"). You MUST use ALL selected compositions and distribute them across ALL actions. Do NOT skip any action. Each action should get at least one composition assigned to it.' : ''}
 
 **Important:** 
 - You must seamlessly transition between compositions within the same continuous scene
 - The distribution should feel natural and logical based on the action described
 - Incorporate the composition details at the appropriate moments in your enhanced prompt
-- Make it clear which composition applies to which part of the action through your descriptive language`
+- Make it clear which composition applies to which part of the action through your descriptive language
+${hasMultipleActions ? '- **MANDATORY**: Use ALL selected compositions and ensure ALL actions mentioned in the action text are included in your prompt' : ''}`
       : '';
 
     // Camera Angle instructions
@@ -297,8 +308,49 @@ The video MUST be recorded as if the phone was placed in a fixed position (e.g.,
 - **HYPERREALISM WITH STEADY CAMERA**: The camera must be hyperrealistic and stable, with minimal shake. The video should look like authentic UGC content recorded with a phone placed in a fixed position. All content must be clear, sharp, and hyperrealistic.`;
             }
           } else {
-            // Multiple camera angles selected - AI must decide
-            return `\n\n**CRITICAL - CAMERA ANGLE SELECTION (MULTIPLE OPTIONS - AI MUST DECIDE):**
+            // Multiple camera angles selected - distribute based on actions
+            const hasMultipleActions = actionTextLower.includes(' and then ') || 
+                                      actionTextLower.includes(' then ') ||
+                                      actionTextLower.includes(' other scene') ||
+                                      actionTextLower.includes(' another scene') ||
+                                      actionTextLower.includes(' first ') && actionTextLower.includes(' second ') ||
+                                      actionTextLower.includes(' primero ') && actionTextLower.includes(' segundo ');
+
+            if (hasMultipleActions) {
+              // Multiple actions detected - distribute camera angles
+              return `\n\n**CRITICAL - CAMERA ANGLE DISTRIBUTION (MULTIPLE ANGLES - DISTRIBUTE ACROSS ACTIONS):**
+Multiple camera angles have been selected AND the action text contains multiple distinct actions or scenes. You MUST distribute ALL selected camera angles across the different actions.
+
+**Available camera angles (USE ALL OF THEM):**
+${uniqueAngles.map((angle, idx) => `${idx + 1}. ${angle}`).join('\n')}
+
+**Camera Angle Descriptions:**
+
+1. **Selfie Camera**: The character is holding the phone themselves while recording (selfie-style). Natural shaky camera movements, more pronounced during movement. Best for: actions where the character can hold the phone (e.g., "showing the product to the camera", "talking directly to camera", "records herself").
+
+2. **Frontal Camera**: POV (Point of View) perspective - the character is NOT visible, only their perspective from behind the camera. The viewer sees only what the character sees (hands, product, environment), as if looking through their eyes. Best for: POV perspectives, first-person actions (e.g., "POV showing product", "from her pov", "showing from pov").
+
+3. **Steady**: The phone is placed in a fixed position (on a table, shelf, etc.) recording the characters in third person. Stable camera with minimal shake. Best for: actions where the character needs both hands or is in a position where holding the phone is impractical.
+
+**CRITICAL DISTRIBUTION RULES:**
+${hasPOV ? '- **POV DETECTION**: Since "POV" is mentioned in the action text, you MUST use "Frontal Camera" for the POV action - this is MANDATORY.\n' : ''}- **MANDATORY**: The action text contains multiple actions (e.g., "showing the product to the camera" AND "showing the product from her pov"). You MUST use ALL selected camera angles and assign each to its corresponding action.
+- **Action analysis**: "${actionText}"
+- **Distribution logic**:
+  * Identify each distinct action in the action text
+  * Assign the most appropriate camera angle to each action from the selected options
+  * Use "Selfie Camera" for actions where character shows/talks to camera (e.g., "showing the product to the camera")
+  * Use "Frontal Camera" for POV actions (e.g., "from her pov", "showing from pov", "POV")
+  * Use "Steady" for actions where character needs both hands
+- **MANDATORY**: You MUST include ALL selected camera angles in your prompt, each assigned to its corresponding action. Do NOT skip any camera angle. Do NOT skip any action.
+
+**Your task**: 
+1. Identify ALL distinct actions in the action text
+2. Assign each selected camera angle to its corresponding action
+3. Describe each action with its assigned camera angle
+4. Ensure ALL actions are included and ALL camera angles are used`;
+            } else {
+              // Multiple angles but single action - AI must decide
+              return `\n\n**CRITICAL - CAMERA ANGLE SELECTION (MULTIPLE OPTIONS - AI MUST DECIDE):**
 Multiple camera angles have been selected. You MUST analyze the action text and intelligently choose which camera angle to use based on the context and action described.
 
 **Available camera angles:**
@@ -323,6 +375,7 @@ ${hasPOV ? '- **POV DETECTION**: Since "POV" is mentioned in the action text, yo
 - **Justify your choice**: The camera angle you choose must make logical sense based on the action described
 
 **Your task**: Analyze the action text, determine which camera angle is most appropriate, and incorporate that camera angle's characteristics into your prompt. Use only ONE camera angle throughout the scene.`;
+            }
           }
           return '';
         })()

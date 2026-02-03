@@ -147,27 +147,74 @@ ${productImageFile ? '**Product Image:** You have access to a product image. Ana
 ${ugcInstructions}
 
 **Your Task:**
-Generate a complete, professional video prompt that:
-1. **Decides the optimal number of scenes** (typically 1-5 scenes) based on the description and narrative flow
-2. **Decides characters/people**: Based on the description, determine who should appear, their characteristics, and how they relate to the story
-3. **Creates each scene with full details** including:
-   - Action description ${isUGC ? 'with hyperrealistic UGC details' : 'with professional quality'}
-   ${isUGC ? '- Camera composition (intelligently choose from: UGC Close-up, Product in Real Use, Everyday Life, or Authentic Unboxing - select the best fit for each scene based on the narrative)' : ''}
-   ${isUGC ? '- Lighting/Ambience (intelligently choose from: Night Outside, Day Outside, Artificial Light Inside, or Natural Light Inside - select the best fit for each scene based on the narrative)' : ''}
-   - Duration considerations (if applicable)
-4. **Maintains narrative flow**: Ensure scenes connect logically and tell a cohesive story
-${isUGC ? '5. **Integrates UGC elements seamlessly**: All UGC characteristics (handheld movements, mobile grain, realistic shadows, photorealistic textures) must be naturally woven into the prompt' : ''}
+Deconstruct the user's description into structured scenes with ALL parameters automatically filled. Generate a JSON response with complete scene configurations.
 
-**Output Format:**
-Provide the complete prompt as a single, continuous paragraph ready to copy-paste into an AI video generator. The prompt should flow naturally and include all scenes seamlessly integrated. Do NOT use line breaks, bullet points, or special formatting - just one flowing paragraph.
+**CRITICAL REQUIREMENTS:**
+1. **Analyze the description** and identify ALL distinct scenes, actions, or moments
+2. **For EACH scene, determine ALL parameters:**
+   - **Action**: Detailed action description ${isUGC ? 'with hyperrealistic UGC details' : 'with professional quality'}
+   - **Script** (if dialogue/narration is needed): Generate appropriate script/dialogue for the scene, or null if no dialogue
+   - **Composition**: Choose 1-2 from: "UGC Close-up", "Product in Real Use", "Everyday Life", "Authentic Unboxing" - select what best fits the scene
+   - **Camera Angle**: Choose 1-2 from: "Selfie Camera", "Frontal Camera", "Steady" - select what best fits the action (use "Frontal Camera" if POV is mentioned)
+   - **Lighting**: Choose ONE from: "Night Outside", "Day Outside", "Artificial Light Inside", "Natural Light Inside" - select what best fits the scene
+   - **Duration**: Estimate appropriate duration in seconds (1-15), or 1 for default
+   - **Lip Sync**: true if character should visibly speak, false otherwise
+   - **Voiceover**: true if voice should play over actions without visible speech, false otherwise
+   - **No Dialogue**: true if scene should have no dialogue/speech at all, false otherwise
+
+3. **Decide characters/people**: Based on the description, determine who should appear, their characteristics, and maintain consistency across scenes
+
+4. **Maintain narrative flow**: Ensure scenes connect logically and tell a cohesive story
+
+**Output Format - CRITICAL:**
+You MUST respond with a valid JSON object in this EXACT format:
+\`\`\`json
+{
+  "scenes": [
+    {
+      "action": "Detailed action description for scene 1...",
+      "script": "Script text if needed, or null",
+      "composition": ["UGC Close-up", "Everyday Life"],
+      "cameraAngle": ["Selfie Camera"],
+      "lighting": "Natural Light Inside",
+      "duration": 5,
+      "lipSync": false,
+      "voiceover": false,
+      "noDialogue": false
+    },
+    {
+      "action": "Detailed action description for scene 2...",
+      "script": null,
+      "composition": ["Product in Real Use"],
+      "cameraAngle": ["Frontal Camera"],
+      "lighting": "Day Outside",
+      "duration": 8,
+      "lipSync": false,
+      "voiceover": true,
+      "noDialogue": false
+    }
+  ]
+}
+\`\`\`
+
+**CRITICAL RULES:**
+- **MANDATORY**: Respond ONLY with valid JSON, no additional text before or after
+- **MANDATORY**: All scenes must have ALL required fields (action, script, composition, cameraAngle, lighting, duration, lipSync, voiceover, noDialogue)
+- **MANDATORY**: Composition and cameraAngle must be arrays (can have 1-2 items)
+- **MANDATORY**: Lighting must be a single string from the options
+- **MANDATORY**: Duration must be a number (1-15)
+- **MANDATORY**: lipSync, voiceover, noDialogue must be booleans (true/false)
+- **MANDATORY**: If no dialogue needed, set script to null and noDialogue to true
+- **MANDATORY**: If script is provided, set lipSync or voiceover appropriately (not both true)
+- **MANDATORY**: Generate 1-5 scenes based on the description complexity
+- **MANDATORY**: All content must be in English
+${isUGC ? '- **MANDATORY**: All scenes must maintain hyperrealistic UGC characteristics' : ''}
 
 **Important:**
-- If a hook is mentioned in the description, make the opening scene extremely attention-grabbing
+- If a hook is mentioned, make the first scene extremely attention-grabbing
 - If product showcase is requested, ensure the product is clearly visible and well-lit
-- Maintain narrative flow between scenes
-- Keep the prompt concise but comprehensive
-- All content must be in English
-${isUGC ? '- The prompt should feel like a natural, authentic iPhone recording - not staged or professional' : ''}`;
+- Maintain consistency in character, location, and style across scenes
+- Choose parameters that best fit each scene's narrative purpose`;
 
     // Build parts array
     const parts: any[] = [];
