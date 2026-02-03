@@ -554,12 +554,21 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
         })()
       : '';
 
-    const productImageInstructions = productImageFile 
-      ? (() => {
-          const baseInstructions = isScene4Plus
-            ? `\n\n**PRODUCT IMAGE (REQUIRED):**
+    // Detect if action text mentions "product" or similar terms
+    const actionTextLower = (actionText || '').toLowerCase();
+    const mentionsProduct = actionTextLower.includes('product') || 
+                           actionTextLower.includes('el producto') || 
+                           actionTextLower.includes('producto') ||
+                           actionTextLower.includes('the product');
+
+    // Product handling instructions - CRITICAL
+    const productHandlingInstructions = (() => {
+      if (productImageFile) {
+        // Product image is attached - use it
+        const baseInstructions = isScene4Plus
+          ? `\n\n**PRODUCT IMAGE (REQUIRED):**
 Analyze attached image: appearance, colors, materials, textures, design, branding. Include detailed product descriptions in prompt. Match image exactly. DO NOT return original action text.`
-            : `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
+          : `\n\n**CRITICAL - PRODUCT IMAGE ATTACHED (MANDATORY ENHANCEMENT):**
 A product image has been attached. You MUST:
 - **CRITICAL: You MUST generate an ENHANCED prompt, NOT return the original action text**
 - **Analyze the attached product image** to understand the exact product appearance, colors, materials, textures, design, branding, and all visual details
@@ -569,21 +578,69 @@ A product image has been attached. You MUST:
 - **Accurate product description** - Ensure the product description in your prompt accurately reflects what is shown in the attached image
 - **MANDATORY: You MUST enhance and expand the action text with detailed product descriptions based on the image. DO NOT simply return the original action text. You MUST create a comprehensive, detailed prompt that incorporates product details from the image.**
 - **If you return the original action text unchanged, you have FAILED the task. You MUST enhance it with product details, visual descriptions, and all the technical requirements.**`;
-          
-          if (productPhotoWillBeAttached) {
-            return baseInstructions + (isScene4Plus
-              ? `\n\n**CRITICAL - PRODUCT PHOTO WILL BE ATTACHED:**
+        
+        if (productPhotoWillBeAttached) {
+          return baseInstructions + (isScene4Plus
+            ? `\n\n**CRITICAL - PRODUCT PHOTO WILL BE ATTACHED:**
 When referring to the product in your prompt, ALWAYS refer to "the attached product image" or "the product shown in the attached image". NEVER describe the product generically - ALWAYS specify that it matches the attached product image exactly. Every product reference must explicitly mention the attached image.`
-              : `\n\n**CRITICAL - PRODUCT PHOTO WILL BE ATTACHED (MANDATORY):**
+            : `\n\n**CRITICAL - PRODUCT PHOTO WILL BE ATTACHED (MANDATORY):**
 When referring to the product in your prompt, you MUST ALWAYS refer to "the attached product image" or "the product shown in the attached image". 
 - **ABSOLUTE REQUIREMENT**: Every time you mention the product, you MUST specify that it refers to the attached product image
 - **NO GENERIC DESCRIPTIONS**: Never describe the product generically - always specify that it matches the attached product image exactly
 - **EXPLICIT REFERENCES**: Use phrases like "the product shown in the attached image", "the attached product image", "the product from the attached image" when describing the product
 - **MANDATORY**: All product references must explicitly mention the attached image for maximum accuracy`);
-          }
-          return baseInstructions;
-        })()
-      : '';
+        }
+        return baseInstructions;
+      } else if (mentionsProduct || productPhotoWillBeAttached) {
+        // Product is mentioned but no image attached - DO NOT INVENT
+        return isScene4Plus
+          ? `\n\n**CRITICAL - PRODUCT REFERENCE (NO INVENTING):**
+The action text mentions "product" or "el producto". ${productPhotoWillBeAttached ? 'A product image WILL BE ATTACHED to the final prompt.' : 'A product image may be attached to the final prompt.'}
+- **ABSOLUTE PROHIBITION**: NEVER invent product details (colors, shapes, materials, sizes, types, names, brands)
+- **GENERIC REFERENCE ONLY**: Only refer to "the product" or "the product that will be shown" or "the product from the attached image"
+- **NO SPECIFIC DETAILS**: Do NOT describe what the product looks like, its color, shape, material, or any visual characteristics
+- **WAIT FOR IMAGE**: ${productPhotoWillBeAttached ? 'The product image will be attached to the final prompt - describe it as "the product shown in the attached image" or "the attached product image"' : 'If a product image is attached, describe it based on the image. Otherwise, only say "the product"'}
+- **MANDATORY**: When the action text mentions "product", you MUST only use generic references like "the product", "the product shown", or "the product from the attached image" - NEVER invent details`
+          : `\n\n**CRITICAL - PRODUCT REFERENCE HANDLING (MANDATORY - NO INVENTING):**
+The action text mentions "product", "el producto", "using the product", "showing the product", or similar terms. ${productPhotoWillBeAttached ? 'A product image WILL BE ATTACHED to the final prompt.' : 'A product image may be attached to the final prompt.'}
+
+**ABSOLUTE PROHIBITION - NEVER INVENT PRODUCT DETAILS:**
+- **FORBIDDEN**: You MUST NEVER invent, assume, or guess product details such as:
+  * Colors (e.g., "red", "blue", "tan", "colorful", "vibrant")
+  * Shapes (e.g., "bottle", "gummies", "strip", "round", "rectangular", "bottle-shaped")
+  * Materials (e.g., "plastic", "glass", "fabric", "adhesive", "translucent")
+  * Sizes (e.g., "small", "large", "tiny", "compact")
+  * Types/Names (e.g., "creatine gummies", "mouth tape", "serum", "supplement") - UNLESS explicitly stated in action text
+  * Brand names or product names
+  * Any visual characteristics not explicitly stated in the action text or visible in attached image
+
+**IDENTIFYING PRODUCT REFERENCES:**
+- **Product keywords**: "product", "el producto", "producto", "the product", "using the product", "showing the product", "holding the product", "using the product (mouth tape)"
+- **When action text says these**: They refer to THE PRODUCT that will be shown in the video
+- **Keep type if mentioned**: If action text says "using the product (mouth tape)", you can keep "mouth tape" as it's explicitly stated, but DON'T add colors/shapes
+- **Other items are NOT the product**: Clothing, furniture, environment, background items, accessories (unless explicitly called "product") are NOT the product
+
+**CORRECT PRODUCT REFERENCES:**
+- **If productPhotoWillBeAttached is true**: Always use "the product shown in the attached image", "the attached product image", or "the product from the attached image"
+- **If no image but product mentioned**: Only use generic terms like "the product", "the product being used", "the product shown", "the product in hand"
+- **If action mentions type**: If action says "using the product (mouth tape)", you can say "using the product (mouth tape)" but DON'T add "tan", "small", "adhesive strip", etc.
+
+**MANDATORY EXAMPLES:**
+- Action: "showing the product" → CORRECT: "showing the product shown in the attached image" (if image will be attached) or "showing the product" (if no image)
+- Action: "using the product" → CORRECT: "using the product from the attached image" (if image will be attached) or "using the product" (if no image)
+- Action: "holding the product" → CORRECT: "holding the product shown in the attached image" (if image will be attached) or "holding the product" (if no image)
+- Action: "using the product (mouth tape)" → CORRECT: "using the product (mouth tape)" or "using the product (mouth tape) shown in the attached image" - DON'T add "tan", "small", "adhesive strip"
+- WRONG: "holding a bottle of creatine gummies" (invented: "bottle", "gummies")
+- WRONG: "showing colorful gummies" (invented: "colorful", "gummies")
+- WRONG: "using a tan adhesive strip" (invented: "tan", "adhesive strip")
+- WRONG: "holding the product, a small tan mouth tape strip" (invented: "small", "tan", "strip")
+
+**MANDATORY**: When you see "product" in the action text, you MUST identify it as THE PRODUCT and refer to it generically or as "the product from the attached image" - NEVER invent what it looks like, its color, shape, material, or any visual characteristics.`;
+      }
+      return '';
+    })();
+
+    const productImageInstructions = productHandlingInstructions;
 
     // Reference image instructions
     const referenceImageInstructions = referenceImageFile
@@ -691,6 +748,36 @@ ${criticalEnhancementSection}
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
 ${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}${lipSyncInstructions}${voiceoverInstructions}
+
+**CRITICAL - PRODUCT REFERENCE IDENTIFICATION AND HANDLING (MANDATORY - NO INVENTING):**
+You MUST carefully identify when the action text refers to "the product" vs other items, and NEVER invent product details.
+
+**IDENTIFYING PRODUCT REFERENCES:**
+- **Product keywords**: "product", "el producto", "producto", "the product", "using the product", "showing the product", "holding the product", "using the product (mouth tape)", etc.
+- **When you see these terms**: They refer to THE PRODUCT that will be shown in the video
+- **Other items are NOT the product**: Clothing, furniture, environment, background items, accessories (unless explicitly called "product") are NOT the product
+- **MANDATORY**: You MUST identify when "product" is mentioned and distinguish it from other items in the scene
+
+**HANDLING PRODUCT REFERENCES (ABSOLUTE PROHIBITION - NEVER INVENT):**
+${productImageFile 
+  ? `- **Product image IS attached**: Describe the product based on what you see in the attached product image. Use exact details from the image (colors, materials, textures, design). If the image shows specific characteristics, include them.`
+  : productPhotoWillBeAttached
+  ? `- **Product image WILL BE ATTACHED to final prompt**: ALWAYS refer to "the product shown in the attached image" or "the attached product image". NEVER invent product details (colors, shapes, materials, types, names). The product image will be attached separately - describe it as "the product from the attached image".`
+  : mentionsProduct
+  ? `- **Product mentioned in action text but no image attached**: Only use generic references like "the product" or "the product being used". NEVER invent what the product looks like (no colors, shapes, materials, types, names, brands).`
+  : `- **No product mentioned**: If the action text does not mention "product", do not add product references.`}
+
+**ABSOLUTE PROHIBITION - NEVER INVENT PRODUCT DETAILS:**
+- **FORBIDDEN**: Never assume, guess, or invent product characteristics
+- **FORBIDDEN**: Never add product names, types, colors, shapes, or materials unless:
+  * The action text explicitly states them (e.g., "mouth tape" if action says "using mouth tape"), OR
+  * They are visible in an attached product image
+- **FORBIDDEN EXAMPLES**: Never say "creatine gummies", "colorful gummies", "bottle", "tan adhesive strip", "small strip", etc. unless explicitly stated in action text or shown in attached image
+- **CORRECT APPROACH**: 
+  * If action says "showing the product" → Say "showing the product" or "showing the product from the attached image" (if image will be attached)
+  * If action says "using the product (mouth tape)" → Say "using the product (mouth tape)" - keep the type mentioned in action, but don't add colors/shapes
+  * If action says "holding the product" → Say "holding the product" or "holding the product shown in the attached image" (if image will be attached)
+- **MANDATORY**: When action text mentions "product", identify it as THE PRODUCT and refer to it generically or as "the product from the attached image" - NEVER invent visual characteristics
 
 **CRITICAL - CONTENT MODERATION COMPLIANCE (MANDATORY):**
 You MUST ensure the generated prompt complies with content moderation policies and will NOT trigger moderation filters:
