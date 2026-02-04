@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { staticAdImage, productImage, copywriting, isUrlScraped } = body;
+    const { staticAdImage, productImage, copywriting, isUrlScraped, generalInstructions } = body;
 
     // Log input data for debugging
     console.log('=== GENERATE STATIC AD PROMPT REQUEST ===');
@@ -445,9 +445,14 @@ Create copywriting matching the reference style:
 1. A DETAILED prompt that recreates the reference static ad design
 2. An image of a NEW product that needs to replace the product in the reference ad
 ${isUrlScraped && scrapedSummary ? '3. Scraped product page information (summary and branding)' : ''}
+${generalInstructions ? '4. General instructions from the user about how they want the static ad to be' : ''}
 
 **Reference Ad Prompt (use this as the base structure - maintain ALL design elements):**
 ${referencePrompt}
+${generalInstructions ? `\n\n**USER'S GENERAL INSTRUCTIONS (CRITICAL - MUST BE INCORPORATED):**
+${generalInstructions}
+
+These instructions are additional requirements from the user. You MUST incorporate these instructions into the final prompt while maintaining the reference ad structure. Balance the user's specific requests with the design elements from the reference ad.` : ''}
 
 **Your Task:**
 Adapt the reference prompt above to create a NEW prompt for the product in the provided image. The new prompt must:
