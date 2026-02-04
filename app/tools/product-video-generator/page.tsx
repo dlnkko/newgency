@@ -9,7 +9,10 @@ interface GeneratedPrompts {
   videoPrompt: string;
 }
 
+type AnimationMode = 'animate-image' | 'frame-animation';
+
 export default function ProductVideoGenerator() {
+  const [mode, setMode] = useState<AnimationMode>('animate-image');
   const [productImage, setProductImage] = useState<File | null>(null);
   const [actionDescription, setActionDescription] = useState<string>('');
   const [isUGC, setIsUGC] = useState<boolean>(false);
@@ -25,6 +28,15 @@ export default function ProductVideoGenerator() {
   const [animationPrompt, setAnimationPrompt] = useState<string | null>(null);
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // Frame animation mode states
+  const [startFrame, setStartFrame] = useState<File | null>(null);
+  const [lastFrame, setLastFrame] = useState<File | null>(null);
+  const [startFramePreview, setStartFramePreview] = useState<string | null>(null);
+  const [lastFramePreview, setLastFramePreview] = useState<string | null>(null);
+  const [frameAnimationDescription, setFrameAnimationDescription] = useState<string>('');
+  const [frameAnimationPrompt, setFrameAnimationPrompt] = useState<string | null>(null);
+  const [isGeneratingFrameAnimation, setIsGeneratingFrameAnimation] = useState<boolean>(false);
 
   const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -33,6 +45,30 @@ export default function ProductVideoGenerator() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setProductPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleStartFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setStartFrame(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setStartFramePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleLastFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLastFrame(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLastFramePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -306,6 +342,55 @@ export default function ProductVideoGenerator() {
     }
   };
 
+  const handleGenerateFrameAnimation = async () => {
+    if (!startFrame || !lastFrame || !frameAnimationDescription.trim()) {
+      setError('Please upload both start and last frame images and describe what should happen');
+      return;
+    }
+
+    setIsGeneratingFrameAnimation(true);
+    setError(null);
+    setIsInsufficientCredits(false);
+    setFrameAnimationPrompt(null);
+
+    try {
+      const startFrameBase64 = await compressAndConvertToBase64(startFrame);
+      const lastFrameBase64 = await compressAndConvertToBase64(lastFrame);
+
+      const response = await fetch('/api/generate-frame-animation-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          startFrame: startFrameBase64,
+          lastFrame: lastFrameBase64,
+          animationDescription: frameAnimationDescription.trim(),
+          isUGC: isUGC,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setError(null);
+          setIsGeneratingFrameAnimation(false);
+          return;
+        }
+        throw new Error(data.error || data.details || 'Failed to generate frame animation prompt');
+      }
+
+      setFrameAnimationPrompt(data.prompt || '');
+    } catch (error: any) {
+      console.error('Error generating frame animation prompt:', error);
+      setError(error.message || 'Failed to generate frame animation prompt. Please try again.');
+    } finally {
+      setIsGeneratingFrameAnimation(false);
+    }
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -325,12 +410,66 @@ export default function ProductVideoGenerator() {
             </p>
           </div>
 
+          {/* Mode Selector */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-zinc-300 mb-3">
+              Select Animation Mode
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => {
+                  setMode('animate-image');
+                  // Reset frame animation states when switching modes
+                  setStartFrame(null);
+                  setLastFrame(null);
+                  setStartFramePreview(null);
+                  setLastFramePreview(null);
+                  setFrameAnimationDescription('');
+                  setFrameAnimationPrompt(null);
+                }}
+                className={`rounded-xl border-2 px-6 py-4 text-center transition-all ${
+                  mode === 'animate-image'
+                    ? 'border-amber-500/70 bg-amber-500/20 text-amber-200 shadow-lg shadow-amber-500/20'
+                    : 'border-zinc-700/70 bg-zinc-950/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                <div className="font-semibold mb-1">Animate Image</div>
+                <div className="text-xs">Animate a single product image</div>
+              </button>
+              <button
+                onClick={() => {
+                  setMode('frame-animation');
+                  // Reset animate image states when switching modes
+                  setProductImage(null);
+                  setProductPreview(null);
+                  setActionDescription('');
+                  setNanoBananaPrompt(null);
+                  setGeneratedImage(null);
+                  setGeneratedImagePreview(null);
+                  setVideoAnimationPrompt(null);
+                  setAnimationPrompt(null);
+                }}
+                className={`rounded-xl border-2 px-6 py-4 text-center transition-all ${
+                  mode === 'frame-animation'
+                    ? 'border-amber-500/70 bg-amber-500/20 text-amber-200 shadow-lg shadow-amber-500/20'
+                    : 'border-zinc-700/70 bg-zinc-950/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                <div className="font-semibold mb-1">Start and Last Frame Animation</div>
+                <div className="text-xs">Animate between two images</div>
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-6">
-            {/* Product Image Upload */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Product Image (as clean as possible)
-              </label>
+            {/* Animate Image Mode */}
+            {mode === 'animate-image' && (
+              <>
+                {/* Product Image Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Product Image (as clean as possible)
+                  </label>
               <div className="flex items-center gap-4">
                 <label className="flex-1 cursor-pointer">
                   <div className="rounded-xl border-2 border-dashed border-zinc-700/70 bg-zinc-950/50 p-6 text-center hover:border-amber-500/40 transition-colors">
@@ -369,68 +508,215 @@ export default function ProductVideoGenerator() {
               </div>
             </div>
 
-            {/* Action Description */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                What should happen in the video?
-              </label>
-              <textarea
-                value={actionDescription}
-                onChange={(e) => setActionDescription(e.target.value)}
-                placeholder="Example: The product falls gracefully, rotates in slow motion, and lands softly on a surface"
-                className="w-full rounded-xl border border-zinc-700/70 bg-zinc-950/50 px-4 py-3 text-zinc-50 placeholder-zinc-500 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
-                rows={4}
-              />
-            </div>
-
-            {/* UGC Toggle */}
-            <div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={isUGC}
-                    onChange={(e) => setIsUGC(e.target.checked)}
-                    className="sr-only"
+                {/* Action Description */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    What should happen in the video?
+                  </label>
+                  <textarea
+                    value={actionDescription}
+                    onChange={(e) => setActionDescription(e.target.value)}
+                    placeholder="Example: The product falls gracefully, rotates in slow motion, and lands softly on a surface"
+                    className="w-full rounded-xl border border-zinc-700/70 bg-zinc-950/50 px-4 py-3 text-zinc-50 placeholder-zinc-500 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                    rows={4}
                   />
-                  <div
-                    className={`w-14 h-7 rounded-full transition-colors ${
-                      isUGC ? 'bg-amber-500' : 'bg-zinc-700'
-                    }`}
+                </div>
+
+                {/* UGC Toggle */}
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={isUGC}
+                        onChange={(e) => setIsUGC(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div
+                        className={`w-14 h-7 rounded-full transition-colors ${
+                          isUGC ? 'bg-amber-500' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <div
+                          className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform ${
+                            isUGC ? 'translate-x-7' : 'translate-x-1'
+                          } mt-0.5`}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-sm font-medium text-zinc-300">UGC</span>
+                      <span className="block text-xs text-zinc-500">
+                        Enable if the image is a hyperrealistic person (UGC style animation)
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-4">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={isGenerating || isAnimating || isGeneratingAnimation || !productImage || !actionDescription.trim()}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-amber-500/90 to-amber-600/90 px-6 py-3.5 font-semibold text-zinc-900 shadow-lg shadow-amber-500/20 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
-                    <div
-                      className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform ${
-                        isUGC ? 'translate-x-7' : 'translate-x-1'
-                      } mt-0.5`}
-                    />
+                    {isGenerating ? 'Generating Prompt...' : 'Generate Nano Banana Prompt'}
+                  </button>
+                  <button
+                    onClick={handleAnimateImage}
+                    disabled={isGenerating || isAnimating || isGeneratingAnimation || !productImage || !actionDescription.trim()}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-blue-500/90 to-blue-600/90 px-6 py-3.5 font-semibold text-white shadow-lg shadow-blue-500/20 hover:from-blue-500 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {isAnimating ? 'Generating Animation...' : 'Animate Uploaded Image'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Frame Animation Mode */}
+            {mode === 'frame-animation' && (
+              <>
+                {/* Start Frame Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Start Frame Image
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <label className="flex-1 cursor-pointer">
+                      <div className="rounded-xl border-2 border-dashed border-zinc-700/70 bg-zinc-950/50 p-6 text-center hover:border-amber-500/40 transition-colors">
+                        {startFramePreview ? (
+                          <img
+                            src={startFramePreview}
+                            alt="Start frame preview"
+                            className="max-h-48 mx-auto rounded-lg"
+                          />
+                        ) : (
+                          <div className="text-zinc-500">
+                            <svg
+                              className="mx-auto h-12 w-12 mb-2"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <p className="text-sm">Click to upload start frame</p>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleStartFrameUpload}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
                 </div>
-                <div>
-                  <span className="block text-sm font-medium text-zinc-300">UGC</span>
-                  <span className="block text-xs text-zinc-500">
-                    Enable if the image is a hyperrealistic person (UGC style animation)
-                  </span>
-                </div>
-              </label>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating || isAnimating || isGeneratingAnimation || !productImage || !actionDescription.trim()}
-                className="flex-1 rounded-xl bg-gradient-to-r from-amber-500/90 to-amber-600/90 px-6 py-3.5 font-semibold text-zinc-900 shadow-lg shadow-amber-500/20 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {isGenerating ? 'Generating Prompt...' : 'Generate Nano Banana Prompt'}
-              </button>
-              <button
-                onClick={handleAnimateImage}
-                disabled={isGenerating || isAnimating || isGeneratingAnimation || !productImage || !actionDescription.trim()}
-                className="flex-1 rounded-xl bg-gradient-to-r from-blue-500/90 to-blue-600/90 px-6 py-3.5 font-semibold text-white shadow-lg shadow-blue-500/20 hover:from-blue-500 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {isAnimating ? 'Generating Animation...' : 'Animate Uploaded Image'}
-              </button>
-            </div>
+                {/* Last Frame Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Last Frame Image
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <label className="flex-1 cursor-pointer">
+                      <div className="rounded-xl border-2 border-dashed border-zinc-700/70 bg-zinc-950/50 p-6 text-center hover:border-amber-500/40 transition-colors">
+                        {lastFramePreview ? (
+                          <img
+                            src={lastFramePreview}
+                            alt="Last frame preview"
+                            className="max-h-48 mx-auto rounded-lg"
+                          />
+                        ) : (
+                          <div className="text-zinc-500">
+                            <svg
+                              className="mx-auto h-12 w-12 mb-2"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                              />
+                            </svg>
+                            <p className="text-sm">Click to upload last frame</p>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLastFrameUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Animation Description */}
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    What should happen between the two frames?
+                  </label>
+                  <textarea
+                    value={frameAnimationDescription}
+                    onChange={(e) => setFrameAnimationDescription(e.target.value)}
+                    placeholder="Example: The product rotates 360 degrees while moving from left to right, with smooth camera movement following the product"
+                    className="w-full rounded-xl border border-zinc-700/70 bg-zinc-950/50 px-4 py-3 text-zinc-50 placeholder-zinc-500 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                    rows={4}
+                  />
+                </div>
+
+                {/* UGC Toggle */}
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={isUGC}
+                        onChange={(e) => setIsUGC(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div
+                        className={`w-14 h-7 rounded-full transition-colors ${
+                          isUGC ? 'bg-amber-500' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <div
+                          className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform ${
+                            isUGC ? 'translate-x-7' : 'translate-x-1'
+                          } mt-0.5`}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-sm font-medium text-zinc-300">UGC</span>
+                      <span className="block text-xs text-zinc-500">
+                        Enable if the images contain hyperrealistic people (UGC style animation)
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Generate Button */}
+                <button
+                  onClick={handleGenerateFrameAnimation}
+                  disabled={isGeneratingFrameAnimation || !startFrame || !lastFrame || !frameAnimationDescription.trim()}
+                  className="w-full rounded-xl bg-gradient-to-r from-amber-500/90 to-amber-600/90 px-6 py-3.5 font-semibold text-zinc-900 shadow-lg shadow-amber-500/20 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {isGeneratingFrameAnimation ? 'Generating Optimized Prompt...' : 'Generate Optimized Animation Prompt'}
+                </button>
+              </>
+            )}
 
             {/* Insufficient Credits Error */}
             {isInsufficientCredits && (
@@ -592,6 +878,41 @@ export default function ProductVideoGenerator() {
             </div>
             <p className="mt-3 text-xs text-zinc-500">
               Character count: {animationPrompt.length} / 999
+            </p>
+          </div>
+        )}
+
+        {/* Frame Animation Prompt */}
+        {frameAnimationPrompt && (
+          <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/80 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-zinc-50">
+                  Optimized Frame Animation Prompt
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Based on start and last frame - attach both images when using this prompt
+                </p>
+              </div>
+              <button
+                onClick={() => copyToClipboard(frameAnimationPrompt, 'frame-animation-prompt')}
+                className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30 transition-colors"
+              >
+                {copiedId === 'frame-animation-prompt' ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <div className="rounded-xl border border-zinc-700/70 bg-zinc-950/50 p-4">
+              <p className="text-sm text-zinc-300 whitespace-pre-wrap">
+                {frameAnimationPrompt}
+              </p>
+            </div>
+            <div className="mt-3 rounded-lg bg-amber-500/10 border border-amber-500/30 p-3">
+              <p className="text-xs text-amber-300">
+                <strong>Important:</strong> When using this prompt in your video AI model, make sure to attach both the start frame and last frame images. The prompt is specifically optimized to create a smooth animation transition between these two frames based on your description: "{frameAnimationDescription}"
+              </p>
+            </div>
+            <p className="mt-3 text-xs text-zinc-500">
+              Character count: {frameAnimationPrompt.length} / 999
             </p>
           </div>
         )}
