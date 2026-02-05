@@ -310,12 +310,12 @@ export default function StaticAdPromptGenerator() {
         {/* General Instructions Input */}
         <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Indicaciones Generales <span className="text-xs font-normal text-zinc-500">(Opcional)</span>
+            Additional Notes <span className="text-xs font-normal text-zinc-500">(Optional)</span>
           </label>
           <textarea
             value={generalInstructions}
             onChange={(e) => setGeneralInstructions(e.target.value)}
-            placeholder="Escribe indicaciones adicionales sobre cómo quieres que sea el anuncio estático. Por ejemplo: 'Quiero que el fondo sea más oscuro', 'El producto debe estar más centrado', 'Agrega más elementos visuales', etc. Estas indicaciones se tendrán en cuenta además del anuncio de referencia."
+            placeholder="Add any specific requirements or preferences for your ad. For example: 'Make the background darker', 'Center the product more', 'Add more visual elements', etc. These will be incorporated along with the reference ad style."
             rows={4}
             className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all resize-none"
           />

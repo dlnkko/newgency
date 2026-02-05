@@ -38,20 +38,23 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { description, style, referenceImage, referenceImages, characterProductImages, firstFrameFromVideo } = body;
+    const { description, style, referenceImage, referenceImages, productImages, characterImages, firstFrameFromVideo } = body;
     
-    // Support both old format (referenceImages array) and new format (referenceImage + characterProductImages)
+    // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages)
     let mainReferenceImage: string | null = null;
-    let characterProductImagesArray: string[] = [];
+    let productImagesArray: string[] = [];
+    let characterImagesArray: string[] = [];
     
     if (referenceImage) {
-      // New format: separate reference image and character/product images
+      // New format: separate reference image, product images, and character images
       mainReferenceImage = referenceImage;
-      characterProductImagesArray = characterProductImages && Array.isArray(characterProductImages) ? characterProductImages : [];
+      productImagesArray = productImages && Array.isArray(productImages) ? productImages : [];
+      characterImagesArray = characterImages && Array.isArray(characterImages) ? characterImages : [];
     } else if (referenceImages && Array.isArray(referenceImages) && referenceImages.length > 0) {
-      // Old format: first image is reference, rest are character/product
+      // Old format: first image is reference, rest are character/product (default to product)
       mainReferenceImage = referenceImages[0];
-      characterProductImagesArray = referenceImages.slice(1);
+      productImagesArray = referenceImages.slice(1);
+      characterImagesArray = [];
     }
 
     if (!description || !description.trim()) {
@@ -167,81 +170,90 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle character/product images upload if provided
-    const characterProductImageFiles: any[] = [];
-    if (characterProductImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
-      // Limit to 3 images
-      const imagesToProcess = characterProductImagesArray.slice(0, 3);
+    // Helper function to upload images to Gemini Files
+    const uploadImageToGemini = async (imageBase64: string, imageNumber: number, imageType: 'product' | 'character'): Promise<any> => {
+      try {
+        console.log(`Uploading ${imageType} image ${imageNumber} to Gemini Files...`);
+        const imageBuffer = Buffer.from(imageBase64.split(',')[1], 'base64');
+        let imageMime = imageBase64.split(';')[0].split(':')[1] || 'image/png';
+        
+        // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(imageMime.toLowerCase())) {
+          console.log(`Converting unsupported format ${imageMime} to PNG`);
+          imageMime = 'image/png';
+        }
+        
+        const imageUint8Array = new Uint8Array(imageBuffer);
+        const imageBlob = new Blob([imageUint8Array], { type: imageMime });
+        let imageFile = await ai.files.upload({
+          file: imageBlob,
+          config: { mimeType: imageMime }
+        });
+        console.log(`${imageType} image ${imageNumber} uploaded:`, imageFile.uri);
+        
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error(`Timeout waiting for ${imageType} image ${imageNumber} to be ready`);
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status for ${fileName}:`, err);
+            }
+          }
+          return file;
+        };
+        
+        const imageFileName = imageFile.name || imageFile.uri?.split('/').pop() || '';
+        if (imageFileName) {
+          imageFile = await waitForFile(imageFile, imageFileName);
+          if (!imageFile.uri) {
+            throw new Error(`${imageType} image ${imageNumber} file is missing required URI property`);
+          }
+        }
+        
+        return imageFile;
+      } catch (uploadError: any) {
+        console.error(`Error uploading ${imageType} image ${imageNumber}:`, {
+          message: uploadError.message,
+          status: uploadError.status,
+          code: uploadError.code,
+          response: uploadError.response?.data,
+          stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+        });
+        
+        // Check for API key errors
+        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          throw new Error('Google Gemini API key is not valid');
+        }
+        
+        throw uploadError;
+      }
+    };
+
+    // Handle product images upload if provided
+    const productImageFiles: any[] = [];
+    if (productImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+      const imagesToProcess = productImagesArray.slice(0, 3);
       
       for (let i = 0; i < imagesToProcess.length; i++) {
-        const characterProductImage = imagesToProcess[i];
         try {
-          console.log(`Uploading character/product image ${i + 1} of ${imagesToProcess.length} to Gemini Files...`);
-          const imageBuffer = Buffer.from(characterProductImage.split(',')[1], 'base64');
-          let imageMime = characterProductImage.split(';')[0].split(':')[1] || 'image/png';
-          
-          // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
-          const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-          if (!supportedFormats.includes(imageMime.toLowerCase())) {
-            console.log(`Converting unsupported format ${imageMime} to PNG`);
-            imageMime = 'image/png';
-          }
-          
-          const imageUint8Array = new Uint8Array(imageBuffer);
-          const imageBlob = new Blob([imageUint8Array], { type: imageMime });
-          let characterProductImageFile = await ai.files.upload({
-            file: imageBlob,
-            config: { mimeType: imageMime }
-          });
-          console.log(`Character/product image ${i + 1} uploaded:`, characterProductImageFile.uri);
-          
-          // Wait for file to be ACTIVE
-          const maxWaitTime = 60000;
-          const checkInterval = 2000;
-          const startTime = Date.now();
-          
-          const waitForFile = async (file: any, fileName: string) => {
-            if (file.state === 'ACTIVE') return file;
-            
-            while (file.state !== 'ACTIVE') {
-              if (Date.now() - startTime > maxWaitTime) {
-                throw new Error(`Timeout waiting for character/product image ${i + 1} to be ready`);
-              }
-              await new Promise(resolve => setTimeout(resolve, checkInterval));
-              
-              try {
-                const fileInfo = await ai.files.get({ name: fileName });
-                file = fileInfo;
-              } catch (err) {
-                console.error(`Error checking file status for ${fileName}:`, err);
-              }
-            }
-            return file;
-          };
-          
-          const imageFileName = characterProductImageFile.name || characterProductImageFile.uri?.split('/').pop() || '';
-          if (imageFileName) {
-            characterProductImageFile = await waitForFile(characterProductImageFile, imageFileName);
-            if (!characterProductImageFile.uri) {
-              return NextResponse.json(
-                { error: `Character/product image ${i + 1} file is missing required URI property` },
-                { status: 500 }
-              );
-            }
-          }
-          
-          characterProductImageFiles.push(characterProductImageFile);
+          const productImageFile = await uploadImageToGemini(imagesToProcess[i], i + 1, 'product');
+          productImageFiles.push(productImageFile);
         } catch (uploadError: any) {
-          console.error(`Error uploading character/product image ${i + 1}:`, {
-            message: uploadError.message,
-            status: uploadError.status,
-            code: uploadError.code,
-            response: uploadError.response?.data,
-            stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
-          });
-          
-          // Check for API key errors
-          if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          if (uploadError.message === 'Google Gemini API key is not valid') {
             return NextResponse.json(
               { 
                 error: 'Google Gemini API key is not valid', 
@@ -253,8 +265,43 @@ export async function POST(request: NextRequest) {
           
           return NextResponse.json(
             { 
-              error: `Error uploading character/product image ${i + 1}`, 
-              details: uploadError.message || `Could not upload character/product image ${i + 1} to Gemini Files`,
+              error: `Error uploading product image ${i + 1}`, 
+              details: uploadError.message || `Could not upload product image ${i + 1} to Gemini Files`,
+              ...(process.env.NODE_ENV === 'development' && {
+                fullError: uploadError.toString(),
+                stack: uploadError.stack
+              })
+            },
+            { status: 500 }
+          );
+        }
+      }
+    }
+
+    // Handle character images upload if provided
+    const characterImageFiles: any[] = [];
+    if (characterImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+      const imagesToProcess = characterImagesArray.slice(0, 3);
+      
+      for (let i = 0; i < imagesToProcess.length; i++) {
+        try {
+          const characterImageFile = await uploadImageToGemini(imagesToProcess[i], i + 1, 'character');
+          characterImageFiles.push(characterImageFile);
+        } catch (uploadError: any) {
+          if (uploadError.message === 'Google Gemini API key is not valid') {
+            return NextResponse.json(
+              { 
+                error: 'Google Gemini API key is not valid', 
+                details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+              },
+              { status: 401 }
+            );
+          }
+          
+          return NextResponse.json(
+            { 
+              error: `Error uploading character image ${i + 1}`, 
+              details: uploadError.message || `Could not upload character image ${i + 1} to Gemini Files`,
               ...(process.env.NODE_ENV === 'development' && {
                 fullError: uploadError.toString(),
                 stack: uploadError.stack
@@ -369,24 +416,26 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       }
     }
 
-    // If character/product images are provided, generate detailed prompts for each
-    const characterProductImagePrompts: string[] = [];
-    if (characterProductImageFiles.length > 0) {
-      console.log(`Processing ${characterProductImageFiles.length} character/product image(s)...`);
+    // If product images are provided, generate detailed prompts for each
+    const productImagePrompts: string[] = [];
+    const characterImagePrompts: string[] = [];
+    
+    if (productImageFiles.length > 0) {
+      console.log(`Processing ${productImageFiles.length} product image(s)...`);
       
-      for (let i = 0; i < characterProductImageFiles.length; i++) {
-        const characterProductImageFile = characterProductImageFiles[i];
-        console.log(`Character/product image ${i + 1} file available:`, {
-          hasUri: !!characterProductImageFile.uri,
-          mimeType: characterProductImageFile.mimeType,
-          state: characterProductImageFile.state
+      for (let i = 0; i < productImageFiles.length; i++) {
+        const productImageFile = productImageFiles[i];
+        console.log(`Product image ${i + 1} file available:`, {
+          hasUri: !!productImageFile.uri,
+          mimeType: productImageFile.mimeType,
+          state: productImageFile.state
         });
         
         // Verify the file is ready before using it
-        if (characterProductImageFile.uri) {
-          console.log(`Generating detailed prompt for character/product image ${i + 1}...`);
+        if (productImageFile.uri) {
+          console.log(`Generating detailed prompt for product image ${i + 1}...`);
           try {
-            const characterProductImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (Character/Product Image ${i + 1} of ${characterProductImageFiles.length}) and create a detailed, comprehensive prompt that would generate this exact image. 
+            const productImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (Product Image ${i + 1} of ${productImageFiles.length}) and create a detailed, comprehensive prompt that would generate this exact image. 
 
 **CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
 - **DO NOT invent or assume characteristics** that are not explicitly visible in the image
@@ -420,59 +469,166 @@ Create an extremely detailed prompt that describes ONLY what is actually visible
 **Output Format:**
 Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
 
-            const characterProductParts: any[] = [
+            const productParts: any[] = [
               {
                 fileData: {
-                  fileUri: characterProductImageFile.uri,
-                  mimeType: characterProductImageFile.mimeType || 'image/png'
+                  fileUri: productImageFile.uri,
+                  mimeType: productImageFile.mimeType || 'image/png'
                 }
               },
               {
-                text: characterProductImageAnalysisRequest
+                text: productImageAnalysisRequest
               }
             ];
 
-            const characterProductResult = await ai.models.generateContent({
+            const productResult = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
               contents: [
                 {
                   role: 'user',
-                  parts: characterProductParts
+                  parts: productParts
                 }
               ]
             });
 
-            // Extract the character/product image prompt
+            // Extract the product image prompt
             let imagePrompt = '';
-            if (characterProductResult.candidates && characterProductResult.candidates[0]?.content?.parts) {
-              imagePrompt = characterProductResult.candidates[0].content.parts
+            if (productResult.candidates && productResult.candidates[0]?.content?.parts) {
+              imagePrompt = productResult.candidates[0].content.parts
                 .map((part: any) => part.text || '')
                 .join('')
                 .trim();
-            } else if ((characterProductResult as any).text) {
-              imagePrompt = (characterProductResult as any).text.trim();
+            } else if ((productResult as any).text) {
+              imagePrompt = (productResult as any).text.trim();
             }
 
             if (imagePrompt && imagePrompt.length > 0) {
-              console.log(`Character/product image ${i + 1} prompt generated, length:`, imagePrompt.length);
-              characterProductImagePrompts.push(imagePrompt);
+              console.log(`Product image ${i + 1} prompt generated, length:`, imagePrompt.length);
+              productImagePrompts.push(imagePrompt);
             } else {
-              console.warn(`Character/product image ${i + 1} prompt generation returned empty result`);
-              characterProductImagePrompts.push('');
+              console.warn(`Product image ${i + 1} prompt generation returned empty result`);
+              productImagePrompts.push('');
             }
           } catch (refError: any) {
-            console.error(`Error generating character/product image ${i + 1} prompt:`, {
+            console.error(`Error generating product image ${i + 1} prompt:`, {
               message: refError.message,
               status: refError.status,
               code: refError.code,
               stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
             });
             // Continue without reference prompt if it fails - will use image directly as fallback
-            characterProductImagePrompts.push('');
+            productImagePrompts.push('');
           }
         } else {
-          console.warn(`Character/product image ${i + 1} file URI is missing, skipping reference prompt generation`);
-          characterProductImagePrompts.push('');
+          console.warn(`Product image ${i + 1} file URI is missing, skipping reference prompt generation`);
+          productImagePrompts.push('');
+        }
+      }
+    }
+
+    // If character images are provided, generate detailed prompts for each
+    if (characterImageFiles.length > 0) {
+      console.log(`Processing ${characterImageFiles.length} character image(s)...`);
+      
+      for (let i = 0; i < characterImageFiles.length; i++) {
+        const characterImageFile = characterImageFiles[i];
+        console.log(`Character image ${i + 1} file available:`, {
+          hasUri: !!characterImageFile.uri,
+          mimeType: characterImageFile.mimeType,
+          state: characterImageFile.state
+        });
+        
+        // Verify the file is ready before using it
+        if (characterImageFile.uri) {
+          console.log(`Generating detailed prompt for character image ${i + 1}...`);
+          try {
+            const characterImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (Character Image ${i + 1} of ${characterImageFiles.length}) and create a detailed, comprehensive prompt that would generate this exact image.
+
+**CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
+- **DO NOT invent or assume characteristics** that are not explicitly visible in the image
+- **DO NOT add device frames, borders, or UI elements** unless they are actually visible in the image
+- **DO NOT assume it's a screenshot** unless you can clearly see screen borders, UI elements, or device frames
+- **DO NOT assume it's taken with a specific device** (iPhone, camera, etc.) unless there are visible indicators
+- **ONLY describe what is actually present** in the image - the subject, lighting, composition, colors, textures, and visual quality as they appear
+- **If it looks like a regular photo**, describe it as a photo without adding device-specific characteristics unless visible
+- **If it looks like a selfie**, describe it as a selfie photo without inventing device frames or borders
+- **Be honest about what you see** - if you cannot determine the format/type from what's visible, describe it as a photo/image without assumptions
+
+**Your Task:**
+Create an extremely detailed prompt that describes ONLY what is actually visible in the image:
+1. **What you actually see**: Describe the subject, scene, and content exactly as it appears
+2. **Visual Style**: Describe the aesthetic quality (hyperrealistic, realistic, etc.) based on what you see
+3. **Lighting**: Describe the lighting you can actually observe (type, direction, intensity, color temperature, shadows, highlights)
+4. **Textures**: Describe textures that are visible (skin, fabric, materials, surfaces) - only what you can see
+5. **Colors**: Describe the color palette, color temperature, saturation, contrast that are actually present
+6. **Composition**: Describe the camera angle, framing, perspective, depth of field, focus that you can observe
+7. **Technical Details**: Describe the image quality, sharpness, grain/noise, post-processing style that are visible
+8. **Atmosphere/Mood**: Describe the overall feeling and mood based on what you see
+
+**Critical Requirements:**
+- **ONLY describe what is visible** - do not invent or assume
+- **If you cannot determine if it's a screenshot or photo**, describe it simply as a photo/image
+- **Do not add device-specific characteristics** (iPhone frames, borders, UI elements) unless they are actually visible
+- **Do not assume the camera/device** used unless there are clear visual indicators
+- The prompt must be extremely detailed about what IS visible, but must NOT include assumptions about what is NOT visible
+- Describe the image as if you were going to generate this exact same image, but only based on what you can actually see
+
+**Output Format:**
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
+
+            const characterParts: any[] = [
+              {
+                fileData: {
+                  fileUri: characterImageFile.uri,
+                  mimeType: characterImageFile.mimeType || 'image/png'
+                }
+              },
+              {
+                text: characterImageAnalysisRequest
+              }
+            ];
+
+            const characterResult = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: [
+                {
+                  role: 'user',
+                  parts: characterParts
+                }
+              ]
+            });
+
+            // Extract the character image prompt
+            let imagePrompt = '';
+            if (characterResult.candidates && characterResult.candidates[0]?.content?.parts) {
+              imagePrompt = characterResult.candidates[0].content.parts
+                .map((part: any) => part.text || '')
+                .join('')
+                .trim();
+            } else if ((characterResult as any).text) {
+              imagePrompt = (characterResult as any).text.trim();
+            }
+
+            if (imagePrompt && imagePrompt.length > 0) {
+              console.log(`Character image ${i + 1} prompt generated, length:`, imagePrompt.length);
+              characterImagePrompts.push(imagePrompt);
+            } else {
+              console.warn(`Character image ${i + 1} prompt generation returned empty result`);
+              characterImagePrompts.push('');
+            }
+          } catch (refError: any) {
+            console.error(`Error generating character image ${i + 1} prompt:`, {
+              message: refError.message,
+              status: refError.status,
+              code: refError.code,
+              stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
+            });
+            // Continue without reference prompt if it fails - will use image directly as fallback
+            characterImagePrompts.push('');
+          }
+        } else {
+          console.warn(`Character image ${i + 1} file URI is missing, skipping reference prompt generation`);
+          characterImagePrompts.push('');
         }
       }
     }
@@ -525,12 +681,55 @@ Before applying any style, you MUST analyze the user's description to determine 
 - IF UGC is detected (explicitly or implied): Use iPhone/hyperrealistic UGC style (see UGC section below)
 - IF UGC is NOT detected: Use the selected style (${style}) but adapt it appropriately - can be cinematographic, professional, cinematic, or whatever best fits the description. DO NOT force iPhone/UGC characteristics if they're not appropriate.`;
 
+    // Helper function to build product/character instructions (used across all styles)
+    const buildProductCharacterInstructions = () => {
+      const validProductPrompts = productImagePrompts.filter((p) => p && p.trim().length > 0);
+      const validCharacterPrompts = characterImagePrompts.filter((p) => p && p.trim().length > 0);
+      
+      let productInstructions = '';
+      let characterInstructions = '';
+      
+      if (productImageFiles.length > 0) {
+        productInstructions = `
+
+**CRITICAL - PRODUCT IMAGES (MANDATORY REFERENCE - WILL BE ATTACHED):**
+${productImageFiles.map((_, idx) => {
+          const imgNum = idx + 1;
+          const prompt = validProductPrompts[idx] || '';
+          return `- **Product Image ${imgNum}**: This is a PRODUCT image that will be attached to the prompt. When referring to "the product" in your prompt, you MUST refer to it as "the product from the attached product image ${imgNum}" or "the attached product image ${imgNum}". ${prompt ? `The product looks like: "${prompt.substring(0, 200)}..."` : 'Analyze the attached product image to see the exact product details.'} You MUST use this EXACT product from the attached image - do NOT invent or create a different product.`;
+        }).join('\n')}
+
+**MANDATORY PRODUCT REFERENCE RULES:**
+- When the user's description mentions "product", "the product", or any product reference, you MUST refer to it as "the product from the attached product image" or "the attached product image"
+- You MUST describe the product based on what you see in the attached product image(s) - use exact details (colors, materials, textures, design, text, branding)
+- NEVER invent product details - only use what is visible in the attached product image(s)
+- If the user's description mentions product text being clear, ensure you specify that ALL text on the product from the attached image must be perfectly clear, legible, and crisp
+- The product in the generated image MUST match the EXACT product from the attached product image(s)
+- These product images will be attached to the prompt when used in the AI model`;
+      }
+      
+      if (characterImageFiles.length > 0) {
+        characterInstructions = `
+
+**CHARACTER IMAGES (WILL BE ATTACHED):**
+${characterImageFiles.map((_, idx) => {
+          const imgNum = idx + 1;
+          const prompt = validCharacterPrompts[idx] || '';
+          return `- **Character Image ${imgNum}**: This character image will be attached to the prompt. ${prompt ? `The character looks like: "${prompt}"` : 'Use as character reference for appearance, pose, or styling.'}`;
+        }).join('\n\n')}
+
+These character images are additional references for character appearance, pose, or styling. They will be attached to the prompt when used in the AI model.`;
+      }
+      
+      return { productInstructions, characterInstructions };
+    };
+
     // Build reference image note - MAIN REFERENCE IMAGE is the primary style reference
     let referenceImageNote = '';
     if (style === 'hyperrealistic') {
       if (mainReferenceImageFile && mainReferenceImagePrompt) {
         // Main reference image with prompt - this is the PRIMARY style reference
-        const validCharacterPrompts = characterProductImagePrompts.filter((p) => p && p.trim().length > 0);
+        const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.
@@ -547,13 +746,7 @@ You MUST use the main reference image prompt above as the PRIMARY style referenc
 - **EXACT color palette** (same color temperature, saturation, contrast, color harmony) - ONLY what is present
 - **EXACT depth of field and focus** (same blur/sharpness characteristics) - ONLY what is visible
 - **EXACT overall aesthetic and visual style** (same look and feel) - ONLY what is actually present
-- **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism from the main reference
-
-${validCharacterPrompts.length > 0 ? `**Additional Character/Product Reference Images:**
-${validCharacterPrompts.map((prompt, idx) => `**Character/Product Image ${idx + 1} Prompt:**
-"${prompt}"`).join('\n\n')}
-
-These character/product images are additional references for content/subject matter. Use them to inform the content/subject, but the PRIMARY style (angle, lighting, hyperrealism) must come from the main reference image above.` : ''}
+- **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism from the main reference${productInstructions}${characterInstructions}
 
 - **DO NOT ADD CHARACTERISTICS NOT IN THE REFERENCE**: 
   - **DO NOT add device frames, borders, or UI elements** unless the main reference image prompt explicitly mentions them
@@ -777,6 +970,7 @@ You MUST generate a prompt that creates professional studio photography quality:
 
 The image should look like a professional studio photograph - hyperrealistic but with the controlled, polished aesthetic of professional photography. Everything should be perfectly lit, composed, and detailed as if shot in a professional photography studio.`;
     } else if (style === 'design') {
+      const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
       const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT design style, colors, and visual aesthetics.
 
@@ -793,7 +987,7 @@ You MUST use the main reference image prompt above as the PRIMARY style guide. T
 - **Match the overall aesthetic**: If the main reference is a design/infographic style, maintain that design aesthetic; match the overall visual style
 - **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference
 - **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
-- **Combine both**: The final prompt should describe the user's request but with the EXACT design style, colors, layout, typography, and aesthetic of the main reference image
+- **Combine both**: The final prompt should describe the user's request but with the EXACT design style, colors, layout, typography, and aesthetic of the main reference image${productInstructions}${characterInstructions}
 
 **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
@@ -802,8 +996,8 @@ A main reference image has been attached. This image will be uploaded to the Nan
 - **Maintain EXACT consistency with the main reference** - if the main reference shows specific design patterns, color schemes, layout structures, or style elements, incorporate those EXACTLY into the prompt
 - **Enhance while preserving essence** - build upon the main reference image's design aesthetic while applying professional design principles
 - **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT design style, layout, colors, typography, and aesthetic of the attached main reference image
-- **Professional design enhancement** - Apply professional design principles (visual hierarchy, balanced composition, color harmony) while respecting the main reference image's design language
-- **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication` : '';
+- **Professional design enhancement** - Apply professional design principles (visual hierarchy, balanced composition, color harmony) while respecting the main reference image's design language${productInstructions}${characterInstructions}
+- **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication` : `${productInstructions}${characterInstructions}`;
 
       styleInstructions = `**DESIGN STYLE REQUIREMENTS (CRITICAL):**
 You MUST generate a prompt that creates professional design work (infographics, static ads, creative designs):
@@ -822,6 +1016,7 @@ The image should look like professional design work - infographics, static ads, 
     } else if (style === 'copy-image') {
       // Copy Image mode: iterate/vary the reference image based on user's description
       // CRITICAL: Must maintain the EXACT format/type of image (screenshot, photo, etc.) unless user explicitly asks to change it
+      const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
       const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.
 
@@ -868,7 +1063,7 @@ You MUST create a prompt that iterates on the main reference image based on what
 - Main Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
 - Main Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${productInstructions}${characterInstructions}` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
 
 **Your Task:**
@@ -902,9 +1097,9 @@ Create a prompt that iterates on the main reference image based on what the user
   - If user says "change text" → Keep the EXACT format but change the text content
   - If user says "change colors" → Keep the EXACT format but change colors
   - If user says "change to photo" or "change format" → THEN you can change the format/type
-  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE
+  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE${productInstructions}${characterInstructions}
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.` : '';
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.` : `${productInstructions}${characterInstructions}`;
 
       styleInstructions = `**COPY IMAGE MODE - EXACT FORMAT PRESERVATION:**
 
@@ -1021,19 +1216,45 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
         console.log('Using main reference image prompt instead of image (length:', mainReferenceImagePrompt.length, ')');
       }
       
-      // Include character/product images if provided
-      if (characterProductImageFiles.length > 0) {
-        console.log(`Adding ${characterProductImageFiles.length} character/product image(s) to prompt:`, {
-          hasUris: characterProductImageFiles.map(f => !!f.uri),
-          mimeTypes: characterProductImageFiles.map(f => f.mimeType)
+      // Include product images if provided (attach after main reference image)
+      if (productImageFiles.length > 0) {
+        console.log(`Adding ${productImageFiles.length} product image(s) to prompt:`, {
+          hasUris: productImageFiles.map(f => !!f.uri),
+          mimeTypes: productImageFiles.map(f => f.mimeType)
         });
         
-        // Add all character/product images
-        for (const imageFile of characterProductImageFiles) {
+        // Add all product images
+        for (const imageFile of productImageFiles) {
           if (!imageFile.uri) {
-            console.error('Character/product image file missing URI');
+            console.error('Product image file missing URI');
             return NextResponse.json(
-              { error: 'Character/product image file is missing URI property', details: 'The uploaded character/product image file does not have a valid URI' },
+              { error: 'Product image file is missing URI property', details: 'The uploaded product image file does not have a valid URI' },
+              { status: 500 }
+            );
+          }
+          
+          parts.push({
+            fileData: {
+              fileUri: imageFile.uri,
+              mimeType: imageFile.mimeType || 'image/png'
+            }
+          });
+        }
+      }
+
+      // Include character images if provided (attach after product images)
+      if (characterImageFiles.length > 0) {
+        console.log(`Adding ${characterImageFiles.length} character image(s) to prompt:`, {
+          hasUris: characterImageFiles.map(f => !!f.uri),
+          mimeTypes: characterImageFiles.map(f => f.mimeType)
+        });
+        
+        // Add all character images
+        for (const imageFile of characterImageFiles) {
+          if (!imageFile.uri) {
+            console.error('Character image file missing URI');
+            return NextResponse.json(
+              { error: 'Character image file is missing URI property', details: 'The uploaded character image file does not have a valid URI' },
               { status: 500 }
             );
           }
@@ -1054,7 +1275,8 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       console.log('Calling Gemini API with:', {
         model: 'gemini-3-flash-preview',
         hasMainReferenceImage: !!mainReferenceImageFile,
-        hasCharacterProductImages: characterProductImageFiles.length > 0,
+        hasProductImages: productImageFiles.length > 0,
+        hasCharacterImages: characterImageFiles.length > 0,
         promptLength: promptGenerationRequest.length
       });
 

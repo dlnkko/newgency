@@ -17,8 +17,10 @@ export default function ImagePromptGenerator() {
   const [costInfo, setCostInfo] = useState<any>(null);
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
-  const [characterProductImages, setCharacterProductImages] = useState<File[]>([]);
-  const [characterProductPreviews, setCharacterProductPreviews] = useState<string[]>([]);
+  const [productImages, setProductImages] = useState<File[]>([]);
+  const [productPreviews, setProductPreviews] = useState<string[]>([]);
+  const [characterImages, setCharacterImages] = useState<File[]>([]);
+  const [characterPreviews, setCharacterPreviews] = useState<string[]>([]);
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
 
   // Compress and resize image to reduce file size
@@ -106,11 +108,11 @@ export default function ImagePromptGenerator() {
     setReferenceImagePreview(null);
   };
 
-  const handleCharacterProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
     const file = e.target.files?.[0];
     if (file) {
-      const newImages = [...characterProductImages];
-      const newPreviews = [...characterProductPreviews];
+      const newImages = [...productImages];
+      const newPreviews = [...productPreviews];
       
       // Replace image at index or add new one
       if (index < newImages.length) {
@@ -124,7 +126,7 @@ export default function ImagePromptGenerator() {
         newImages.splice(3);
       }
       
-      setCharacterProductImages(newImages);
+      setProductImages(newImages);
       
       // Update previews
       const reader = new FileReader();
@@ -137,19 +139,65 @@ export default function ImagePromptGenerator() {
         if (newPreviews.length > 3) {
           newPreviews.splice(3);
         }
-        setCharacterProductPreviews(newPreviews);
+        setProductPreviews(newPreviews);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const removeCharacterProductImage = (index: number) => {
-    const newImages = [...characterProductImages];
-    const newPreviews = [...characterProductPreviews];
+  const handleCharacterImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const newImages = [...characterImages];
+      const newPreviews = [...characterPreviews];
+      
+      // Replace image at index or add new one
+      if (index < newImages.length) {
+        newImages[index] = file;
+      } else {
+        newImages.push(file);
+      }
+      
+      // Limit to 3 images
+      if (newImages.length > 3) {
+        newImages.splice(3);
+      }
+      
+      setCharacterImages(newImages);
+      
+      // Update previews
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (index < newPreviews.length) {
+          newPreviews[index] = reader.result as string;
+        } else {
+          newPreviews.push(reader.result as string);
+        }
+        if (newPreviews.length > 3) {
+          newPreviews.splice(3);
+        }
+        setCharacterPreviews(newPreviews);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeProductImage = (index: number) => {
+    const newImages = [...productImages];
+    const newPreviews = [...productPreviews];
     newImages.splice(index, 1);
     newPreviews.splice(index, 1);
-    setCharacterProductImages(newImages);
-    setCharacterProductPreviews(newPreviews);
+    setProductImages(newImages);
+    setProductPreviews(newPreviews);
+  };
+
+  const removeCharacterImage = (index: number) => {
+    const newImages = [...characterImages];
+    const newPreviews = [...characterPreviews];
+    newImages.splice(index, 1);
+    newPreviews.splice(index, 1);
+    setCharacterImages(newImages);
+    setCharacterPreviews(newPreviews);
   };
 
   const handleGenerate = async () => {
@@ -213,16 +261,16 @@ export default function ImagePromptGenerator() {
         }
       }
 
-      // Convert character/product images to base64 if provided
-      const characterProductImagesBase64: string[] = [];
+      // Convert product images to base64 if provided
+      const productImagesBase64: string[] = [];
       
-      for (let i = 0; i < characterProductImages.length; i++) {
-        const image = characterProductImages[i];
+      for (let i = 0; i < productImages.length; i++) {
+        const image = productImages[i];
         let imageToProcess = image;
         
         // If image is too large, compress it
         if (image.size > maxSizeBytes) {
-          console.log(`Character/Product image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          console.log(`Product image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
           try {
             imageToProcess = await compressImage(image, 1920, 1920, 0.85);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
@@ -234,8 +282,8 @@ export default function ImagePromptGenerator() {
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
-            console.error(`Error compressing character/product image ${i + 1}:`, compressError);
-            setError(`Failed to compress character/product image ${i + 1}. Please try a smaller image file.`);
+            console.error(`Error compressing product image ${i + 1}:`, compressError);
+            setError(`Failed to compress product image ${i + 1}. Please try a smaller image file.`);
             return;
           }
         }
@@ -246,11 +294,51 @@ export default function ImagePromptGenerator() {
         // Check final base64 size (should be ~33% larger than original)
         const base64Size = new Blob([base64]).size;
         if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError(`Character/Product image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+          setError(`Product image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
           return;
         }
         
-        characterProductImagesBase64.push(base64);
+        productImagesBase64.push(base64);
+      }
+
+      // Convert character images to base64 if provided
+      const characterImagesBase64: string[] = [];
+      
+      for (let i = 0; i < characterImages.length; i++) {
+        const image = characterImages[i];
+        let imageToProcess = image;
+        
+        // If image is too large, compress it
+        if (image.size > maxSizeBytes) {
+          console.log(`Character image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          try {
+            imageToProcess = await compressImage(image, 1920, 1920, 0.85);
+            console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            
+            // If still too large after compression, compress more aggressively
+            if (imageToProcess.size > maxSizeBytes) {
+              console.log('Still too large, compressing more aggressively...');
+              imageToProcess = await compressImage(image, 1280, 1280, 0.75);
+              console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            }
+          } catch (compressError) {
+            console.error(`Error compressing character image ${i + 1}:`, compressError);
+            setError(`Failed to compress character image ${i + 1}. Please try a smaller image file.`);
+            return;
+          }
+        }
+        
+        // Convert to base64
+        const base64 = await fileToBase64(imageToProcess);
+        
+        // Check final base64 size (should be ~33% larger than original)
+        const base64Size = new Blob([base64]).size;
+        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
+          setError(`Character image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+          return;
+        }
+        
+        characterImagesBase64.push(base64);
       }
 
       const response = await fetch('/api/generate-image-prompt', {
@@ -262,7 +350,8 @@ export default function ImagePromptGenerator() {
           description: description.trim(),
           style: selectedStyle,
           referenceImage: referenceImageBase64,
-          characterProductImages: characterProductImagesBase64,
+          productImages: productImagesBase64,
+          characterImages: characterImagesBase64,
           firstFrameFromVideo: veo3FirstFrame
         }),
       });
@@ -504,31 +593,31 @@ export default function ImagePromptGenerator() {
           </div>
         )}
 
-        {/* Characters/Products Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
+        {/* Product Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
         {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-              Characters / Products (Optional - Up to 3)
+              Product (Optional - Up to 3)
             </label>
             <p className="mb-3 text-xs text-zinc-400">
-              Upload up to 3 additional reference images for characters or products. These will be used as additional references alongside the main reference image.
+              Upload up to 3 product images. These will be attached to the prompt and referenced as "the attached product image".
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[0, 1, 2].map((index) => (
                 <div key={index} className="space-y-2">
                   <label className="block text-xs font-medium text-zinc-500 mb-1">
-                    {index === 0 ? 'Character/Product 1' : index === 1 ? 'Character/Product 2' : 'Character/Product 3'}
+                    {index === 0 ? 'Product 1' : index === 1 ? 'Product 2' : 'Product 3'}
                   </label>
-                  {characterProductPreviews[index] ? (
+                  {productPreviews[index] ? (
                     <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
                       <div className="relative inline-block w-full">
                         <img
-                          src={characterProductPreviews[index]}
-                          alt={`Character/Product ${index + 1} preview`}
+                          src={productPreviews[index]}
+                          alt={`Product ${index + 1} preview`}
                           className="w-full max-h-48 rounded-lg object-contain"
                         />
                         <button
-                          onClick={() => removeCharacterProductImage(index)}
+                          onClick={() => removeProductImage(index)}
                           disabled={isGenerating}
                           className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Remove image"
@@ -573,7 +662,88 @@ export default function ImagePromptGenerator() {
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/jpg,image/webp"
-                        onChange={(e) => handleCharacterProductImageUpload(e, index)}
+                        onChange={(e) => handleProductImageUpload(e, index)}
+                        className="hidden"
+                        disabled={isGenerating}
+                      />
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Character Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
+          <div className="mb-8">
+            <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+              Characters (Optional - Up to 3)
+            </label>
+            <p className="mb-3 text-xs text-zinc-400">
+              Upload up to 3 character images. These will be attached to the prompt and used as character references.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="space-y-2">
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">
+                    {index === 0 ? 'Character 1' : index === 1 ? 'Character 2' : 'Character 3'}
+                  </label>
+                  {characterPreviews[index] ? (
+                    <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                      <div className="relative inline-block w-full">
+                        <img
+                          src={characterPreviews[index]}
+                          alt={`Character ${index + 1} preview`}
+                          className="w-full max-h-48 rounded-lg object-contain"
+                        />
+                        <button
+                          onClick={() => removeCharacterImage(index)}
+                          disabled={isGenerating}
+                          className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Remove image"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-4 py-6 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                      <svg
+                        className="mb-2 h-8 w-8 text-zinc-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                      <span className="text-xs font-medium text-zinc-400">
+                        Upload
+                      </span>
+                      <span className="mt-1 text-[10px] text-zinc-500">
+                        PNG, JPG, WEBP
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        onChange={(e) => handleCharacterImageUpload(e, index)}
                         className="hidden"
                         disabled={isGenerating}
                       />
