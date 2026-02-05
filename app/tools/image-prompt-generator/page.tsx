@@ -451,30 +451,56 @@ export default function ImagePromptGenerator() {
         }),
       });
 
-      const data = await response.json();
-
+      // Check if response is ok before parsing JSON
       if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // If response is not JSON, use status text
+          const statusText = response.statusText || 'Unknown error';
+          setError(`Error ${response.status}: ${statusText}`);
+          setIsInsufficientCredits(false);
+          return;
+        }
+
         if (response.status === 402) {
           // Insufficient credits
           setIsInsufficientCredits(true);
           setError(null);
         } else if (response.status === 429) {
-          setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
+          setError(`Rate limit exceeded. ${errorData.details || 'Please try again later.'}`);
           setIsInsufficientCredits(false);
         } else {
           // Show detailed error message if available
-          const errorMessage = data.error || 'Failed to generate prompt';
-          const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+          const errorMessage = errorData.error || 'Failed to generate prompt';
+          const errorDetails = errorData.details ? `\n\nDetails: ${errorData.details}` : '';
           setError(`${errorMessage}${errorDetails}`);
           setIsInsufficientCredits(false);
         }
         return;
       }
 
+      // Parse JSON response
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        setError('Invalid response from server. Please try again.');
+        console.error('Error parsing JSON response:', jsonError);
+        return;
+      }
+
+      if (!data.prompt) {
+        setError('No prompt was generated. Please try again.');
+        return;
+      }
+
       setGeneratedPrompt(data.prompt || '');
       setCostInfo(data.usage);
-    } catch (err) {
-      setError('An error occurred while generating the prompt');
+    } catch (err: any) {
+      const errorMessage = err?.message || 'An error occurred while generating the prompt';
+      setError(errorMessage);
       console.error('Error generating prompt:', err);
     } finally {
       setIsGenerating(false);
@@ -626,32 +652,32 @@ export default function ImagePromptGenerator() {
             <div className="max-w-md">
               {referenceImagePreview ? (
                 <div className="space-y-3">
-                  <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
-                    <div className="relative inline-block w-full">
-                      <img
-                        src={referenceImagePreview}
-                        alt="Reference image preview"
-                        className="w-full max-h-64 rounded-lg object-contain"
-                      />
-                      <button
-                        onClick={removeReferenceImage}
-                        disabled={isGenerating}
-                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Remove image"
+                <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                  <div className="relative inline-block w-full">
+                    <img
+                      src={referenceImagePreview}
+                      alt="Reference image preview"
+                      className="w-full max-h-64 rounded-lg object-contain"
+                    />
+                    <button
+                      onClick={removeReferenceImage}
+                      disabled={isGenerating}
+                      className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Remove image"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
                       </button>
                     </div>
                   </div>

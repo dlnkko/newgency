@@ -3,6 +3,8 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getGoogleGenAI } from '@/lib/gemini';
 import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
+export const maxDuration = 60; // 60 seconds for Vercel Pro plan
+
 export async function POST(request: NextRequest) {
   try {
     // Check rate limit
@@ -35,9 +37,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Initialize AI client at runtime (uses user's API key if configured)
+    console.log('Starting image prompt generation...');
     const ai = await getGoogleGenAI(request);
+    console.log('AI client initialized');
     
     const body = await request.json();
+    console.log('Request body received:', {
+      hasDescription: !!body.description,
+      style: body.style,
+      hasReferenceImage: !!body.referenceImage,
+      hasProductImages: Array.isArray(body.productImages) && body.productImages.length > 0,
+      hasCharacterImages: Array.isArray(body.characterImages) && body.characterImages.length > 0,
+      hasElementImages: Array.isArray(body.elementImages) && body.elementImages.length > 0,
+      copyCameraAngle: body.copyCameraAngle,
+      copyLighting: body.copyLighting
+    });
+    
     const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, elementImages, firstFrameFromVideo } = body;
     
     // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages/elementImages)
