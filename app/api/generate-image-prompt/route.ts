@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { description, style, referenceImage, referenceImages, productImages, characterImages, firstFrameFromVideo } = body;
+    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, firstFrameFromVideo } = body;
     
     // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages)
     let mainReferenceImage: string | null = null;
@@ -176,48 +176,48 @@ export async function POST(request: NextRequest) {
         console.log(`Uploading ${imageType} image ${imageNumber} to Gemini Files...`);
         const imageBuffer = Buffer.from(imageBase64.split(',')[1], 'base64');
         let imageMime = imageBase64.split(';')[0].split(':')[1] || 'image/png';
-        
-        // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
-        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-        if (!supportedFormats.includes(imageMime.toLowerCase())) {
-          console.log(`Converting unsupported format ${imageMime} to PNG`);
-          imageMime = 'image/png';
-        }
-        
-        const imageUint8Array = new Uint8Array(imageBuffer);
-        const imageBlob = new Blob([imageUint8Array], { type: imageMime });
-        let imageFile = await ai.files.upload({
-          file: imageBlob,
-          config: { mimeType: imageMime }
-        });
-        console.log(`${imageType} image ${imageNumber} uploaded:`, imageFile.uri);
-        
-        // Wait for file to be ACTIVE
-        const maxWaitTime = 60000;
-        const checkInterval = 2000;
-        const startTime = Date.now();
-        
-        const waitForFile = async (file: any, fileName: string) => {
-          if (file.state === 'ACTIVE') return file;
           
-          while (file.state !== 'ACTIVE') {
-            if (Date.now() - startTime > maxWaitTime) {
-              throw new Error(`Timeout waiting for ${imageType} image ${imageNumber} to be ready`);
-            }
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-            
-            try {
-              const fileInfo = await ai.files.get({ name: fileName });
-              file = fileInfo;
-            } catch (err) {
-              console.error(`Error checking file status for ${fileName}:`, err);
-            }
+          // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
+          const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+          if (!supportedFormats.includes(imageMime.toLowerCase())) {
+            console.log(`Converting unsupported format ${imageMime} to PNG`);
+            imageMime = 'image/png';
           }
-          return file;
-        };
-        
+          
+          const imageUint8Array = new Uint8Array(imageBuffer);
+          const imageBlob = new Blob([imageUint8Array], { type: imageMime });
+        let imageFile = await ai.files.upload({
+            file: imageBlob,
+            config: { mimeType: imageMime }
+          });
+        console.log(`${imageType} image ${imageNumber} uploaded:`, imageFile.uri);
+          
+          // Wait for file to be ACTIVE
+          const maxWaitTime = 60000;
+          const checkInterval = 2000;
+          const startTime = Date.now();
+          
+          const waitForFile = async (file: any, fileName: string) => {
+            if (file.state === 'ACTIVE') return file;
+            
+            while (file.state !== 'ACTIVE') {
+              if (Date.now() - startTime > maxWaitTime) {
+              throw new Error(`Timeout waiting for ${imageType} image ${imageNumber} to be ready`);
+              }
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+              
+              try {
+                const fileInfo = await ai.files.get({ name: fileName });
+                file = fileInfo;
+              } catch (err) {
+                console.error(`Error checking file status for ${fileName}:`, err);
+              }
+            }
+            return file;
+          };
+          
         const imageFileName = imageFile.name || imageFile.uri?.split('/').pop() || '';
-        if (imageFileName) {
+          if (imageFileName) {
           imageFile = await waitForFile(imageFile, imageFileName);
           if (!imageFile.uri) {
             throw new Error(`${imageType} image ${imageNumber} file is missing required URI property`);
@@ -225,17 +225,17 @@ export async function POST(request: NextRequest) {
         }
         
         return imageFile;
-      } catch (uploadError: any) {
+        } catch (uploadError: any) {
         console.error(`Error uploading ${imageType} image ${imageNumber}:`, {
-          message: uploadError.message,
-          status: uploadError.status,
-          code: uploadError.code,
-          response: uploadError.response?.data,
-          stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
-        });
-        
-        // Check for API key errors
-        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+            message: uploadError.message,
+            status: uploadError.status,
+            code: uploadError.code,
+            response: uploadError.response?.data,
+            stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+          });
+          
+          // Check for API key errors
+          if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
           throw new Error('Google Gemini API key is not valid');
         }
         
@@ -731,17 +731,34 @@ These character images are additional references for character appearance, pose,
         // Main reference image with prompt - this is the PRIMARY style reference
         const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
         
+        // Build copy instructions based on user selection
+        let copyInstructions = '';
+        if (copyCameraAngle && copyLighting) {
+          copyInstructions = `
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described - THIS IS CRITICAL - MUST be copied exactly
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described - MUST be copied exactly
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL - MUST be copied exactly`;
+        } else if (copyCameraAngle) {
+          copyInstructions = `
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described - THIS IS CRITICAL - MUST be copied exactly
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described - MUST be copied exactly`;
+        } else if (copyLighting) {
+          copyInstructions = `
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL - MUST be copied exactly`;
+        }
+        
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ` The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.`}
 
 **Main Reference Image Prompt (this defines the PRIMARY style that MUST be replicated exactly):**
 "${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST use the main reference image prompt above as the PRIMARY style reference. This image defines the EXACT visual style that must be replicated:
+You MUST use the main reference image prompt above as the PRIMARY style reference. This image defines the EXACT visual style that must be replicated:${copyInstructions}
+${!copyCameraAngle && !copyLighting ? `
 - **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described
 - **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described
-- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL` : ''}
 - **EXACT texture quality and appearance** (same level of detail, same material appearance) - ONLY what is visible
 - **EXACT color palette** (same color temperature, saturation, contrast, color harmony) - ONLY what is present
 - **EXACT depth of field and focus** (same blur/sharpness characteristics) - ONLY what is visible
@@ -971,21 +988,36 @@ You MUST generate a prompt that creates professional studio photography quality:
 The image should look like a professional studio photograph - hyperrealistic but with the controlled, polished aesthetic of professional photography. Everything should be perfectly lit, composed, and detailed as if shot in a professional photography studio.`;
     } else if (style === 'design') {
       const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
+      
+      // Build copy instructions based on user selection
+      let copyInstructionsDesign = '';
+      if (copyCameraAngle && copyLighting) {
+        copyInstructionsDesign = `
+- **Match the composition**: Use the EXACT same layout structure, element placement, and composition principles as the main reference - THIS IS CRITICAL
+- **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference - THIS IS CRITICAL`;
+      } else if (copyCameraAngle) {
+        copyInstructionsDesign = `
+- **Match the composition**: Use the EXACT same layout structure, element placement, and composition principles as the main reference - THIS IS CRITICAL`;
+      } else if (copyLighting) {
+        copyInstructionsDesign = `
+- **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference - THIS IS CRITICAL`;
+      }
+      
       const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT design style, colors, and visual aesthetics.
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.` : ` The generated prompt MUST specify that the result must match this EXACT design style, colors, and visual aesthetics.`}
 
 **Main Reference Image Prompt (use this as PRIMARY style reference):**
 "${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST use the main reference image prompt above as the PRIMARY style guide. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly. Incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality:
-
+You MUST use the main reference image prompt above as the PRIMARY style guide. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly. Incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality:${copyInstructionsDesign}
+${!copyCameraAngle && !copyLighting ? `
+- **Match the composition**: Use the EXACT same layout structure, element placement, and composition principles as the main reference
+- **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference` : ''}
 - **Mimic the design style**: Use the EXACT same design approach, layout style, visual hierarchy, and design language as described in the main reference prompt
 - **Match the color palette**: Use the EXACT same color schemes, color harmony, saturation, and contrast as described in the main reference
 - **Match the typography style**: If the main reference mentions typography, use the EXACT same typography choices, font styles, and text treatment
-- **Match the composition**: Use the EXACT same layout structure, element placement, and composition principles as the main reference
 - **Match the overall aesthetic**: If the main reference is a design/infographic style, maintain that design aesthetic; match the overall visual style
-- **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference
 - **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
 - **Combine both**: The final prompt should describe the user's request but with the EXACT design style, colors, layout, typography, and aesthetic of the main reference image${productInstructions}${characterInstructions}
 
@@ -1017,8 +1049,25 @@ The image should look like professional design work - infographics, static ads, 
       // Copy Image mode: iterate/vary the reference image based on user's description
       // CRITICAL: Must maintain the EXACT format/type of image (screenshot, photo, etc.) unless user explicitly asks to change it
       const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
-      const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.
+      
+      // Build copy instructions based on user selection
+      let copyInstructionsCopy = '';
+      if (copyCameraAngle && copyLighting) {
+        copyInstructionsCopy = `
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL - MUST be preserved exactly
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
+      } else if (copyCameraAngle) {
+        copyInstructionsCopy = `
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL - MUST be preserved exactly`;
+      } else if (copyLighting) {
+        copyInstructionsCopy = `
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
+      }
+      
+      let referenceImageNote = '';
+      if (mainReferenceImageFile && mainReferenceImagePrompt) {
+        referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ` The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.`}
 
 **Main Reference Image Prompt (this is the base image):**
 "${mainReferenceImagePrompt}"
@@ -1033,15 +1082,16 @@ You MUST create a prompt that iterates on the main reference image based on what
   - If the main reference is a "design mockup" → The output MUST be "design mockup" (unless user says "change to photo" or similar)
   - If the main reference is a "product photo" → The output MUST be "product photo" (unless user explicitly changes it)
 
-- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image prompt EXACTLY as described:
+- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image prompt EXACTLY as described:${copyInstructionsCopy}
+${!copyCameraAngle && !copyLighting ? `
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL` : ''}
   - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
   - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
   - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
-  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL
   - **EXACT texture quality and appearance** (same level of detail, same material appearance)
   - **EXACT color palette** (same color temperature, saturation, contrast)
   - **EXACT overall aesthetic and visual style** (same look and feel)
-  - **EXACT camera angle and perspective** - THIS IS CRITICAL
 
 - **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
   - If user says "change background to beach" → Keep the EXACT format (e.g., "screenshot of iPhone screen") but change the background content
@@ -1063,8 +1113,25 @@ You MUST create a prompt that iterates on the main reference image based on what
 - Main Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
 - Main Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${productInstructions}${characterInstructions}` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${productInstructions}${characterInstructions}`;
+      } else if (mainReferenceImageFile) {
+        // Main reference image provided but no prompt generated - use image directly
+        // Build copy instructions for copy-image when no prompt is generated
+        let copyInstructionsCopyNoPrompt = '';
+        if (copyCameraAngle && copyLighting) {
+          copyInstructionsCopyNoPrompt = `
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL - MUST be preserved exactly
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
+        } else if (copyCameraAngle) {
+          copyInstructionsCopyNoPrompt = `
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL - MUST be preserved exactly`;
+        } else if (copyLighting) {
+          copyInstructionsCopyNoPrompt = `
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
+        }
+        
+        referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
 
 **Your Task:**
 Create a prompt that iterates on the main reference image based on what the user wants to change: "${description}". This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.
@@ -1082,15 +1149,16 @@ Create a prompt that iterates on the main reference image based on what the user
   - If main reference is a photo taken with iPhone → Output MUST be "photo taken with iPhone" (unless user explicitly changes it)
   - If main reference is a design mockup → Output MUST be "design mockup" (unless user explicitly changes it)
 
-- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image EXACTLY:
+- **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image EXACTLY:${copyInstructionsCopyNoPrompt}
+${!copyCameraAngle && !copyLighting ? `
+  - **EXACT camera angle and perspective** - THIS IS CRITICAL
+  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL` : ''}
   - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
   - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
   - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
-  - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL
   - **EXACT texture quality** (same level of detail, same material appearance)
   - **EXACT color palette** (same color temperature, saturation, contrast)
   - **EXACT overall aesthetic** (same look and feel)
-  - **EXACT camera angle and perspective** - THIS IS CRITICAL
 
 - **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
   - If user says "change background" → Keep the EXACT format but change the background content
@@ -1099,7 +1167,11 @@ Create a prompt that iterates on the main reference image based on what the user
   - If user says "change to photo" or "change format" → THEN you can change the format/type
   - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE${productInstructions}${characterInstructions}
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.` : `${productInstructions}${characterInstructions}`;
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${productInstructions}${characterInstructions}`;
+      } else {
+        const { productInstructions: pi, characterInstructions: ci } = buildProductCharacterInstructions();
+        referenceImageNote = `${pi}${ci}`;
+      }
 
       styleInstructions = `**COPY IMAGE MODE - EXACT FORMAT PRESERVATION:**
 

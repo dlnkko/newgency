@@ -17,6 +17,8 @@ export default function ImagePromptGenerator() {
   const [costInfo, setCostInfo] = useState<any>(null);
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
+  const [copyCameraAngle, setCopyCameraAngle] = useState<boolean>(false);
+  const [copyLighting, setCopyLighting] = useState<boolean>(false);
   const [productImages, setProductImages] = useState<File[]>([]);
   const [productPreviews, setProductPreviews] = useState<string[]>([]);
   const [characterImages, setCharacterImages] = useState<File[]>([]);
@@ -106,6 +108,8 @@ export default function ImagePromptGenerator() {
   const removeReferenceImage = () => {
     setReferenceImage(null);
     setReferenceImagePreview(null);
+    setCopyCameraAngle(false);
+    setCopyLighting(false);
   };
 
   const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
@@ -350,6 +354,8 @@ export default function ImagePromptGenerator() {
           description: description.trim(),
           style: selectedStyle,
           referenceImage: referenceImageBase64,
+          copyCameraAngle: copyCameraAngle,
+          copyLighting: copyLighting,
           productImages: productImagesBase64,
           characterImages: characterImagesBase64,
           firstFrameFromVideo: veo3FirstFrame
@@ -530,32 +536,59 @@ export default function ImagePromptGenerator() {
             </p>
             <div className="max-w-md">
               {referenceImagePreview ? (
-                <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
-                  <div className="relative inline-block w-full">
-                    <img
-                      src={referenceImagePreview}
-                      alt="Reference image preview"
-                      className="w-full max-h-64 rounded-lg object-contain"
-                    />
-                    <button
-                      onClick={removeReferenceImage}
-                      disabled={isGenerating}
-                      className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Remove image"
-                    >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                <div className="space-y-3">
+                  <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                    <div className="relative inline-block w-full">
+                      <img
+                        src={referenceImagePreview}
+                        alt="Reference image preview"
+                        className="w-full max-h-64 rounded-lg object-contain"
+                      />
+                      <button
+                        onClick={removeReferenceImage}
+                        disabled={isGenerating}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Remove image"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  {/* Copy Options */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setCopyCameraAngle(!copyCameraAngle)}
+                      disabled={isGenerating}
+                      className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                        copyCameraAngle
+                          ? 'bg-blue-500/80 text-white shadow-lg shadow-blue-500/20'
+                          : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      Copy Camera Angle
+                    </button>
+                    <button
+                      onClick={() => setCopyLighting(!copyLighting)}
+                      disabled={isGenerating}
+                      className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                        copyLighting
+                          ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/20'
+                          : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      Copy Lighting
                     </button>
                   </div>
                 </div>
