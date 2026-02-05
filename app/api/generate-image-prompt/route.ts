@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Helper function to upload images to Gemini Files
-    const uploadImageToGemini = async (imageBase64: string, imageNumber: number, imageType: 'product' | 'character'): Promise<any> => {
+    const uploadImageToGemini = async (imageBase64: string, imageNumber: number, imageType: 'product' | 'character' | 'element'): Promise<any> => {
       try {
         console.log(`Uploading ${imageType} image ${imageNumber} to Gemini Files...`);
         const imageBuffer = Buffer.from(imageBase64.split(',')[1], 'base64');
@@ -456,6 +456,7 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
     // If product images are provided, generate detailed prompts for each
     const productImagePrompts: string[] = [];
     const characterImagePrompts: string[] = [];
+    let elementImagePrompts: string[] = [];
     
     if (productImageFiles.length > 0) {
       console.log(`Processing ${productImageFiles.length} product image(s)...`);
@@ -1122,8 +1123,8 @@ You MUST generate a prompt that creates professional design work (infographics, 
 - **Creative but functional**: Creative and visually appealing while maintaining clarity and functionality${referenceImageNote}
 
 The image should look like professional design work - infographics, static ads, or creative designs that a human designer would create, with careful attention to every detail, color, composition, and element.`;
-    // If element images are provided, generate detailed prompts for each (for change-elements style only)
-    const elementImagePrompts: string[] = [];
+    
+    // Process element images if provided (for change-elements style only)
     if (elementImageFiles.length > 0 && style === 'change-elements') {
       console.log(`Processing ${elementImageFiles.length} element image(s)...`);
       
@@ -1176,9 +1177,16 @@ Provide ONLY the detailed description as a single, continuous paragraph. No head
               ]
             });
 
-            const elementPrompt = elementResult.response
-              .text()
-              .trim();
+            // Extract the element image prompt
+            let elementPrompt = '';
+            if (elementResult.candidates && elementResult.candidates[0]?.content?.parts) {
+              elementPrompt = elementResult.candidates[0].content.parts
+                .map((part: any) => part.text || '')
+                .join('')
+                .trim();
+            } else if ((elementResult as any).text) {
+              elementPrompt = (elementResult as any).text.trim();
+            }
 
             if (elementPrompt && elementPrompt.length > 0) {
               console.log(`Element image ${i + 1} prompt generated, length:`, elementPrompt.length);
