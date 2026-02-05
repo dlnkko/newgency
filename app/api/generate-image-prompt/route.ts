@@ -780,8 +780,24 @@ ${!copyCameraAngle && !copyLighting ? `
 - **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.`;
       } else if (mainReferenceImageFile) {
         // Main reference image provided but no prompt generated - use image directly
+        // Build copy instructions based on user selection
+        let copyInstructionsNoPrompt = '';
+        if (copyCameraAngle && copyLighting) {
+          copyInstructionsNoPrompt = `
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - THIS IS CRITICAL - MUST be copied exactly
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - MUST be copied exactly
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
+        } else if (copyCameraAngle) {
+          copyInstructionsNoPrompt = `
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - THIS IS CRITICAL - MUST be copied exactly
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - MUST be copied exactly`;
+        } else if (copyLighting) {
+          copyInstructionsNoPrompt = `
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
+        }
+        
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
 - **Analyze the attached main reference image** to understand EXACTLY how it looks:
   - Camera angle and perspective (frontal, side, three-quarter, from above, from below, etc.)
   - Composition and framing (close-up, medium shot, wide shot, etc.)
@@ -793,10 +809,11 @@ A main reference image has been attached. This image will be uploaded to the Nan
   - Hyperrealism level and photorealism quality
   - If there's a person: their appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
 
-- **RESPECT THE MAIN REFERENCE IMAGE EXACTLY**: Your generated prompt must specify that the result must match this EXACT style, angle, lighting, and hyperrealism. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication:
+- **RESPECT THE MAIN REFERENCE IMAGE EXACTLY**: Your generated prompt must specify that the result must match this EXACT style, angle, lighting, and hyperrealism. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication:${copyInstructionsNoPrompt}
+${!copyCameraAngle && !copyLighting ? `
   - **EXACT camera angle and perspective** - match the main reference image's camera angle precisely
   - **EXACT composition and framing** - match the main reference image's framing and composition
-  - **EXACT lighting style** - match the main reference image's lighting characteristics - THIS IS CRITICAL
+  - **EXACT lighting style** - match the main reference image's lighting characteristics - THIS IS CRITICAL` : ''}
   - **EXACT texture quality** - match the main reference image's texture appearance
   - **EXACT color palette** - match the main reference image's colors
   - **EXACT depth of field** - match the main reference image's focus/blur characteristics
@@ -804,7 +821,7 @@ A main reference image has been attached. This image will be uploaded to the Nan
   - **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism
 
 - **Apply to user's description**: While respecting the EXACT visual characteristics of the main reference image, adapt the CONTENT to match what the user described: "${description}"
-  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the main reference
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the main reference${copyCameraAngle ? ' - CRITICAL: The camera angle MUST be copied exactly from the reference image' : ''}${copyLighting ? ' - CRITICAL: The lighting MUST be copied exactly from the reference image' : ''}
   - Change only the CONTENT/SUBJECT to match the user's description
   - If the main reference has a person and the user's description also involves a person: maintain the same person's appearance from the reference, but adapt them to the new action/environment described
   - The result should look like the main reference image in terms of style, angle, lighting, and hyperrealism, but with the content/subject the user requested
@@ -890,7 +907,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
     - As if someone is casually documenting or capturing a moment
   - **User description priority**: Follow the user's description for the specific scene/action, and choose the most natural camera angle and framing that fits that scene
   - **No forced frontal**: Do NOT default to frontal/selfie style unless it naturally fits the description or the user explicitly requests it
-  - **Reference image priority**: ${mainReferenceImageFile && mainReferenceImagePrompt ? 'If a main reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the main reference image. The main reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'Choose the most natural camera angle and framing that fits the scene described.'}
+  - **Reference image priority**: ${mainReferenceImageFile ? (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the main reference image. The main reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.') : 'Choose the most natural camera angle and framing that fits the scene described.'}
   - iPhone camera quality and characteristics - must look like a real iPhone photo taken casually
 
 **iPhone Photography Quality Requirements:**
@@ -907,7 +924,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
 - **Perspective clarification**:
   - If description mentions people: The image should look like a casual, amateur photo taken with an iPhone - can be ANY angle (frontal, side, three-quarter, from above, from below, etc.) that feels natural and casual. NOT always frontal/selfie style. Should feel like someone casually taking a photo with their iPhone.
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
-  - **Reference image priority**: ${mainReferenceImageFile && mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'Choose the most natural camera angle that fits the scene.'}
+  - **Reference image priority**: ${mainReferenceImageFile ? (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.') : 'Choose the most natural camera angle that fits the scene.'}
 
 The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**
 
@@ -946,30 +963,50 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM but with cinem
 
 The goal is absolute photorealism with professional/cinematic quality - the image should look like it was captured with professional camera equipment. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, but with professional, polished, high-production aesthetic - NOT iPhone/UGC style.${referenceImageNote}`;
     } else if (style === 'studio-quality') {
+      // Build copy instructions based on user selection
+      let copyInstructionsStudio = '';
+      if (copyCameraAngle && copyLighting) {
+        copyInstructionsStudio = `
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - THIS IS CRITICAL - MUST be copied exactly
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - MUST be copied exactly
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
+      } else if (copyCameraAngle) {
+        copyInstructionsStudio = `
+- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - THIS IS CRITICAL - MUST be copied exactly
+- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - MUST be copied exactly`;
+      } else if (copyLighting) {
+        copyInstructionsStudio = `
+- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
+      }
+      
       const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, lighting, and professional quality.
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ' The generated prompt MUST specify that the result must match this EXACT style, lighting, and professional quality.'}
 
 **Main Reference Image Prompt (use this as PRIMARY style reference):**
 "${mainReferenceImagePrompt}"
 
 **Your Task:**
-You MUST use the main reference image prompt above as the PRIMARY style guide. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly. Incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality:
-
+You MUST use the main reference image prompt above as the PRIMARY style guide. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly. Incorporate the same visual style, lighting, textures, colors, composition, and aesthetic quality:${copyInstructionsStudio}
+${!copyCameraAngle && !copyLighting ? `
 - **Mimic the lighting style**: Use the EXACT same type of lighting described in the main reference prompt (studio, natural, artificial, etc.), same direction, intensity, color temperature, shadows, and highlights - THIS IS CRITICAL
 - **Match the texture quality**: Incorporate the EXACT same texture characteristics and material appearance as described in the main reference
 - **Match the color palette**: Use the EXACT same color temperature, saturation, contrast, and color harmony as described in the main reference
-- **Match the composition style**: Use the EXACT same camera angles, framing, perspective, depth of field as the main reference
+- **Match the composition style**: Use the EXACT same camera angles, framing, perspective, depth of field as the main reference` : ''}
 - **Match the overall aesthetic**: If the main reference is studio-quality, maintain studio quality; match the overall visual style and professional photography approach
 - **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
-- **Combine both**: The final prompt should describe the user's request but with the EXACT visual style, lighting, textures, and aesthetic of the main reference image
+- **Combine both**: The final prompt should describe the user's request but with the EXACT visual style, lighting, textures, and aesthetic of the main reference image${copyCameraAngle ? ' - CRITICAL: The camera angle MUST be copied exactly from the reference image' : ''}${copyLighting ? ' - CRITICAL: The lighting MUST be copied exactly from the reference image' : ''}
 
 **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
 - **Analyze the attached main reference image** to understand its composition, colors, style, lighting, and aesthetic - THIS IS CRITICAL
 - **Base your prompt on the main reference image** - use it as the PRIMARY guide for composition, colors, lighting style, and overall aesthetic
-- **Maintain EXACT consistency with the main reference** - if the main reference shows specific colors, lighting, composition, or style elements, incorporate those EXACTLY into the prompt
+- **Maintain EXACT consistency with the main reference** - if the main reference shows specific colors, lighting, composition, or style elements, incorporate those EXACTLY into the prompt:${copyInstructionsStudio}
+${!copyCameraAngle && !copyLighting ? `
+  - **EXACT camera angle and perspective** - match the main reference image's camera angle precisely
+  - **EXACT composition and framing** - match the main reference image's framing and composition
+  - **EXACT lighting style** - match the main reference image's lighting characteristics - THIS IS CRITICAL` : ''}
 - **Enhance while preserving essence** - build upon the main reference image's aesthetic while applying professional studio photography quality
-- **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT aesthetic, composition, colors, lighting, and style of the attached main reference image
+- **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT aesthetic, composition, colors, lighting, and style of the attached main reference image${copyCameraAngle ? ' - CRITICAL: The camera angle MUST be copied exactly from the reference image' : ''}${copyLighting ? ' - CRITICAL: The lighting MUST be copied exactly from the reference image' : ''}
 - **Professional studio enhancement** - Apply professional studio photography principles (studio lighting, professional composition, controlled environment) while respecting the main reference image's visual language
 - **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication` : '';
 
@@ -1022,12 +1059,15 @@ ${!copyCameraAngle && !copyLighting ? `
 - **Combine both**: The final prompt should describe the user's request but with the EXACT design style, colors, layout, typography, and aesthetic of the main reference image${productInstructions}${characterInstructions}
 
 **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. You MUST:
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective (or composition/viewpoint for design work).' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
 - **Analyze the attached main reference image** to understand its design style, layout, colors, typography, and visual elements - THIS IS CRITICAL
 - **Base your prompt on the main reference image** - use it as the PRIMARY guide for design style, composition, color palette, typography choices, and overall aesthetic
-- **Maintain EXACT consistency with the main reference** - if the main reference shows specific design patterns, color schemes, layout structures, or style elements, incorporate those EXACTLY into the prompt
+- **Maintain EXACT consistency with the main reference** - if the main reference shows specific design patterns, color schemes, layout structures, or style elements, incorporate those EXACTLY into the prompt:${copyInstructionsDesign}
+${!copyCameraAngle && !copyLighting ? `
+  - **Match the composition**: Use the EXACT same layout structure, element placement, and composition principles as the main reference
+  - **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference` : ''}
 - **Enhance while preserving essence** - build upon the main reference image's design aesthetic while applying professional design principles
-- **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT design style, layout, colors, typography, and aesthetic of the attached main reference image
+- **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT design style, layout, colors, typography, and aesthetic of the attached main reference image${copyCameraAngle ? ' - CRITICAL: The camera angle/composition/viewpoint MUST be copied exactly from the reference image' : ''}${copyLighting ? ' - CRITICAL: The lighting MUST be copied exactly from the reference image' : ''}
 - **Professional design enhancement** - Apply professional design principles (visual hierarchy, balanced composition, color harmony) while respecting the main reference image's design language${productInstructions}${characterInstructions}
 - **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication` : `${productInstructions}${characterInstructions}`;
 
