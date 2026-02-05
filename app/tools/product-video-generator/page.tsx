@@ -37,7 +37,8 @@ export default function ProductVideoGenerator() {
   const [frameAnimationDescription, setFrameAnimationDescription] = useState<string>('');
   const [frameAnimationPrompt, setFrameAnimationPrompt] = useState<string | null>(null);
   const [isGeneratingFrameAnimation, setIsGeneratingFrameAnimation] = useState<boolean>(false);
-
+  
+  
   const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -72,6 +73,16 @@ export default function ProductVideoGenerator() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  
+  const fileToBase64Video = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
   };
 
   // Compress and resize image to reduce file size
@@ -342,6 +353,7 @@ export default function ProductVideoGenerator() {
     }
   };
 
+
   const handleGenerateFrameAnimation = async () => {
     if (!startFrame || !lastFrame || !frameAnimationDescription.trim()) {
       setError('Please upload both start and last frame images and describe what should happen');
@@ -415,11 +427,11 @@ export default function ProductVideoGenerator() {
             <label className="block text-sm font-medium text-zinc-300 mb-3">
               Select Animation Mode
             </label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <button
                 onClick={() => {
                   setMode('animate-image');
-                  // Reset frame animation states when switching modes
+                  // Reset other modes' states when switching modes
                   setStartFrame(null);
                   setLastFrame(null);
                   setStartFramePreview(null);
@@ -439,7 +451,7 @@ export default function ProductVideoGenerator() {
               <button
                 onClick={() => {
                   setMode('frame-animation');
-                  // Reset animate image states when switching modes
+                  // Reset other modes' states when switching modes
                   setProductImage(null);
                   setProductPreview(null);
                   setActionDescription('');
@@ -718,6 +730,7 @@ export default function ProductVideoGenerator() {
               </>
             )}
 
+
             {/* Insufficient Credits Error */}
             {isInsufficientCredits && (
               <div className="mb-4">
@@ -881,6 +894,7 @@ export default function ProductVideoGenerator() {
             </p>
           </div>
         )}
+
 
         {/* Frame Animation Prompt */}
         {frameAnimationPrompt && (

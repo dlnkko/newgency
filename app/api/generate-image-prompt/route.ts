@@ -358,10 +358,10 @@ export async function POST(request: NextRequest) {
       if (mainReferenceImageFile.uri) {
         console.log('Generating detailed prompt for main reference image...');
         try {
-          const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (this is the MAIN REFERENCE IMAGE that will be uploaded to Nano Banana Pro model and placed FIRST) and create a detailed, comprehensive prompt that would generate this exact image. 
+          const referenceImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached reference image (this is the MAIN REFERENCE IMAGE that will be uploaded to Nano Banana Pro model and placed FIRST) and create an EXTREMELY detailed, comprehensive prompt that would generate this exact image. 
 
 **CRITICAL - THIS IS THE MAIN STYLE REFERENCE:**
-This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level. This image defines the PRIMARY visual style that must be replicated.
+This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. However, the FINAL PROMPT will be used with ONLY the product/character images attached - the reference image will NOT be attached to the final generation. Therefore, your description MUST be EXTREMELY detailed and specific so the model can replicate the EXACT style, angle, lighting, composition, and aesthetic without seeing the reference image.
 
 **CRITICAL RULE - ONLY DESCRIBE WHAT YOU ACTUALLY SEE:**
 - **DO NOT invent or assume characteristics** that are not explicitly visible in the image
@@ -374,28 +374,104 @@ This image will be uploaded to the Nano Banana Pro model and will be placed FIRS
 - **Be honest about what you see** - if you cannot determine the format/type from what's visible, describe it as a photo/image without assumptions
 
 **Your Task:**
-Create an extremely detailed prompt that describes ONLY what is actually visible in the image:
-1. **What you actually see**: Describe the subject, scene, and content exactly as it appears
-2. **Visual Style**: Describe the aesthetic quality (hyperrealistic, realistic, etc.) based on what you see
-3. **Lighting**: Describe the lighting you can actually observe (type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL as it must be replicated exactly
-4. **Camera Angle and Perspective**: Describe the EXACT camera angle, perspective, and composition - THIS IS CRITICAL as it must be replicated exactly
-5. **Textures**: Describe textures that are visible (skin, fabric, materials, surfaces) - only what you can see
-6. **Colors**: Describe the color palette, color temperature, saturation, contrast that are actually present
-7. **Composition**: Describe the framing, perspective, depth of field, focus that you can observe
-8. **Technical Details**: Describe the image quality, sharpness, grain/noise, post-processing style that are visible
-9. **Atmosphere/Mood**: Describe the overall feeling and mood based on what you see
-10. **Hyperrealism Level**: Describe the level of hyperrealism and photorealism present
+Create an EXTREMELY detailed prompt that describes EVERYTHING that is actually visible in the image with maximum precision:
+
+1. **Subject and Scene**: Describe the subject, scene, and content exactly as it appears - be VERY specific about poses, positions, expressions, clothing, objects, background elements
+
+2. **Visual Style and Aesthetic**: Describe the aesthetic quality in extreme detail (hyperrealistic, realistic, cinematic, moody, dramatic, etc.) - be specific about the overall look and feel
+
+3. **Lighting - EXTREME DETAIL REQUIRED**: Describe the lighting with MAXIMUM precision:
+   - **Type**: Identify the EXACT type of lighting:
+     * Natural daylight (soft window light, harsh direct sunlight, golden hour, blue hour, etc.)
+     * Studio lighting (key light, fill light, rim light, hair light, etc.)
+     * Flash photography (on-camera flash, off-camera flash, ring flash, bounce flash, etc.) - THIS IS CRITICAL to identify
+     * Artificial lighting (LED, fluorescent, tungsten, neon, etc.)
+     * Dramatic spotlight (single focused beam, multiple spotlights, etc.)
+     * Soft diffused lighting (softbox, umbrella, natural diffusion, etc.)
+     * Harsh directional lighting (hard shadows, strong contrast, etc.)
+     * Ambient lighting (low light, available light, etc.)
+     * Mixed lighting (combination of different types)
+   - **Flash Photography Detection**: If flash is present, identify:
+     * On-camera flash (direct flash, harsh shadows, characteristic flash look)
+     * Off-camera flash (more natural, directional)
+     * Ring flash (even lighting, minimal shadows, characteristic ring reflection in eyes)
+     * Bounce flash (softer, more diffused)
+     * Flash characteristics: harsh shadows, strong highlights, characteristic flash color temperature, flash reflections, catchlights in eyes
+   - **Direction**: Where is the light coming from? (top, side, front, back, overhead, from left/right, etc.) - be SPECIFIC
+   - **Intensity**: Is it bright, dim, medium? Are there strong highlights or soft illumination?
+   - **Color Temperature**: Is it warm (yellowish/orange), cool (bluish), neutral? Describe the exact color cast
+   - **Shadows**: Describe shadow placement, depth, softness/hardness, direction, color (warm shadows, cool shadows, etc.)
+   - **Highlights**: Describe highlight placement, intensity, shape, reflections, specular highlights
+   - **Lighting Quality**: Is it soft and diffused, hard and dramatic, even and flat, etc.?
+   - **Multiple Light Sources**: If there are multiple lights, describe each one's position, intensity, color, and type
+   - **Light Modifiers**: Identify any light modifiers (softbox, umbrella, reflector, diffuser, etc.)
+
+4. **Camera Angle and Perspective - EXTREME DETAIL REQUIRED**: Describe with MAXIMUM precision:
+   - **Exact Angle**: Is it frontal, side view, three-quarter, from above (high angle), from below (low angle), eye-level, etc.? - be VERY specific
+   - **Distance**: Is it close-up, medium shot, wide shot, extreme close-up, full body, etc.?
+   - **Perspective**: Is it straight-on, slightly angled, tilted, etc.?
+   - **Framing**: How is the subject framed? Centered, off-center, rule of thirds, etc.?
+   - **Camera Height**: Is the camera at eye level, above, below, etc.?
+   - **Lens Type and Characteristics** - THIS IS CRITICAL to identify:
+     * **Wide-angle lens**: Distortion at edges, exaggerated perspective, more background visible, characteristic wide-angle look
+     * **Telephoto lens**: Compressed perspective, shallow depth of field, background compression, characteristic telephoto look
+     * **Normal/Standard lens**: Natural perspective, balanced field of view
+     * **Macro lens**: Extreme close-up capability, very shallow depth of field
+     * **Fisheye lens**: Extreme distortion, curved lines, very wide field of view
+     * **Lens characteristics**: Depth of field (shallow, deep), bokeh quality, distortion, compression, field of view
+   - **Focal Length Indicators**: Analyze the image to determine if it looks like it was shot with:
+     * Wide-angle (14mm-35mm): More background, exaggerated perspective
+     * Standard (35mm-85mm): Natural perspective
+     * Telephoto (85mm-200mm+): Compressed background, shallow depth of field
+     * Ultra-wide or fisheye: Extreme distortion
+
+5. **Composition**: Describe the framing, perspective, depth of field, focus with extreme detail:
+   - What is in focus vs blurred?
+   - Depth of field (shallow, deep, etc.)
+   - Foreground, midground, background elements
+   - Visual hierarchy and where the eye is drawn
+
+6. **Textures**: Describe ALL visible textures in extreme detail:
+   - Skin texture (pores, smoothness, roughness, etc.)
+   - Fabric textures (smooth, rough, glossy, matte, etc.)
+   - Material textures (metal, wood, fabric, etc.)
+   - Surface qualities (reflective, matte, glossy, etc.)
+
+7. **Colors**: Describe the color palette with extreme precision:
+   - Dominant colors and their exact shades
+   - Color temperature (warm, cool, neutral)
+   - Saturation levels (vibrant, muted, desaturated, etc.)
+   - Contrast levels (high, low, medium)
+   - Color harmony and relationships
+
+8. **Technical Details**: Describe image quality, sharpness, grain/noise, post-processing style:
+   - Image sharpness and clarity
+   - Any visible grain, noise, or texture
+   - Post-processing style (color grading, filters, etc.)
+
+9. **Atmosphere/Mood**: Describe the overall feeling and mood in detail:
+   - Emotional tone (dramatic, peaceful, intense, etc.)
+   - Visual mood (dark, bright, moody, cheerful, etc.)
+
+10. **Background**: Describe the background in extreme detail:
+    - What is visible in the background?
+    - Is it blurred or in focus?
+    - Colors, textures, and elements
+    - How it relates to the subject
+
+11. **Hyperrealism Level**: Describe the level of hyperrealism and photorealism:
+    - How realistic does it look?
+    - Any stylization or is it purely photorealistic?
 
 **Critical Requirements:**
 - **ONLY describe what is visible** - do not invent or assume
-- **If you cannot determine if it's a screenshot or photo**, describe it simply as a photo/image
-- **Do not add device-specific characteristics** (iPhone frames, borders, UI elements) unless they are actually visible
-- **Do not assume the camera/device** used unless there are clear visual indicators
-- The prompt must be extremely detailed about what IS visible, but must NOT include assumptions about what is NOT visible
-- **EMPHASIZE**: This image defines the EXACT style, angle, lighting, and hyperrealism that must be replicated in the final result
+- **Be EXTREMELY specific and detailed** - the model will NOT see this reference image, so your description must be comprehensive enough to replicate it
+- **EMPHASIZE lighting and camera angle** - these are the most critical elements that must be replicated exactly
+- **Include ALL visual details** - composition, colors, textures, atmosphere, everything
+- **The prompt must be detailed enough** that someone could recreate this image without seeing it
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete, extremely detailed prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI). Make it as detailed and specific as possible.`;
 
           const referenceParts: any[] = [
             {
@@ -773,16 +849,14 @@ These character images are additional references for character appearance, pose,
         let copyInstructions = '';
         if (copyCameraAngle && copyLighting) {
           copyInstructions = `
-- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described - THIS IS CRITICAL - MUST be copied exactly
-- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described - MUST be copied exactly
-- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL - MUST be copied exactly`;
+- **EXACT camera angle and perspective** from the main reference - THIS IS ABSOLUTELY CRITICAL - The reference image prompt describes the EXACT camera angle, perspective, distance, framing, and composition. You MUST replicate these EXACTLY in your prompt. Include ALL details: the exact angle (frontal, side, three-quarter, high angle, low angle, etc.), the exact distance (close-up, medium shot, wide shot, etc.), the exact framing and composition, the exact camera height and perspective. The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific.
+- **EXACT lighting style** from the main reference - THIS IS ABSOLUTELY CRITICAL - The reference image prompt describes the EXACT lighting. You MUST replicate ALL lighting details EXACTLY: the type of lighting (natural, studio, dramatic, etc.), the EXACT direction the light comes from, the EXACT intensity and brightness, the EXACT color temperature (warm, cool, neutral), the EXACT shadow placement and characteristics, the EXACT highlight placement and intensity, any multiple light sources and their positions. The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about every aspect of the lighting.`;
         } else if (copyCameraAngle) {
           copyInstructions = `
-- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described - THIS IS CRITICAL - MUST be copied exactly
-- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described - MUST be copied exactly`;
+- **EXACT camera angle and perspective** from the main reference - THIS IS ABSOLUTELY CRITICAL - The reference image prompt describes the EXACT camera angle, perspective, distance, framing, composition, and LENS TYPE. You MUST replicate these EXACTLY in your prompt. Include ALL details: the exact angle (frontal, side, three-quarter, high angle, low angle, etc.), the exact distance (close-up, medium shot, wide shot, etc.), the exact framing and composition, the exact camera height and perspective, and MOST IMPORTANTLY the EXACT lens type and characteristics (wide-angle, telephoto, normal, macro, fisheye, etc.) with all lens-specific characteristics (depth of field, bokeh, distortion, compression, field of view). The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about the lens and camera characteristics.`;
         } else if (copyLighting) {
           copyInstructions = `
-- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL - MUST be copied exactly`;
+- **EXACT lighting style** from the main reference - THIS IS ABSOLUTELY CRITICAL - The reference image prompt describes the EXACT lighting. You MUST replicate ALL lighting details EXACTLY: the EXACT type of lighting (natural daylight, studio lighting, FLASH PHOTOGRAPHY - on-camera flash, off-camera flash, ring flash, bounce flash, etc., artificial lighting, dramatic spotlight, soft diffused, harsh directional, ambient, mixed lighting, etc.), the EXACT direction the light comes from, the EXACT intensity and brightness, the EXACT color temperature (warm, cool, neutral), the EXACT shadow placement and characteristics (including flash shadows if present), the EXACT highlight placement and intensity (including flash highlights if present), any multiple light sources and their positions, any light modifiers (softbox, umbrella, reflector, etc.), and MOST IMPORTANTLY if flash is present, describe ALL flash characteristics (harsh shadows, strong highlights, flash color temperature, flash reflections, catchlights in eyes, etc.). The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about every aspect of the lighting, especially identifying and describing flash photography if present.`;
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
@@ -791,17 +865,19 @@ A main reference image has been provided and analyzed. This image will be upload
 **Main Reference Image Prompt (this defines the PRIMARY style that MUST be replicated exactly):**
 "${mainReferenceImagePrompt}"
 
+**CRITICAL - REFERENCE IMAGE WILL NOT BE ATTACHED TO FINAL GENERATION:**
+⚠️ **ABSOLUTELY CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed FIRST, but the FINAL PROMPT you generate will be used with ONLY the product/character images attached. The reference image will NOT be attached to the final generation. Therefore, your prompt MUST be EXTREMELY detailed and specific about ALL visual characteristics from the reference image so the model can replicate them EXACTLY without seeing the reference.
+
 **Your Task:**
-You MUST use the main reference image prompt above as the PRIMARY style reference. This image defines the EXACT visual style that must be replicated:${copyInstructions}
+You MUST use the main reference image prompt above as the PRIMARY style reference. This image defines the EXACT visual style that must be replicated. Your generated prompt must be EXTREMELY detailed and specific because the model will NOT see the reference image.${copyInstructions}
 ${!copyCameraAngle && !copyLighting ? `
-- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - ONLY if described
-- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - ONLY if described
-- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - ONLY what is actually visible - THIS IS CRITICAL` : ''}
-- **EXACT texture quality and appearance** (same level of detail, same material appearance) - ONLY what is visible
-- **EXACT color palette** (same color temperature, saturation, contrast, color harmony) - ONLY what is present
-- **EXACT depth of field and focus** (same blur/sharpness characteristics) - ONLY what is visible
-- **EXACT overall aesthetic and visual style** (same look and feel) - ONLY what is actually present
-- **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism from the main reference${productInstructions}${characterInstructions}
+- **EXACT camera angle and perspective** from the main reference - Extract ALL details from the reference prompt: exact angle (frontal, side, three-quarter, high angle, low angle, etc.), exact distance (close-up, medium shot, wide shot, etc.), exact framing and composition, exact camera height and perspective. Include ALL these details in your prompt.
+- **EXACT lighting style** from the main reference - Extract ALL details from the reference prompt: type of lighting, EXACT direction, EXACT intensity, EXACT color temperature, EXACT shadow placement and characteristics, EXACT highlight placement and intensity, any multiple light sources. Include ALL these details in your prompt.` : ''}
+- **EXACT texture quality and appearance** - Extract and include ALL texture details from the reference prompt
+- **EXACT color palette** - Extract and include ALL color details: exact colors, color temperature, saturation, contrast, color harmony
+- **EXACT composition and framing** - Extract and include ALL composition details: aspect ratio, layout structure, visual structure, depth of field, focus
+- **EXACT overall aesthetic and visual style** - Extract and include ALL aesthetic details: look and feel, mood, atmosphere, visual quality, hyperrealism level
+- **EXACT background** - Extract and include ALL background details from the reference prompt${productInstructions}${characterInstructions}
 
 - **DO NOT ADD CHARACTERISTICS NOT IN THE REFERENCE**: 
   - **DO NOT add device frames, borders, or UI elements** unless the main reference image prompt explicitly mentions them
@@ -818,53 +894,120 @@ ${!copyCameraAngle && !copyLighting ? `
 - **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.`;
       } else if (mainReferenceImageFile) {
         // Main reference image provided but no prompt generated - use image directly
+        const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
+        
         // Build copy instructions based on user selection
         let copyInstructionsNoPrompt = '';
         if (copyCameraAngle && copyLighting) {
           copyInstructionsNoPrompt = `
-- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - THIS IS CRITICAL - MUST be copied exactly
-- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - MUST be copied exactly
-- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
+- **EXACT camera angle and perspective** from the main reference - THIS IS ABSOLUTELY CRITICAL - Analyze the attached reference image and extract ALL camera angle and LENS details: the exact angle (frontal, side, three-quarter, high angle, low angle, etc.), the exact distance (close-up, medium shot, wide shot, etc.), the exact framing and composition, the exact camera height and perspective, and MOST IMPORTANTLY identify the EXACT lens type (wide-angle, telephoto, normal, macro, fisheye, etc.) and describe ALL lens-specific characteristics (depth of field, bokeh quality, distortion, compression, field of view, focal length indicators). You MUST describe these EXACTLY in your prompt with maximum detail. The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about the lens and camera characteristics.
+- **EXACT lighting style** from the main reference - THIS IS ABSOLUTELY CRITICAL - Analyze the attached reference image and extract ALL lighting details: identify the EXACT type of lighting (natural daylight, studio lighting, FLASH PHOTOGRAPHY - identify if it's on-camera flash, off-camera flash, ring flash, bounce flash, etc., artificial lighting, dramatic spotlight, soft diffused, harsh directional, ambient, mixed lighting, etc.), the EXACT direction the light comes from, the EXACT intensity and brightness, the EXACT color temperature (warm, cool, neutral), the EXACT shadow placement and characteristics (including flash shadows if flash is present), the EXACT highlight placement and intensity (including flash highlights if flash is present), any multiple light sources and their positions, any light modifiers (softbox, umbrella, reflector, etc.), and MOST IMPORTANTLY if flash photography is present, identify and describe ALL flash characteristics (harsh shadows, strong highlights, flash color temperature, flash reflections, catchlights in eyes, characteristic flash look, etc.). You MUST describe these EXACTLY in your prompt with maximum detail. The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about every aspect of the lighting, especially identifying and describing flash photography if present.`;
         } else if (copyCameraAngle) {
           copyInstructionsNoPrompt = `
-- **EXACT camera angle and perspective** from the main reference (frontal, side, three-quarter, from above, from below, etc.) - THIS IS CRITICAL - MUST be copied exactly
-- **EXACT composition and framing** (close-up, medium shot, wide shot, etc.) - MUST be copied exactly`;
+- **EXACT camera angle and perspective** from the main reference - THIS IS ABSOLUTELY CRITICAL - Analyze the attached reference image and extract ALL camera angle and LENS details: the exact angle (frontal, side, three-quarter, high angle, low angle, etc.), the exact distance (close-up, medium shot, wide shot, etc.), the exact framing and composition, the exact camera height and perspective, and MOST IMPORTANTLY identify the EXACT lens type (wide-angle, telephoto, normal, macro, fisheye, etc.) and describe ALL lens-specific characteristics (depth of field, bokeh quality, distortion, compression, field of view, focal length indicators). You MUST describe these EXACTLY in your prompt with maximum detail. The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about the lens and camera characteristics.`;
         } else if (copyLighting) {
           copyInstructionsNoPrompt = `
-- **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
+- **EXACT lighting style** from the main reference - THIS IS ABSOLUTELY CRITICAL - Analyze the attached reference image and extract ALL lighting details: identify the EXACT type of lighting (natural daylight, studio lighting, FLASH PHOTOGRAPHY - identify if it's on-camera flash, off-camera flash, ring flash, bounce flash, etc., artificial lighting, dramatic spotlight, soft diffused, harsh directional, ambient, mixed lighting, etc.), the EXACT direction the light comes from, the EXACT intensity and brightness, the EXACT color temperature (warm, cool, neutral), the EXACT shadow placement and characteristics (including flash shadows if flash is present), the EXACT highlight placement and intensity (including flash highlights if flash is present), any multiple light sources and their positions, any light modifiers (softbox, umbrella, reflector, etc.), and MOST IMPORTANTLY if flash photography is present, identify and describe ALL flash characteristics (harsh shadows, strong highlights, flash color temperature, flash reflections, catchlights in eyes, characteristic flash look, etc.). You MUST describe these EXACTLY in your prompt with maximum detail. The model will NOT see the reference image, so your description must be EXTREMELY detailed and specific about every aspect of the lighting, especially identifying and describing flash photography if present.`;
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
-- **Analyze the attached main reference image** to understand EXACTLY how it looks:
-  - Camera angle and perspective (frontal, side, three-quarter, from above, from below, etc.)
-  - Composition and framing (close-up, medium shot, wide shot, etc.)
-  - Lighting style (type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL
-  - Texture quality and appearance
-  - Color palette (color temperature, saturation, contrast, color harmony)
-  - Depth of field and focus characteristics
-  - Overall aesthetic and visual style
-  - Hyperrealism level and photorealism quality
-  - If there's a person: their appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''}
 
-- **RESPECT THE MAIN REFERENCE IMAGE EXACTLY**: Your generated prompt must specify that the result must match this EXACT style, angle, lighting, and hyperrealism. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication:${copyInstructionsNoPrompt}
+**CRITICAL - REFERENCE IMAGE WILL NOT BE ATTACHED TO FINAL GENERATION:**
+⚠️ **ABSOLUTELY CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed FIRST, but the FINAL PROMPT you generate will be used with ONLY the product/character images attached. The reference image will NOT be attached to the final generation. Therefore, you MUST analyze the reference image EXTREMELY carefully and extract ALL visual characteristics to include in your prompt with MAXIMUM detail so the model can replicate them EXACTLY without seeing the reference.
+
+**Your Task - Analyze the Reference Image with EXTREME Detail:**
+You MUST analyze the attached main reference image to understand EXACTLY how it looks. Extract and include ALL of these details in your prompt:
+
+1. **Camera Angle and Perspective** - Analyze and extract ALL details:
+   - Exact angle (frontal, side, three-quarter, high angle, low angle, eye-level, etc.)
+   - Exact distance (close-up, medium shot, wide shot, extreme close-up, full body, etc.)
+   - Exact framing (centered, off-center, rule of thirds, etc.)
+   - Exact camera height (eye level, above, below, etc.)
+   - Exact perspective (straight-on, slightly angled, tilted, etc.)
+   - Lens perspective (wide-angle, telephoto, normal, etc.)
+
+2. **Lighting Style** - Analyze and extract ALL details (THIS IS CRITICAL):
+   - **Type of lighting** - Identify the EXACT type:
+     * Natural daylight (soft window light, harsh direct sunlight, golden hour, blue hour, etc.)
+     * Studio lighting (key light, fill light, rim light, hair light, etc.)
+     * **FLASH PHOTOGRAPHY** - THIS IS CRITICAL to identify:
+       - On-camera flash (direct flash, harsh shadows, characteristic flash look)
+       - Off-camera flash (more natural, directional)
+       - Ring flash (even lighting, minimal shadows, characteristic ring reflection in eyes)
+       - Bounce flash (softer, more diffused)
+       - Flash characteristics: harsh shadows, strong highlights, characteristic flash color temperature, flash reflections, catchlights in eyes
+     * Artificial lighting (LED, fluorescent, tungsten, neon, etc.)
+     * Dramatic spotlight (single focused beam, multiple spotlights, etc.)
+     * Soft diffused lighting (softbox, umbrella, natural diffusion, etc.)
+     * Harsh directional lighting (hard shadows, strong contrast, etc.)
+     * Ambient lighting (low light, available light, etc.)
+     * Mixed lighting (combination of different types)
+   - EXACT direction the light comes from (top, side, front, back, overhead, from left/right, etc.) - be VERY specific
+   - EXACT intensity (bright, dim, medium, etc.)
+   - EXACT color temperature (warm/yellowish, cool/bluish, neutral, etc.)
+   - EXACT shadow placement, depth, softness/hardness, direction, color (warm shadows, cool shadows, flash shadows, etc.)
+   - EXACT highlight placement, intensity, shape, reflections, specular highlights (flash highlights if flash is present)
+   - Lighting quality (soft and diffused, hard and dramatic, even and flat, etc.)
+   - Multiple light sources (if present, describe each one's position, intensity, color, and type)
+   - Light modifiers (softbox, umbrella, reflector, diffuser, etc.)
+
+3. **Composition and Framing** - Analyze and extract ALL details:
+   - What is in focus vs blurred?
+   - Depth of field (shallow, deep, etc.)
+   - Foreground, midground, background elements
+   - Visual hierarchy and where the eye is drawn
+   - Aspect ratio and layout structure
+
+4. **Texture Quality and Appearance** - Analyze and extract ALL details:
+   - Skin texture (pores, smoothness, roughness, etc.)
+   - Fabric textures (smooth, rough, glossy, matte, etc.)
+   - Material textures (metal, wood, fabric, etc.)
+   - Surface qualities (reflective, matte, glossy, etc.)
+
+5. **Color Palette** - Analyze and extract ALL details:
+   - Dominant colors and their exact shades
+   - Color temperature (warm, cool, neutral)
+   - Saturation levels (vibrant, muted, desaturated, etc.)
+   - Contrast levels (high, low, medium)
+   - Color harmony and relationships
+
+6. **Background and Environment** - Analyze and extract ALL details:
+   - What is visible in the background?
+   - Is it blurred or in focus?
+   - Colors, textures, and elements
+   - How it relates to the subject
+
+7. **Overall Aesthetic and Visual Style** - Analyze and extract ALL details:
+   - Look and feel
+   - Mood and atmosphere
+   - Visual quality
+   - Hyperrealism level
+   - Post-processing style (color grading, filters, etc.)
+
+8. **If there's a person**: their appearance, facial features, hair, skin tone, body type, clothing style, and all physical characteristics
+
+**Your Generated Prompt Must:**
+- **Extract ALL visual details** from the reference image and include them in your prompt with EXTREME detail - be comprehensive
+- **Be EXTREMELY specific** about camera angle, lighting, composition, colors, textures, background, and aesthetic - include every detail
+- **Include the user's description** ("${description}") while maintaining the EXACT style from the reference
+- **Ensure the result looks IDENTICAL** to the reference image in terms of style, angle, lighting, composition, colors, textures, and aesthetic, but with the content/subject from the user's description
+- **Remember**: The model will NOT see the reference image, so your description must be detailed enough to recreate it exactly
+
+**CRITICAL REQUIREMENTS:**
 ${!copyCameraAngle && !copyLighting ? `
-  - **EXACT camera angle and perspective** - match the main reference image's camera angle precisely
-  - **EXACT composition and framing** - match the main reference image's framing and composition
-  - **EXACT lighting style** - match the main reference image's lighting characteristics - THIS IS CRITICAL` : ''}
-  - **EXACT texture quality** - match the main reference image's texture appearance
-  - **EXACT color palette** - match the main reference image's colors
-  - **EXACT depth of field** - match the main reference image's focus/blur characteristics
-  - **EXACT overall aesthetic** - match the main reference image's visual style and look
-  - **EXACT hyperrealism level** - match the exact level of hyperrealism and photorealism
-
-- **Apply to user's description**: While respecting the EXACT visual characteristics of the main reference image, adapt the CONTENT to match what the user described: "${description}"
-  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the main reference${copyCameraAngle ? ' - CRITICAL: The camera angle MUST be copied exactly from the reference image' : ''}${copyLighting ? ' - CRITICAL: The lighting MUST be copied exactly from the reference image' : ''}
+  - **EXACT camera angle and perspective** - Extract ALL details from the reference and include them in your prompt with maximum specificity
+  - **EXACT composition and framing** - Extract ALL details from the reference and include them in your prompt
+  - **EXACT lighting style** - Extract ALL details from the reference and include them in your prompt with maximum specificity - THIS IS CRITICAL` : ''}
+  - **EXACT texture quality** - Extract and include ALL texture details from the reference
+  - **EXACT color palette** - Extract and include ALL color details from the reference
+  - **EXACT overall aesthetic** - Extract and include ALL aesthetic details from the reference
+  - **EXACT background** - Extract and include ALL background details from the reference
+  - Keep the EXACT same camera angle, composition, lighting, textures, colors, and aesthetic from the main reference${copyCameraAngle ? ' - CRITICAL: The camera angle MUST be copied exactly from the reference image with ALL details' : ''}${copyLighting ? ' - CRITICAL: The lighting MUST be copied exactly from the reference image with ALL details' : ''}
   - Change only the CONTENT/SUBJECT to match the user's description
-  - If the main reference has a person and the user's description also involves a person: maintain the same person's appearance from the reference, but adapt them to the new action/environment described
-  - The result should look like the main reference image in terms of style, angle, lighting, and hyperrealism, but with the content/subject the user requested
+  - The result should look IDENTICAL to the main reference image in terms of style, angle, lighting, and hyperrealism, but with the content/subject the user requested
 
-- **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.`;
+- **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.${copyInstructionsNoPrompt}${productInstructions}${characterInstructions}`;
       }
     } else {
       // No main reference image

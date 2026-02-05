@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { video, duration } = body;
+    const { video, duration, image, changes } = body;
 
     if (!video) {
       return NextResponse.json(
@@ -150,8 +150,100 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Upload image to Gemini Files if provided
+    let imageFile = null;
+    if (image) {
+      try {
+        console.log('Uploading reference image to Gemini Files...');
+        const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
+        let imageMime = image.split(';')[0].split(':')[1] || 'image/png';
+        
+        // Convert unsupported formats to PNG
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(imageMime.toLowerCase())) {
+          console.log(`Converting unsupported format ${imageMime} to PNG`);
+          imageMime = 'image/png';
+        }
+        
+        const imageUint8Array = new Uint8Array(imageBuffer);
+        const imageBlob = new Blob([imageUint8Array], { type: imageMime });
+        imageFile = await ai.files.upload({
+          file: imageBlob,
+          config: { mimeType: imageMime }
+        });
+        console.log('Reference image uploaded:', imageFile.uri);
+
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error(`Timeout waiting for image to be ready`);
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status for ${fileName}:`, err);
+            }
+          }
+          return file;
+        };
+
+        const imageFileName = imageFile.name || imageFile.uri?.split('/').pop() || '';
+        if (imageFileName) {
+          imageFile = await waitForFile(imageFile, imageFileName);
+          if (!imageFile.uri) {
+            throw new Error('Image file is missing required URI property');
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('Error uploading image:', uploadError);
+        return NextResponse.json(
+          { error: 'Error uploading image to Gemini', details: uploadError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Build changes instruction if provided
+    let changesInstruction = '';
+    if (changes && changes.trim()) {
+      changesInstruction = `\n\n**USER'S REQUESTED CHANGES:**
+The user wants to make the following changes to the video:
+"${changes.trim()}"
+
+**CRITICAL - APPLY CHANGES:**
+- You MUST incorporate these changes into the generated prompt
+- If the user mentions changes related to the uploaded image, analyze the image and apply those changes
+- Maintain the same video structure, camera cuts, and pacing from the reference video
+- Apply the requested changes while preserving the overall style and format of the reference video
+- If the user wants to change the product/subject to match the uploaded image, describe the product/subject from the image in detail
+- If the user wants to change background, lighting, or other elements, incorporate those changes into the prompt`;
+    }
+
+    // Build image instruction if provided
+    let imageInstruction = '';
+    if (imageFile) {
+      imageInstruction = `\n\n**REFERENCE IMAGE PROVIDED:**
+A reference image has been uploaded and will be attached. This image provides visual context for the changes the user wants to make.${changes && changes.trim() ? ' The user has described specific changes related to this image.' : ' Analyze this image to understand what modifications should be applied to the video.'}
+
+**CRITICAL - USE THE IMAGE:**
+- If the user's changes mention the image, analyze the image and incorporate its elements into the prompt
+- Describe the product/subject from the image if relevant to the changes
+- Use the image to understand visual style, colors, textures, or other elements that should be applied to the video
+- The image will be attached to the final prompt, so reference it appropriately`;
+    }
+
     // Generate prompt from video analysis
-    const videoAnalysisPrompt = `You are an expert AI video prompt engineer. Analyze the attached reference video and create an extremely detailed, comprehensive prompt that would generate this exact video.
+    const videoAnalysisPrompt = `You are an expert AI video prompt engineer. Analyze the attached reference video${imageFile ? ' and reference image' : ''} and create an extremely detailed, comprehensive prompt that would generate this exact video${changes && changes.trim() ? ' with the requested modifications' : ''}.
 
 **CRITICAL REQUIREMENTS:**
 1. **Video Format/Type**: First, identify the EXACT format and type:
@@ -219,7 +311,7 @@ Create an extremely detailed prompt that describes:
 - **MOST IMPORTANT**: The prompt must describe a video that will be exactly ${duration} seconds long when generated. Adjust pacing, number of shots, and action timing accordingly.
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact video, adjusted to ${duration} seconds duration.`;
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact video${changes && changes.trim() ? ' with the requested changes applied' : ''}, adjusted to ${duration} seconds duration.${changesInstruction}${imageInstruction}`;
 
     try {
       console.log('Generating prompt from video analysis...');
@@ -230,11 +322,23 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
             fileUri: videoFile.uri,
             mimeType: videoFile.mimeType || finalMime
           }
-        },
-        {
-          text: videoAnalysisPrompt
         }
       ];
+
+      // Add image if provided
+      if (imageFile) {
+        videoParts.push({
+          fileData: {
+            fileUri: imageFile.uri,
+            mimeType: imageFile.mimeType || 'image/png'
+          }
+        });
+      }
+
+      // Add text prompt
+      videoParts.push({
+        text: videoAnalysisPrompt
+      });
 
       const result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',

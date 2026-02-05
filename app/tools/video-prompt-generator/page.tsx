@@ -108,6 +108,9 @@ export default function VideoPromptGenerator() {
   const [referenceVideo, setReferenceVideo] = useState<File | null>(null);
   const [referenceVideoPreview, setReferenceVideoPreview] = useState<string | null>(null);
   const [copyVideoDuration, setCopyVideoDuration] = useState<number>(10); // Default 10 seconds
+  const [copyVideoImage, setCopyVideoImage] = useState<File | null>(null);
+  const [copyVideoImagePreview, setCopyVideoImagePreview] = useState<string | null>(null);
+  const [copyVideoChanges, setCopyVideoChanges] = useState<string>('');
   
   // Shared state
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
@@ -186,6 +189,33 @@ export default function VideoPromptGenerator() {
     }
   };
 
+  const handleCopyVideoImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCopyVideoImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCopyVideoImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeCopyVideoImage = () => {
+    setCopyVideoImage(null);
+    setCopyVideoImagePreview(null);
+  };
+
+  const compressAndConvertToBase64 = async (file: File): Promise<string> => {
+    // Simple compression for images
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const compressVideo = async (file: File): Promise<File> => {
     // For now, just return the file as-is
     // In production, you might want to compress large videos
@@ -211,6 +241,12 @@ export default function VideoPromptGenerator() {
       // Convert video to base64
       const videoBase64 = await fileToBase64(videoToProcess);
 
+      // Convert image to base64 if provided
+      let imageBase64 = null;
+      if (copyVideoImage) {
+        imageBase64 = await compressAndConvertToBase64(copyVideoImage);
+      }
+
       const response = await fetch('/api/generate-video-prompt-from-video', {
         method: 'POST',
         headers: {
@@ -218,7 +254,9 @@ export default function VideoPromptGenerator() {
         },
         body: JSON.stringify({
           video: videoBase64,
-          duration: copyVideoDuration
+          duration: copyVideoDuration,
+          image: imageBase64,
+          changes: copyVideoChanges.trim() || null
         }),
       });
 
@@ -1506,6 +1544,9 @@ export default function VideoPromptGenerator() {
                   setGeneratedPrompt('');
                   setReferenceVideo(null);
                   setReferenceVideoPreview(null);
+                  setCopyVideoImage(null);
+                  setCopyVideoImagePreview(null);
+                  setCopyVideoChanges('');
                 }}
                 className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
               >
@@ -1629,6 +1670,96 @@ export default function VideoPromptGenerator() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Image Upload (Optional) */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-green-300">
+                Reference Image (Optional)
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Upload an image to provide visual context for the changes you want to make. This helps the AI understand what modifications you're requesting.
+              </p>
+              <div className="space-y-4">
+                {!copyVideoImagePreview ? (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-green-500/50 hover:bg-zinc-800/50">
+                    <svg
+                      className="mb-3 h-10 w-10 text-zinc-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium text-zinc-400">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="mt-1 text-xs text-zinc-500">
+                      PNG, JPG, WEBP up to 10MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCopyVideoImageUpload}
+                      className="hidden"
+                      disabled={isGenerating}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                    <div className="relative inline-block">
+                      <img
+                        src={copyVideoImagePreview}
+                        alt="Reference image preview"
+                        className="max-h-96 rounded-lg"
+                      />
+                      <button
+                        onClick={removeCopyVideoImage}
+                        disabled={isGenerating}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Remove image"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Changes Description (Optional) */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-green-300">
+                Desired Changes (Optional)
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Describe what changes you want to make to the video. You can mention changes related to the image you uploaded, or any other modifications you'd like (e.g., "Change the product to the one in the image", "Use a different background", "Change the lighting to be more dramatic").
+              </p>
+              <textarea
+                value={copyVideoChanges}
+                onChange={(e) => setCopyVideoChanges(e.target.value)}
+                placeholder="Example: Change the product to match the one in the uploaded image, Use a beach background instead of the studio, Make the lighting more dramatic with stronger shadows..."
+                className="w-full rounded-xl border border-zinc-700/70 bg-zinc-950/50 px-4 py-3 text-zinc-50 placeholder-zinc-500 focus:border-green-500/60 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+                rows={4}
+                disabled={isGenerating}
+              />
             </div>
 
             <button

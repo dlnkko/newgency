@@ -121,9 +121,10 @@ function getRateLimiter() {
         analytics: true,
       }),
       generateFrameAnimation: new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
+        redis: Redis.fromEnv(),
+        limiter: Ratelimit.slidingWindow(20, '1 h'),
         analytics: true,
+        prefix: '@upstash/ratelimit/generateFrameAnimation',
       }),
     };
   } else {
