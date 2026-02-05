@@ -38,18 +38,20 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, firstFrameFromVideo } = body;
+    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, elementImages, firstFrameFromVideo } = body;
     
-    // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages)
+    // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages/elementImages)
     let mainReferenceImage: string | null = null;
     let productImagesArray: string[] = [];
     let characterImagesArray: string[] = [];
+    let elementImagesArray: string[] = [];
     
     if (referenceImage) {
-      // New format: separate reference image, product images, and character images
+      // New format: separate reference image, product images, character images, and element images
       mainReferenceImage = referenceImage;
       productImagesArray = productImages && Array.isArray(productImages) ? productImages : [];
       characterImagesArray = characterImages && Array.isArray(characterImages) ? characterImages : [];
+      elementImagesArray = elementImages && Array.isArray(elementImages) ? elementImages : [];
     } else if (referenceImages && Array.isArray(referenceImages) && referenceImages.length > 0) {
       // Old format: first image is reference, rest are character/product (default to product)
       mainReferenceImage = referenceImages[0];
@@ -64,24 +66,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!style || !['hyperrealistic', 'studio-quality', 'design', 'copy-image'].includes(style)) {
+    if (!style || !['hyperrealistic', 'studio-quality', 'design', 'change-elements'].includes(style)) {
       return NextResponse.json(
-        { error: 'Valid style is required (hyperrealistic, studio-quality, design, or copy-image)' },
+        { error: 'Valid style is required (hyperrealistic, studio-quality, design, or change-elements)' },
         { status: 400 }
       );
     }
 
-    // Copy Image mode requires at least one reference image
-    if (style === 'copy-image' && !mainReferenceImage) {
+    // Change Elements mode requires at least one reference image
+    if (style === 'change-elements' && !mainReferenceImage) {
       return NextResponse.json(
-        { error: 'A reference image is required for Copy Image mode' },
+        { error: 'A reference image is required for Change Elements in Image mode' },
         { status: 400 }
       );
     }
 
-    // Handle main reference image upload if provided (for design, studio-quality, hyperrealistic, and copy-image styles)
+    // Handle main reference image upload if provided (for design, studio-quality, hyperrealistic, and change-elements styles)
     let mainReferenceImageFile: any = null;
-    if (mainReferenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+    if (mainReferenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'change-elements')) {
       try {
         console.log('Uploading main reference image to Gemini Files...');
         const referenceBuffer = Buffer.from(mainReferenceImage.split(',')[1], 'base64');
@@ -245,7 +247,7 @@ export async function POST(request: NextRequest) {
 
     // Handle product images upload if provided
     const productImageFiles: any[] = [];
-    if (productImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+    if (productImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic')) {
       const imagesToProcess = productImagesArray.slice(0, 3);
       
       for (let i = 0; i < imagesToProcess.length; i++) {
@@ -280,7 +282,7 @@ export async function POST(request: NextRequest) {
 
     // Handle character images upload if provided
     const characterImageFiles: any[] = [];
-    if (characterImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'copy-image')) {
+    if (characterImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic')) {
       const imagesToProcess = characterImagesArray.slice(0, 3);
       
       for (let i = 0; i < imagesToProcess.length; i++) {
@@ -302,6 +304,41 @@ export async function POST(request: NextRequest) {
             { 
               error: `Error uploading character image ${i + 1}`, 
               details: uploadError.message || `Could not upload character image ${i + 1} to Gemini Files`,
+              ...(process.env.NODE_ENV === 'development' && {
+                fullError: uploadError.toString(),
+                stack: uploadError.stack
+              })
+            },
+            { status: 500 }
+          );
+        }
+      }
+    }
+
+    // Handle element images upload if provided (for change-elements style only)
+    const elementImageFiles: any[] = [];
+    if (elementImagesArray.length > 0 && style === 'change-elements') {
+      const imagesToProcess = elementImagesArray.slice(0, 2);
+      
+      for (let i = 0; i < imagesToProcess.length; i++) {
+        try {
+          const elementImageFile = await uploadImageToGemini(imagesToProcess[i], i + 1, 'element');
+          elementImageFiles.push(elementImageFile);
+        } catch (uploadError: any) {
+          if (uploadError.message === 'Google Gemini API key is not valid') {
+            return NextResponse.json(
+              { 
+                error: 'Google Gemini API key is not valid', 
+                details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+              },
+              { status: 401 }
+            );
+          }
+          
+          return NextResponse.json(
+            { 
+              error: `Error uploading element image ${i + 1}`, 
+              details: uploadError.message || `Could not upload element image ${i + 1} to Gemini Files`,
               ...(process.env.NODE_ENV === 'development' && {
                 fullError: uploadError.toString(),
                 stack: uploadError.stack
@@ -1085,9 +1122,133 @@ You MUST generate a prompt that creates professional design work (infographics, 
 - **Creative but functional**: Creative and visually appealing while maintaining clarity and functionality${referenceImageNote}
 
 The image should look like professional design work - infographics, static ads, or creative designs that a human designer would create, with careful attention to every detail, color, composition, and element.`;
-    } else if (style === 'copy-image') {
-      // Copy Image mode: iterate/vary the reference image based on user's description
+    // If element images are provided, generate detailed prompts for each (for change-elements style only)
+    const elementImagePrompts: string[] = [];
+    if (elementImageFiles.length > 0 && style === 'change-elements') {
+      console.log(`Processing ${elementImageFiles.length} element image(s)...`);
+      
+      for (let i = 0; i < elementImageFiles.length; i++) {
+        const elementImageFile = elementImageFiles[i];
+        console.log(`Element image ${i + 1} file available:`, {
+          hasUri: !!elementImageFile.uri,
+          mimeType: elementImageFile.mimeType,
+          state: elementImageFile.state
+        });
+        
+        // Verify the file is ready before using it
+        if (elementImageFile.uri) {
+          try {
+            const elementImageAnalysisRequest = `You are an expert AI prompt engineer. Analyze the attached element image (this is an ELEMENT that will replace something in the base image) and create a detailed, comprehensive description of this element.
+
+**CRITICAL - THIS IS AN ELEMENT TO REPLACE:**
+This element image will be used to replace a corresponding element in the base image. You must describe this element in detail so it can be accurately placed in the base image.
+
+**Your Task:**
+Create an extremely detailed description of this element:
+1. **What the element is**: Describe exactly what this element is (product, person, object, etc.)
+2. **Visual appearance**: Describe the exact visual appearance - colors, textures, materials, design, shape, size
+3. **Details**: Describe all visible details, patterns, text, logos, or distinctive features
+4. **Style**: Describe the style and aesthetic of this element
+5. **Condition**: Describe the condition, wear, or state of the element if relevant
+
+**Output Format:**
+Provide ONLY the detailed description as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete description text.`;
+
+            const elementParts: any[] = [
+              {
+                fileData: {
+                  fileUri: elementImageFile.uri,
+                  mimeType: elementImageFile.mimeType || 'image/png'
+                }
+              },
+              {
+                text: elementImageAnalysisRequest
+              }
+            ];
+
+            const elementResult = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: [
+                {
+                  role: 'user',
+                  parts: elementParts
+                }
+              ]
+            });
+
+            const elementPrompt = elementResult.response
+              .text()
+              .trim();
+
+            if (elementPrompt && elementPrompt.length > 0) {
+              console.log(`Element image ${i + 1} prompt generated, length:`, elementPrompt.length);
+              elementImagePrompts.push(elementPrompt);
+            } else {
+              console.warn(`Element image ${i + 1} prompt generation returned empty result`);
+              elementImagePrompts.push('');
+            }
+          } catch (refError: any) {
+            console.error(`Error generating element image ${i + 1} prompt:`, {
+              message: refError.message,
+              status: refError.status,
+              code: refError.code,
+              stack: process.env.NODE_ENV === 'development' ? refError.stack : undefined
+            });
+            // Continue without reference prompt if it fails - will use image directly as fallback
+            elementImagePrompts.push('');
+          }
+        } else {
+          console.warn(`Element image ${i + 1} file URI is missing, skipping reference prompt generation`);
+          elementImagePrompts.push('');
+        }
+      }
+    }
+
+    } else if (style === 'change-elements') {
+      // Change Elements mode: replace specific elements in the base image with new elements
       // CRITICAL: Must maintain the EXACT format/type of image (screenshot, photo, etc.) unless user explicitly asks to change it
+      
+      // Build element replacement instructions
+      let elementReplacementInstructions = '';
+      if (elementImageFiles.length > 0 && elementImagePrompts.length > 0) {
+        elementReplacementInstructions = `\n\n**CRITICAL - ELEMENTS TO REPLACE:**
+The following element images have been provided and will be attached to the prompt. These elements MUST replace the corresponding elements in the base image:
+
+${elementImagePrompts.map((prompt, index) => {
+          if (prompt && prompt.length > 0) {
+            return `**Element ${index + 1}** (attached image): ${prompt}`;
+          } else {
+            return `**Element ${index + 1}** (attached image): This element image will be attached. Analyze it and replace the corresponding element in the base image with this exact element.`;
+          }
+        }).join('\n\n')}
+
+**CRITICAL REPLACEMENT REQUIREMENTS:**
+- The base image will be uploaded to Nano Banana Pro and placed FIRST
+- The element images will be attached after the base image
+- You MUST create a prompt that describes the base image EXACTLY as it is, but with the attached elements replacing the corresponding original elements
+- Maintain the EXACT same camera angle, lighting, composition, background, and all other visual characteristics from the base image
+- ONLY replace the elements - everything else must remain identical
+- The replaced elements must fit naturally into the base image's style, lighting, and perspective
+- If the base image has a product, replace it with Element 1 (if provided)
+- If the base image has a person/character, replace them with Element 2 (if provided)
+- Match the lighting, shadows, and perspective of the base image for the replaced elements`;
+      } else if (elementImageFiles.length > 0) {
+        elementReplacementInstructions = `\n\n**CRITICAL - ELEMENTS TO REPLACE:**
+The following element images have been provided and will be attached to the prompt. These elements MUST replace the corresponding elements in the base image:
+
+${elementImageFiles.map((_, index) => {
+          return `**Element ${index + 1}** (attached image): This element image will be attached. Analyze it and replace the corresponding element in the base image with this exact element.`;
+        }).join('\n\n')}
+
+**CRITICAL REPLACEMENT REQUIREMENTS:**
+- The base image will be uploaded to Nano Banana Pro and placed FIRST
+- The element images will be attached after the base image
+- You MUST create a prompt that describes the base image EXACTLY as it is, but with the attached elements replacing the corresponding original elements
+- Maintain the EXACT same camera angle, lighting, composition, background, and all other visual characteristics from the base image
+- ONLY replace the elements - everything else must remain identical
+- The replaced elements must fit naturally into the base image's style, lighting, and perspective`;
+      }
+      
       const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
       
       // Build copy instructions based on user selection
@@ -1153,10 +1314,10 @@ ${!copyCameraAngle && !copyLighting ? `
 - Main Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
 - Main Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${productInstructions}${characterInstructions}`;
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${elementReplacementInstructions}${productInstructions}${characterInstructions}`;
       } else if (mainReferenceImageFile) {
         // Main reference image provided but no prompt generated - use image directly
-        // Build copy instructions for copy-image when no prompt is generated
+        // Build copy instructions for change-elements when no prompt is generated
         let copyInstructionsCopyNoPrompt = '';
         if (copyCameraAngle && copyLighting) {
           copyInstructionsCopyNoPrompt = `
@@ -1205,15 +1366,15 @@ ${!copyCameraAngle && !copyLighting ? `
   - If user says "change text" → Keep the EXACT format but change the text content
   - If user says "change colors" → Keep the EXACT format but change colors
   - If user says "change to photo" or "change format" → THEN you can change the format/type
-  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE${productInstructions}${characterInstructions}
+  - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE${elementReplacementInstructions}${productInstructions}${characterInstructions}
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${productInstructions}${characterInstructions}`;
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${elementReplacementInstructions}${productInstructions}${characterInstructions}`;
       } else {
         const { productInstructions: pi, characterInstructions: ci } = buildProductCharacterInstructions();
-        referenceImageNote = `${pi}${ci}`;
+        referenceImageNote = `${elementReplacementInstructions}${pi}${ci}`;
       }
 
-      styleInstructions = `**COPY IMAGE MODE - EXACT FORMAT PRESERVATION:**
+      styleInstructions = `**CHANGE ELEMENTS IN IMAGE MODE - EXACT FORMAT PRESERVATION:**
 
 You are creating a prompt that will iterate/vary a reference image based on specific changes requested by the user. CRITICAL: You must maintain the EXACT format/type of the reference image unless the user explicitly asks to change it.
 
@@ -1243,16 +1404,16 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       ? 'hyperrealistic' 
       : style === 'studio-quality' 
         ? 'professional studio photography' 
-        : style === 'copy-image'
-        ? 'image iteration and variation'
+        : style === 'change-elements'
+        ? 'element replacement in image'
         : 'professional design';
     
     const styleApplicationNote = style === 'hyperrealistic' 
       ? 'IF UGC is detected: Use iPhone/hyperrealistic UGC style. IF UGC is NOT detected: Use cinematic, professional, or high-production quality (still hyperrealistic, but NOT iPhone/UGC).'
       : style === 'studio-quality' 
         ? 'Use professional studio photography quality'
-        : style === 'copy-image'
-        ? 'Iterate on the reference image with the requested changes while maintaining core characteristics'
+        : style === 'change-elements'
+        ? 'Replace specific elements in the base image with new elements while maintaining all other characteristics'
         : 'Use professional design quality';
     
     const criticalRequirementsNote = style === 'hyperrealistic' 
@@ -1264,9 +1425,9 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       ? '- ' + criticalRequirementsNote + '\n'
       : '';
 
-    // For copy-image, use a different prompt structure
-    const promptGenerationRequest = style === 'copy-image' 
-      ? styleInstructions // For copy-image, styleInstructions already contains the full prompt
+    // For change-elements, use a different prompt structure
+    const promptGenerationRequest = style === 'change-elements' 
+      ? styleInstructions // For change-elements, styleInstructions already contains the full prompt
       : `You are an expert AI prompt engineer specializing in ${styleSpecialization} image generation. Your task is to create a detailed, comprehensive prompt for AI image generation.
 
 **User's Description:**
@@ -1302,8 +1463,8 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       // Then character/product images if provided
       const parts: any[] = [];
       
-      // Include main reference image if provided (always include for copy-image, or if no prompt was generated)
-      if (mainReferenceImageFile && (style === 'copy-image' || !mainReferenceImagePrompt)) {
+      // Include main reference image if provided (always include for change-elements, or if no prompt was generated)
+      if (mainReferenceImageFile && (style === 'change-elements' || !mainReferenceImagePrompt)) {
         console.log('Adding main reference image to prompt (will be placed FIRST in Nano Banana Pro):', {
           hasUri: !!mainReferenceImageFile.uri,
           mimeType: mainReferenceImageFile.mimeType
@@ -1326,6 +1487,29 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
         });
       } else if (mainReferenceImagePrompt) {
         console.log('Using main reference image prompt instead of image (length:', mainReferenceImagePrompt.length, ')');
+      }
+      
+      // Include element images if provided (for change-elements style only, attach after main reference image)
+      if (elementImageFiles.length > 0 && style === 'change-elements') {
+        console.log(`Adding ${elementImageFiles.length} element image(s) to prompt:`, {
+          hasUris: elementImageFiles.map(f => !!f.uri),
+          mimeTypes: elementImageFiles.map(f => f.mimeType)
+        });
+        
+        // Add all element images
+        for (const elementImageFile of elementImageFiles) {
+          if (!elementImageFile.uri) {
+            console.warn('Element image file missing URI, skipping');
+            continue;
+          }
+          
+          parts.push({
+            fileData: {
+              fileUri: elementImageFile.uri,
+              mimeType: elementImageFile.mimeType || 'image/png'
+            }
+          });
+        }
       }
       
       // Include product images if provided (attach after main reference image)

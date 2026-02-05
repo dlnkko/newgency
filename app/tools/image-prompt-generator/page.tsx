@@ -5,7 +5,7 @@ import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
 import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
-type StyleType = 'hyperrealistic' | 'studio-quality' | 'design' | 'copy-image' | null;
+type StyleType = 'hyperrealistic' | 'studio-quality' | 'design' | 'change-elements' | null;
 
 export default function ImagePromptGenerator() {
   const [description, setDescription] = useState<string>('');
@@ -23,6 +23,8 @@ export default function ImagePromptGenerator() {
   const [productPreviews, setProductPreviews] = useState<string[]>([]);
   const [characterImages, setCharacterImages] = useState<File[]>([]);
   const [characterPreviews, setCharacterPreviews] = useState<string[]>([]);
+  const [elementImages, setElementImages] = useState<File[]>([]);
+  const [elementPreviews, setElementPreviews] = useState<string[]>([]);
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
 
   // Compress and resize image to reduce file size
@@ -204,6 +206,52 @@ export default function ImagePromptGenerator() {
     setCharacterPreviews(newPreviews);
   };
 
+  const handleElementImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const newImages = [...elementImages];
+      const newPreviews = [...elementPreviews];
+      
+      // Replace image at index or add new one
+      if (index < newImages.length) {
+        newImages[index] = file;
+      } else {
+        newImages.push(file);
+      }
+      
+      // Limit to 2 images
+      if (newImages.length > 2) {
+        newImages.splice(2);
+      }
+      
+      setElementImages(newImages);
+      
+      // Update previews
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (index < newPreviews.length) {
+          newPreviews[index] = reader.result as string;
+        } else {
+          newPreviews.push(reader.result as string);
+        }
+        if (newPreviews.length > 2) {
+          newPreviews.splice(2);
+        }
+        setElementPreviews(newPreviews);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeElementImage = (index: number) => {
+    const newImages = [...elementImages];
+    const newPreviews = [...elementPreviews];
+    newImages.splice(index, 1);
+    newPreviews.splice(index, 1);
+    setElementImages(newImages);
+    setElementPreviews(newPreviews);
+  };
+
   const handleGenerate = async () => {
     if (!description.trim()) {
       setError('Please describe what you want the image to be about');
@@ -211,12 +259,12 @@ export default function ImagePromptGenerator() {
     }
 
     if (!selectedStyle) {
-      setError('Please select a style (Hyperrealistic, Studio Quality, Design, or Copy Image)');
+      setError('Please select a style (Hyperrealistic, Studio Quality, Design, or Change Elements in Image)');
       return;
     }
 
-    if (selectedStyle === 'copy-image' && !referenceImage) {
-      setError('Please upload a reference image for Copy Image mode');
+    if (selectedStyle === 'change-elements' && !referenceImage) {
+      setError('Please upload a reference image for Change Elements in Image mode');
       return;
     }
 
@@ -345,6 +393,46 @@ export default function ImagePromptGenerator() {
         characterImagesBase64.push(base64);
       }
 
+      // Convert element images to base64 if provided
+      const elementImagesBase64: string[] = [];
+      
+      for (let i = 0; i < elementImages.length; i++) {
+        const image = elementImages[i];
+        let imageToProcess = image;
+        
+        // If image is too large, compress it
+        if (image.size > maxSizeBytes) {
+          console.log(`Element image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+          try {
+            imageToProcess = await compressImage(image, 1920, 1920, 0.85);
+            console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            
+            // If still too large after compression, compress more aggressively
+            if (imageToProcess.size > maxSizeBytes) {
+              console.log('Still too large, compressing more aggressively...');
+              imageToProcess = await compressImage(image, 1280, 1280, 0.75);
+              console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
+            }
+          } catch (compressError) {
+            console.error(`Error compressing element image ${i + 1}:`, compressError);
+            setError(`Failed to compress element image ${i + 1}. Please try a smaller image file.`);
+            return;
+          }
+        }
+        
+        // Convert to base64
+        const base64 = await fileToBase64(imageToProcess);
+        
+        // Check final base64 size (should be ~33% larger than original)
+        const base64Size = new Blob([base64]).size;
+        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
+          setError(`Element image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+          return;
+        }
+        
+        elementImagesBase64.push(base64);
+      }
+
       const response = await fetch('/api/generate-image-prompt', {
         method: 'POST',
         headers: {
@@ -358,6 +446,7 @@ export default function ImagePromptGenerator() {
           copyLighting: copyLighting,
           productImages: productImagesBase64,
           characterImages: characterImagesBase64,
+          elementImages: elementImagesBase64,
           firstFrameFromVideo: veo3FirstFrame
         }),
       });
@@ -438,8 +527,8 @@ export default function ImagePromptGenerator() {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder={selectedStyle === 'copy-image' 
-              ? "Describe what you want to change or make different in the reference image. For example: 'Change the background to a beach scene', 'Replace the person with a different person', 'Change the product color to blue', 'Make it more vibrant and colorful', 'Change the lighting to sunset'"
+            placeholder={selectedStyle === 'change-elements' 
+              ? "Describe what you want to change or make different in the reference image. For example: 'Replace the product with my product', 'Change the person with my character', 'Keep everything the same but swap the elements'"
               : "Describe what you want in the image. For example: 'A person using headphones while exercising in a gym', 'A skincare product on a bathroom counter with natural lighting', 'An infographic showing the benefits of a supplement'"}
             rows={6}
             disabled={isGenerating}
@@ -502,36 +591,36 @@ export default function ImagePromptGenerator() {
             </button>
 
             <button
-              onClick={() => setSelectedStyle('copy-image')}
+              onClick={() => setSelectedStyle('change-elements')}
               disabled={isGenerating}
               className={`rounded-xl border-2 p-6 text-left transition-all ${
-                selectedStyle === 'copy-image'
+                selectedStyle === 'change-elements'
                   ? 'border-green-500/80 bg-gradient-to-br from-green-500/20 to-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.2)] ring-1 ring-green-500/30'
                   : 'border-zinc-700/50 bg-zinc-800/30 hover:border-green-500/50 hover:bg-zinc-800/50'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <div className="mb-2 text-2xl">🔄</div>
-              <h3 className="mb-2 text-lg font-bold text-zinc-50">Copy Image</h3>
+              <h3 className="mb-2 text-lg font-bold text-zinc-50">Change Elements in Image</h3>
               <p className="text-xs text-zinc-400">
-                Upload a reference image and describe what you want to change or make different. The AI will iterate on the image while maintaining its core characteristics.
+                Upload a base image and elements to replace. The AI will create the same image but with your elements in place of the original ones.
               </p>
             </button>
           </div>
         </div>
 
-        {/* Reference Image Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
+        {/* Reference Image Upload (for design, studio-quality, hyperrealistic, and change-elements) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'change-elements') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-              Reference Image
+              {selectedStyle === 'change-elements' ? 'Image to Change Elements' : 'Reference Image'}
             </label>
             <p className="mb-3 text-xs text-zinc-400">
               {selectedStyle === 'hyperrealistic' 
                 ? 'Upload a reference image that defines the style (lighting, angle, hyperrealism). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact style, angle, lighting, and hyperrealism level.'
                 : selectedStyle === 'studio-quality'
                 ? 'Upload a reference image that defines the style (lighting, composition, professional quality). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact style, lighting, and professional quality.'
-                : selectedStyle === 'copy-image'
-                ? 'Upload a reference image that you want to iterate on. This image will be uploaded to Nano Banana Pro model and placed first. The AI will analyze it and create a prompt that varies it based on what you want to change, while maintaining the core visual characteristics.'
+                : selectedStyle === 'change-elements'
+                ? 'Upload the base image where you want to change elements. This image will be uploaded to Nano Banana Pro model and placed first. Then upload the elements you want to replace in the "Elements" section below.'
                 : 'Upload a reference image that defines the design style (colors, typography, composition). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact design style, colors, and visual aesthetics.'}
             </p>
             <div className="max-w-md">
@@ -626,8 +715,89 @@ export default function ImagePromptGenerator() {
           </div>
         )}
 
-        {/* Product Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
+        {/* Elements Upload (for change-elements only) */}
+        {selectedStyle === 'change-elements' && (
+          <div className="mb-8">
+            <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+              Elements (Up to 2)
+            </label>
+            <p className="mb-3 text-xs text-zinc-400">
+              Upload up to 2 element images that you want to replace in the base image. For example, if the base image has a product, upload your product image here to replace it.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[0, 1].map((index) => (
+                <div key={index} className="space-y-2">
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">
+                    {index === 0 ? 'Element 1' : 'Element 2'}
+                  </label>
+                  {elementPreviews[index] ? (
+                    <div className="relative rounded-xl border-2 border-zinc-700/50 bg-zinc-800/30 p-4">
+                      <div className="relative inline-block w-full">
+                        <img
+                          src={elementPreviews[index]}
+                          alt={`Element ${index + 1} preview`}
+                          className="w-full max-h-48 rounded-lg object-contain"
+                        />
+                        <button
+                          onClick={() => removeElementImage(index)}
+                          disabled={isGenerating}
+                          className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Remove image"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 px-4 py-6 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                      <svg
+                        className="mb-2 h-8 w-8 text-zinc-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                      <span className="text-xs font-medium text-zinc-400">
+                        Upload
+                      </span>
+                      <span className="mt-1 text-[10px] text-zinc-500">
+                        PNG, JPG, WEBP
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        onChange={(e) => handleElementImageUpload(e, index)}
+                        className="hidden"
+                        disabled={isGenerating}
+                      />
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Product Images Upload (for design, studio-quality, hyperrealistic) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
               Product (Optional - Up to 3)
@@ -707,8 +877,8 @@ export default function ImagePromptGenerator() {
           </div>
         )}
 
-        {/* Character Images Upload (for design, studio-quality, hyperrealistic, and copy-image) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'copy-image') && (
+        {/* Character Images Upload (for design, studio-quality, hyperrealistic) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
               Characters (Optional - Up to 3)
@@ -829,13 +999,13 @@ export default function ImagePromptGenerator() {
                     {selectedStyle === 'hyperrealistic' && 'Hyperrealistic Image Prompt'}
                     {selectedStyle === 'studio-quality' && 'Studio Quality Image Prompt'}
                     {selectedStyle === 'design' && 'Design Image Prompt'}
-                    {selectedStyle === 'copy-image' && 'Copy Image Prompt'}
+                    {selectedStyle === 'change-elements' && 'Change Elements in Image Prompt'}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1">
                     Style: {selectedStyle === 'hyperrealistic' && 'Hyperrealistic'}
                     {selectedStyle === 'studio-quality' && 'Studio Quality'}
                     {selectedStyle === 'design' && 'Design'}
-                    {selectedStyle === 'copy-image' && 'Copy Image'}
+                    {selectedStyle === 'change-elements' && 'Change Elements in Image'}
                   </p>
                 </div>
                 <CopyButton
