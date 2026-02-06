@@ -228,6 +228,12 @@ export async function POST(request: NextRequest) {
     // Define actionTextLower once for use throughout the function
     const actionTextLower = (actionText || '').toLowerCase();
     
+    // Detect if action text mentions "product" or similar terms (define early for use in camera angle instructions)
+    const mentionsProduct = actionTextLower.includes('product') || 
+                           actionTextLower.includes('el producto') || 
+                           actionTextLower.includes('producto') ||
+                           actionTextLower.includes('the product');
+    
     // Detect multiple actions/phases in action text
     const hasMultipleActions = actionTextLower.includes(' and then ') || 
                               actionTextLower.includes(' then ') ||
@@ -282,11 +288,11 @@ ${hasMultipleActions ? '- **MANDATORY**: Use ALL selected compositions and ensur
               return `\n\n**CRITICAL - CAMERA ANGLE: SELFIE CAMERA (MANDATORY):**
 The video MUST be recorded as if the character is holding the phone/camera themselves while recording (selfie-style). This means:
 - The character is actively holding the phone and recording themselves while performing the actions
-- The camera angle should be as if the character is holding their phone in front of them, showing themselves and the product/actions
+- The camera angle should be as if the character is holding their phone in front of them, showing themselves${mentionsProduct ? ' and the product' : ''}/actions
 - Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone selfie recording
 - The character is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
 - The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
-${hasMovement ? `- **CRITICAL - ENHANCED SHAKY CAMERA DUE TO MOVEMENT**: Since the action involves character movement, action, or scene motion (e.g., running, walking, active movements, gestures, dynamic actions), the camera shake MUST be MORE PRONOUNCED and REALISTIC. The camera should shake more noticeably as if the person is genuinely holding the phone with their hand while moving - this is CRITICAL for authenticity. The shake should feel like real handheld recording during movement: natural hand tremors, body movement affecting camera stability, slight rotation and tilt as the person moves, all while maintaining the character and product in frame. This enhanced shake makes it look 100% real, as if someone is actually holding their phone while walking, running, or moving around. The shake should be authentic and natural - more pronounced than static shots, but not so extreme that it becomes distracting. The content must remain clear and hyperrealistic despite the enhanced shake.` : `- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be subtle but noticeable, authentic to someone holding their phone while recording. The shake should feel authentic and natural, not excessive or distracting.`}
+${hasMovement ? `- **CRITICAL - ENHANCED SHAKY CAMERA DUE TO MOVEMENT**: Since the action involves character movement, action, or scene motion (e.g., running, walking, active movements, gestures, dynamic actions), the camera shake MUST be MORE PRONOUNCED and REALISTIC. The camera should shake more noticeably as if the person is genuinely holding the phone with their hand while moving - this is CRITICAL for authenticity. The shake should feel like real handheld recording during movement: natural hand tremors, body movement affecting camera stability, slight rotation and tilt as the person moves, all while maintaining the character${mentionsProduct ? ' and product' : ''} in frame. This enhanced shake makes it look 100% real, as if someone is actually holding their phone while walking, running, or moving around. The shake should be authentic and natural - more pronounced than static shots, but not so extreme that it becomes distracting. The content must remain clear and hyperrealistic despite the enhanced shake.` : `- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be subtle but noticeable, authentic to someone holding their phone while recording. The shake should feel authentic and natural, not excessive or distracting.`}
 - **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.`;
             } else if (angle === 'Frontal Camera') {
               return `\n\n**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA / POV (MANDATORY):**
@@ -545,12 +551,17 @@ This scene is part of a **${totalVideoDuration}-second total video** with **${to
       comp.toLowerCase().includes('ugc close') || comp.toLowerCase().includes('close-up')
     );
 
+    // Check if Selfie Camera is selected
+    const hasSelfieCamera = cameraAnglesArray.some((angle: string) => 
+      angle.toLowerCase().includes('selfie')
+    );
+
     // UGC Close-up specific instructions
     const ugcCloseUpInstructions = hasUgcCloseUp
       ? `\n\n**UGC CLOSE-UP MODE (ACTIVE):**
-Since "UGC Close-up" composition is selected, you MUST focus the shot on the product or person in extreme close-up detail. Sharp focus on textures and details, natural shaky camera movements typical of mobile close-up shots, and emphasize the intimate, detailed view of the product or person. The close-up should feel authentic and spontaneous, as if someone is naturally zooming in with their iPhone to show details. **CRITICAL - Even in close-up, the background (if visible) must remain sharp and in focus, exactly as iPhone cameras record. No blur on background elements.**`
+Since "UGC Close-up" composition is selected, you MUST focus the shot on the ${mentionsProduct ? 'product or ' : ''}person in extreme close-up detail. Sharp focus on textures and details, natural shaky camera movements typical of mobile close-up shots, and emphasize the intimate, detailed view of the ${mentionsProduct ? 'product or ' : ''}person. The close-up should feel authentic and spontaneous, as if someone is naturally zooming in with their iPhone to show details.${hasSelfieCamera ? ` **CRITICAL - CAMERA DISTANCE WITH SELFIE CAMERA**: Since "Selfie Camera" is also selected, the person should be positioned CLOSER to the camera when speaking or interacting, creating an intimate selfie-style close-up. The person's face should be noticeably closer to the lens, as if they're holding the phone close while talking or demonstrating, creating that authentic close-up selfie aesthetic where the person is speaking directly to the camera from a closer distance.` : ''} **CRITICAL - Even in close-up, the background (if visible) must remain sharp and in focus, exactly as iPhone cameras record. No blur on background elements.**`
       : `\n\n**UGC SCENE COMPOSITION (NO CLOSE-UP):**
-Since "UGC Close-up" is NOT selected, you MUST show the product and person together in the scene as a whole, maintaining a natural wide-to-medium shot that captures the complete scene context. DO NOT focus exclusively on the product or person in close-up. Instead, show them integrated naturally within the environment, maintaining the full scene context. The shot should feel like a natural, casual mobile recording that captures the entire scene organically, as if recorded from the iPhone of the AI avatar. Keep everything visible together in the frame, respecting the natural composition of the scene while maintaining 100% UGC hyperrealism. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
+Since "UGC Close-up" is NOT selected, you MUST show the ${mentionsProduct ? 'product and ' : ''}person together in the scene as a whole, maintaining a natural wide-to-medium shot that captures the complete scene context. DO NOT focus exclusively on the ${mentionsProduct ? 'product or ' : ''}person in close-up. Instead, show them integrated naturally within the environment, maintaining the full scene context. The shot should feel like a natural, casual mobile recording that captures the entire scene organically, as if recorded from the iPhone of the AI avatar. Keep everything visible together in the frame, respecting the natural composition of the scene while maintaining 100% UGC hyperrealism. **CRITICAL - Background must be completely sharp and in focus, no blur whatsoever, exactly as iPhone cameras record in vertical mode.**`;
 
     // Lighting-specific instructions for hyperrealistic UGC
     // For scenes 4+, use more concise lighting instructions to save tokens
@@ -606,12 +617,7 @@ The lighting MUST be authentic indoor natural lighting as if someone is genuinel
         })()
       : '';
 
-    // Detect if action text mentions "product" or similar terms
-    // actionTextLower is already defined above
-    const mentionsProduct = actionTextLower.includes('product') || 
-                           actionTextLower.includes('el producto') || 
-                           actionTextLower.includes('producto') ||
-                           actionTextLower.includes('the product');
+    // mentionsProduct is already defined above for use in camera angle instructions
 
     // Product handling instructions - CRITICAL
     const productHandlingInstructions = (() => {
@@ -745,7 +751,7 @@ This scene MUST have ABSOLUTELY NO DIALOGUE, SPEECH, NARRATION, OR ANY SPOKEN CO
     const lipSyncInstructions = lipSync && !noDialogue
       ? (isScene4Plus
           ? `\n\n**LIP SYNC MODE (MANDATORY):**
-Character MUST visibly speak the words. Mouth movements must match dialogue exactly. Character's lips, jaw, and facial expressions must synchronize with spoken words. Show character speaking clearly.`
+Character MUST visibly speak the words. Mouth movements must match dialogue exactly. Character's lips, jaw, and facial expressions must synchronize with spoken words. Show character speaking clearly. **ENHANCED NATURAL GESTURES**: When speaking, the character must use natural, organic hand gestures and body language that feel spontaneous and authentic - pointing, gesturing, hand movements that naturally accompany speech, subtle head movements, natural eye contact with camera, all feeling completely unscripted and human.`
           : `\n\n**CRITICAL - LIP SYNC MODE (MANDATORY):**
 This scene uses LIP SYNC mode. The character MUST visibly speak the words from the script:
 - **VISIBLE SPEECH**: The character's mouth movements MUST match the dialogue exactly
@@ -753,14 +759,21 @@ This scene uses LIP SYNC mode. The character MUST visibly speak the words from t
 - **Clear visibility**: The character's face and mouth must be clearly visible while speaking
 - **Natural movements**: Mouth movements should be natural and match the pronunciation of each word
 - **Facial expressions**: Facial expressions should match the tone and emotion of the dialogue
-- **MANDATORY**: The prompt must explicitly describe that the character is visibly speaking, with mouth movements matching the dialogue word-for-word`)
+- **ENHANCED NATURAL GESTURES WHEN SPEAKING (CRITICAL)**: When the character is speaking, they MUST use natural, organic hand gestures and body language that feel completely spontaneous and authentic:
+  * **Natural hand gestures**: Pointing, gesturing, hand movements that naturally accompany speech (e.g., showing, demonstrating, emphasizing points)
+  * **Organic body language**: Subtle head movements, natural posture shifts, authentic body positioning that feels unscripted
+  * **Spontaneous movements**: Gestures should feel like they're happening naturally as the person speaks, not rehearsed or robotic
+  * **Eye contact**: Natural eye contact with the camera while speaking, with occasional natural breaks
+  * **Varied expressions**: Facial expressions should change naturally throughout the dialogue, matching the emotional tone
+  * **Authentic reactions**: Natural reactions and responses that feel genuine and unscripted
+- **MANDATORY**: The prompt must explicitly describe that the character is visibly speaking with natural, organic gestures and body language that accompany the speech, making it feel completely authentic and human`)
       : '';
 
     // Voiceover instructions
     const voiceoverInstructions = voiceover && !noDialogue
       ? (isScene4Plus
           ? `\n\n**VOICEOVER MODE (MANDATORY):**
-Voice plays while actions happen. Character does NOT visibly speak. Voice narrates over the scene. Character performs actions without mouth movements matching dialogue.`
+Voice plays while actions happen. Character does NOT visibly speak. Voice narrates over the scene. Character performs actions without mouth movements matching dialogue. **ENHANCED NATURAL GESTURES**: While the voiceover plays, the character must use natural, organic gestures and body language that feel spontaneous and authentic - pointing, demonstrating, natural hand movements, subtle head movements, all feeling completely unscripted and human.`
           : `\n\n**CRITICAL - VOICEOVER MODE (MANDATORY):**
 This scene uses VOICEOVER mode. The voice plays while actions happen, but the character does NOT visibly speak:
 - **NO VISIBLE SPEECH**: The character does NOT move their mouth to match the dialogue
@@ -768,7 +781,13 @@ This scene uses VOICEOVER mode. The voice plays while actions happen, but the ch
 - **Character actions**: The character performs actions, movements, and expressions WITHOUT speaking
 - **No lip sync**: The character's mouth should be closed or in a neutral position, NOT matching the words
 - **Voice over scene**: The dialogue is heard as a voiceover while the character performs visual actions
-- **MANDATORY**: The prompt must explicitly state that the voice plays as narration/voiceover, and the character does NOT visibly speak the words`)
+- **ENHANCED NATURAL GESTURES DURING VOICEOVER (CRITICAL)**: While the voiceover plays, the character MUST use natural, organic gestures and body language that feel completely spontaneous and authentic:
+  * **Natural hand gestures**: Pointing, demonstrating, showing, gesturing naturally as they perform actions (e.g., showing the product, demonstrating use, emphasizing points)
+  * **Organic body language**: Subtle head movements, natural posture shifts, authentic body positioning that feels unscripted
+  * **Spontaneous movements**: Gestures should feel like they're happening naturally as the person acts, not rehearsed or robotic
+  * **Natural reactions**: Authentic reactions and responses to what they're doing, feeling genuine and unscripted
+  * **Varied expressions**: Facial expressions should change naturally throughout the scene, matching the actions and tone
+- **MANDATORY**: The prompt must explicitly state that the voice plays as narration/voiceover, the character does NOT visibly speak the words, but the character uses natural, organic gestures and body language while performing actions`)
       : '';
     const criticalEnhancementSection = isScene4Plus
       ? `**CRITICAL - YOU MUST ENHANCE (Scene ${currentSceneIndex + 1}):**
@@ -817,7 +836,7 @@ ${productImageFile
   ? `- **Product image WILL BE ATTACHED to final prompt**: ALWAYS refer to "the product shown in the attached image" or "the attached product image". NEVER invent product details (colors, shapes, materials, types, names). The product image will be attached separately - describe it as "the product from the attached image".`
   : mentionsProduct
   ? `- **Product mentioned in action text but no image attached**: Only use generic references like "the product" or "the product being used". NEVER invent what the product looks like (no colors, shapes, materials, types, names, brands).`
-  : `- **No product mentioned**: If the action text does not mention "product", do not add product references.`}
+  : `- **CRITICAL - NO PRODUCT MENTIONED**: If the action text does NOT mention "product", "el producto", "producto", or "the product", you MUST NOT add any product references whatsoever. Do NOT mention showing a product, using a product, holding a product, or any product-related actions. Focus ONLY on what is actually described in the action text.`}
 
 **ABSOLUTE PROHIBITION - NEVER INVENT PRODUCT DETAILS:**
 - **FORBIDDEN**: Never assume, guess, or invent product characteristics
@@ -848,7 +867,7 @@ By default, the video should look as if the person is **holding the phone/camera
 - The person is holding the camera/phone and recording themselves while doing the actions
 - The person is narrating, talking, and showing things directly to the camera as they perform the actions
 - Everything happens from the first-person perspective of the person recording themselves
-- The camera angle should be as if the person is holding their phone in front of them, showing themselves and the product/actions
+- The camera angle should be as if the person is holding their phone in front of them, showing themselves${mentionsProduct ? ' and the product' : ''}/actions
 - Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone recording
 - The person is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
 - The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
