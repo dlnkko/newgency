@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
 - Maintain consistency unless action text explicitly overrides`;
         } else {
           // Full version for scenes 1-3
-          consistencyRules = `\n\n**CRITICAL CONSISTENCY RULES (MANDATORY):**
+        consistencyRules = `\n\n**CRITICAL CONSISTENCY RULES (MANDATORY):**
 1. **SAME PERSON**: You MUST maintain the exact same person across ALL scenes. If the first scene describes a person (their appearance, age, gender, clothing, etc.), you MUST use the SAME person description in this scene. Do NOT change the person's characteristics unless explicitly stated in the action text.
 
 2. **SAME LOCATION**: If the first scene (Scene 1) takes place in a specific location (e.g., "in a car", "at home", "in a kitchen", "outdoors", etc.), you MUST keep the SAME location in this scene UNLESS the current action text explicitly states a different location. Only change locations if the user explicitly mentions a location change in the action text.
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
                               actionTextLower.includes(' another scene') ||
                               actionTextLower.includes(' first ') && actionTextLower.includes(' second ') ||
                               actionTextLower.includes(' primero ') && actionTextLower.includes(' segundo ');
-
+    
     const compositionInstructions = compositionArray.length > 1
       ? `\n\n**CRITICAL COMPOSITION DISTRIBUTION TASK:**
 You have been provided with MULTIPLE camera compositions that should be intelligently distributed throughout the action described. Your task is to analyze the action text and determine WHEN and WHERE each composition should be applied based on the logical flow of the action.
@@ -276,6 +276,9 @@ ${hasMultipleActions ? '- **MANDATORY**: Use ALL selected compositions and ensur
             // Single camera angle selected
             const angle = uniqueAngles[0];
             if (angle === 'Selfie Camera') {
+              // Detect if there's movement in the action
+              const hasMovement = /\b(running|walking|moving|jumping|dancing|exercising|working out|active|movement|motion|action|gesture|moving around|walking around|running around|moving while|walking while|running while|in motion|on the move|actively|dynamic|energetic)\b/i.test(actionText);
+              
               return `\n\n**CRITICAL - CAMERA ANGLE: SELFIE CAMERA (MANDATORY):**
 The video MUST be recorded as if the character is holding the phone/camera themselves while recording (selfie-style). This means:
 - The character is actively holding the phone and recording themselves while performing the actions
@@ -283,7 +286,7 @@ The video MUST be recorded as if the character is holding the phone/camera thems
 - Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone selfie recording
 - The character is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
 - The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
-- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be more pronounced if there's movement in the action (e.g., running, walking, active movements), but the content must remain clear and hyperrealistic. The shake should feel authentic and natural, not excessive or distracting.
+${hasMovement ? `- **CRITICAL - ENHANCED SHAKY CAMERA DUE TO MOVEMENT**: Since the action involves character movement, action, or scene motion (e.g., running, walking, active movements, gestures, dynamic actions), the camera shake MUST be MORE PRONOUNCED and REALISTIC. The camera should shake more noticeably as if the person is genuinely holding the phone with their hand while moving - this is CRITICAL for authenticity. The shake should feel like real handheld recording during movement: natural hand tremors, body movement affecting camera stability, slight rotation and tilt as the person moves, all while maintaining the character and product in frame. This enhanced shake makes it look 100% real, as if someone is actually holding their phone while walking, running, or moving around. The shake should be authentic and natural - more pronounced than static shots, but not so extreme that it becomes distracting. The content must remain clear and hyperrealistic despite the enhanced shake.` : `- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be subtle but noticeable, authentic to someone holding their phone while recording. The shake should feel authentic and natural, not excessive or distracting.`}
 - **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.`;
             } else if (angle === 'Frontal Camera') {
               return `\n\n**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA / POV (MANDATORY):**
@@ -322,7 +325,7 @@ ${uniqueAngles.map((angle, idx) => `${idx + 1}. ${angle}`).join('\n')}
 
 **Camera Angle Descriptions:**
 
-1. **Selfie Camera**: The character is holding the phone themselves while recording (selfie-style). Natural shaky camera movements, more pronounced during movement. Best for: actions where the character can hold the phone (e.g., "showing the product to the camera", "talking directly to camera", "records herself").
+1. **Selfie Camera**: The character is holding the phone themselves while recording (selfie-style). Natural shaky camera movements that are MORE PRONOUNCED and REALISTIC when there's character movement, action, or scene motion (e.g., running, walking, active movements, gestures, dynamic actions). The camera should shake noticeably as if the person is genuinely holding the phone with their hand while moving - this creates authentic handheld recording during movement. Best for: actions where the character can hold the phone (e.g., "showing the product to the camera", "talking directly to camera", "records herself").
 
 2. **Frontal Camera**: POV (Point of View) perspective - the character is NOT visible, only their perspective from behind the camera. The viewer sees only what the character sees (hands, product, environment), as if looking through their eyes. Best for: POV perspectives, first-person actions (e.g., "POV showing product", "from her pov", "showing from pov").
 
@@ -346,7 +349,7 @@ ${hasPOV ? '- **POV DETECTION**: Since "POV" is mentioned in the action text, yo
 4. Ensure ALL actions are included and ALL camera angles are used`;
             } else {
               // Multiple angles but single action - AI must decide
-              return `\n\n**CRITICAL - CAMERA ANGLE SELECTION (MULTIPLE OPTIONS - AI MUST DECIDE):**
+            return `\n\n**CRITICAL - CAMERA ANGLE SELECTION (MULTIPLE OPTIONS - AI MUST DECIDE):**
 Multiple camera angles have been selected. You MUST analyze the action text and intelligently choose which camera angle to use based on the context and action described.
 
 **Available camera angles:**
@@ -883,12 +886,19 @@ The final output must be strictly a single, continuous paragraph, without line b
 - **CRITICAL - NO BACKGROUND BLUR (MANDATORY)**: The background MUST be completely sharp and in focus, exactly as iPhone cameras record in vertical/portrait mode. NEVER apply blur, bokeh, shallow depth of field, or any depth-of-field effects to the background. The entire scene (foreground, subject, and background) must be equally sharp and focused, as if recorded with an iPhone in standard camera mode. This is essential for authentic UGC realism - real iPhone recordings in vertical mode keep everything in focus.
 - **Real-world imperfections**: Natural motion blur during movement, authentic focus breathing, realistic chromatic aberration in high contrast areas, genuine lens flare when appropriate
 - **Environmental authenticity**: Realistic light interaction with surfaces, authentic material response to lighting, genuine atmospheric perspective, natural light scattering
+- **CRITICAL - NATURAL CHARACTER EXPRESSIONS AND GESTURES (MANDATORY)**: Characters MUST have natural, organic expressions and gestures that feel completely authentic and human. They must NOT look like robots or static statues:
+  - **Natural facial expressions**: Characters must show genuine, varied facial expressions - subtle micro-expressions, natural eye movements, authentic smiles, genuine reactions, natural eyebrow movements, realistic mouth movements when speaking. Expressions should change naturally throughout the scene, not remain frozen or static.
+  - **Organic gestures**: Characters must use natural hand gestures, body language, and movements that feel spontaneous and authentic - not robotic or overly rehearsed. Gestures should be varied, natural, and match what real people do when talking, demonstrating, or interacting.
+  - **Natural body movement**: Characters should have subtle, natural body movements - slight shifts in weight, natural posture changes, organic head movements, realistic breathing, natural blinking. They must NOT appear frozen, static, or robotic.
+  - **Authentic reactions**: Characters must react naturally to what's happening in the scene - genuine surprise, authentic interest, natural engagement, real emotions. Reactions should feel spontaneous and unscripted.
+  - **Avoid robotic appearance**: Characters must NEVER look like robots, statues, or static mannequins. They must have the natural fluidity, expressiveness, and organic movement of real human beings. Every expression, gesture, and movement must feel authentic and natural.
 
 **AUTHENTICITY REQUIREMENTS:**
 - **Spontaneity**: Natural, unscripted feel
 - **Natural handheld camera movements**: Slight shake, imperfect zoom, quick pan - all authentic to iPhone recording
 - **Subtle mobile grain**: Authentic iPhone camera grain and noise characteristics
 - **Genuine ambient lighting**: Without professional artifices, exactly as iPhone cameras capture real-world lighting
+- **Natural character behavior**: Characters must behave like real people - with natural expressions, authentic gestures, organic movements, and genuine reactions. They must NOT appear robotic, static, or artificial.
 
 The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. The background must be completely sharp and in focus, just like real iPhone footage in vertical mode. **CRITICAL PROHIBITION - NO TEXT OVERLAY: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.**
 

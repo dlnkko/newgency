@@ -101,7 +101,9 @@ export default function VideoPromptGenerator() {
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   
   // Automatic mode state
+  const [autoMode, setAutoMode] = useState<'describe' | 'script'>('describe');
   const [autoDescription, setAutoDescription] = useState<string>('');
+  const [autoScript, setAutoScript] = useState<string>('');
   const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
   
   // Copy Video mode state
@@ -762,6 +764,75 @@ export default function VideoPromptGenerator() {
     }
   };
 
+  const generatePromptFromScript = async () => {
+    if (!autoScript.trim()) {
+      alert('Please enter a script');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGeneratedPrompt('');
+    setError(null);
+    setIsInsufficientCredits(false);
+
+    try {
+      // Convert product image to base64 if provided
+      let productImageBase64 = null;
+      if (productImage) {
+        productImageBase64 = await fileToBase64(productImage);
+      }
+
+      const response = await fetch('/api/generate-video-prompt-from-script', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          script: autoScript.trim(),
+          productImage: productImageBase64,
+          isUGC: isUGC,
+          productPhotoWillBeAttached: productPhotoWillBeAttached
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          // Insufficient credits
+          setIsInsufficientCredits(true);
+          setError(null);
+          setGeneratedPrompt('');
+          setIsGenerating(false);
+          return;
+        }
+        throw new Error(data.error || 'Error generating prompt from script');
+      }
+
+      // Set the generated prompt directly (formatted as scenes)
+      if (data.prompt) {
+        setGeneratedPrompt(data.prompt);
+        setError(null);
+        setIsInsufficientCredits(false);
+      } else {
+        throw new Error('No prompt generated');
+      }
+    } catch (error: any) {
+      console.error('Error generating prompt from script:', error);
+      // Check if it's a credit error from the response
+      if (error.message && error.message.includes('Insufficient credits')) {
+        setIsInsufficientCredits(true);
+        setError(null);
+      } else {
+        setError(`Error generating prompt: ${error.message || 'Please try again.'}`);
+        setIsInsufficientCredits(false);
+      }
+      setGeneratedPrompt('');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const compositionOptions = mainStyle ? COMPOSITION_OPTIONS[mainStyle] : [];
   const cameraAngleOptions = mainStyle ? CAMERA_ANGLE_OPTIONS[mainStyle] : [];
   const lightingOptions = mainStyle ? LIGHTING_OPTIONS[mainStyle] : [];
@@ -1362,12 +1433,61 @@ export default function VideoPromptGenerator() {
                   setCurrentStep('sceneCount');
                   setGeneratedPrompt('');
                   setAutoDescription('');
+                  setAutoScript('');
                 }}
                 className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
               >
                 Switch to Manual →
               </button>
             </div>
+
+            {/* Mode Selection: Describe Video vs Create From Script */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                Select Input Method
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setAutoMode('describe');
+                    setAutoScript('');
+                  }}
+                  disabled={isGenerating}
+                  className={`rounded-xl border-2 px-6 py-4 text-left transition-all ${
+                    autoMode === 'describe'
+                      ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_20px_rgba(250,204,21,0.25)] ring-2 ring-amber-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="font-bold text-base mb-1">Describe Video</div>
+                  <div className="text-xs opacity-90">Describe what you want and AI will create scenes automatically</div>
+                  {autoMode === 'describe' && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-400">✓</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setAutoMode('script');
+                    setAutoDescription('');
+                  }}
+                  disabled={isGenerating}
+                  className={`rounded-xl border-2 px-6 py-4 text-left transition-all relative ${
+                    autoMode === 'script'
+                      ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_20px_rgba(250,204,21,0.25)] ring-2 ring-amber-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="font-bold text-base mb-1">Create Video From Script</div>
+                  <div className="text-xs opacity-90">Paste your script and AI will generate scenes with all parameters</div>
+                  {autoMode === 'script' && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-400">✓</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Describe Video Input */}
+            {autoMode === 'describe' && (
             <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex-1">
@@ -1419,6 +1539,62 @@ export default function VideoPromptGenerator() {
                 className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
               />
             </div>
+            )}
+
+            {/* Create From Script Input */}
+            {autoMode === 'script' && (
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="mb-2 text-lg font-bold text-amber-300">
+                    Paste Your Script
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Paste your complete script. The AI will analyze it, distribute it into scenes, and automatically choose all parameters (compositions, camera angles, lighting, duration, lip sync, voiceover, etc.) to create a complete video prompt.
+                  </p>
+                </div>
+                {/* UGC Toggle */}
+                <div className="ml-6 flex flex-col items-end gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    UGC Mode
+                  </label>
+                  <button
+                    onClick={() => setIsUGC(!isUGC)}
+                    disabled={isGenerating}
+                    className={`relative inline-flex h-8 w-16 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isUGC
+                        ? 'bg-amber-500/80'
+                        : 'bg-zinc-700/50'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                        isUGC ? 'translate-x-9' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-xs font-medium ${isUGC ? 'text-amber-400' : 'text-zinc-500'}`}>
+                    {isUGC ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              </div>
+              {isUGC && (
+                <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+                  <p className="text-xs text-amber-300">
+                    <strong>UGC Mode ON:</strong> The video will be generated as hyperrealistic UGC content, as if recorded by a real person on their iPhone with authentic mobile aesthetics, natural handheld movements, and photorealistic textures.
+                  </p>
+                </div>
+              )}
+              <textarea
+                value={autoScript}
+                onChange={(e) => setAutoScript(e.target.value)}
+                placeholder="Example: 'right now im going to the gym, i want to show you guys something. this is my new creatine and it saved my life completely. I'm feeling stronger and my performance has improved. you're missing out if you don't buy this.'"
+                rows={10}
+                disabled={isGenerating}
+                className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+              />
+            </div>
+            )}
 
             {/* Product Image Upload */}
             <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
@@ -1513,8 +1689,8 @@ export default function VideoPromptGenerator() {
             </div>
 
             <button
-              onClick={generatePromptAutomatic}
-              disabled={isGenerating || !autoDescription.trim()}
+              onClick={autoMode === 'describe' ? generatePromptAutomatic : generatePromptFromScript}
+              disabled={isGenerating || (autoMode === 'describe' ? !autoDescription.trim() : !autoScript.trim())}
               className="w-full rounded-xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-500/20 px-8 py-4 font-bold text-amber-200 shadow-[0_0_30px_rgba(250,204,21,0.25)] transition-all hover:from-amber-500/30 hover:via-amber-500/25 hover:to-amber-500/30 hover:shadow-[0_0_40px_rgba(250,204,21,0.35)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500/20 disabled:hover:via-amber-500/15 disabled:hover:to-amber-500/20 disabled:hover:scale-100"
             >
               {isGenerating ? (
