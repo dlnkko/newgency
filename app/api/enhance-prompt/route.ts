@@ -234,6 +234,9 @@ export async function POST(request: NextRequest) {
                            actionTextLower.includes('producto') ||
                            actionTextLower.includes('the product');
     
+    // Detect specifically if there's walking (for continuous movement emphasis)
+    const hasWalking = /\b(walking|walk|caminando|caminar|walking around|walking while|walking through|walking in|walking to)\b/i.test(actionText);
+    
     // Detect multiple actions/phases in action text
     const hasMultipleActions = actionTextLower.includes(' and then ') || 
                               actionTextLower.includes(' then ') ||
@@ -285,6 +288,9 @@ ${hasMultipleActions ? '- **MANDATORY**: Use ALL selected compositions and ensur
               // Detect if there's movement in the action
               const hasMovement = /\b(running|walking|moving|jumping|dancing|exercising|working out|active|movement|motion|action|gesture|moving around|walking around|running around|moving while|walking while|running while|in motion|on the move|actively|dynamic|energetic)\b/i.test(actionText);
               
+              // Detect specifically if there's walking
+              const hasWalking = /\b(walking|walk|caminando|caminar|walking around|walking while|walking through|walking in|walking to)\b/i.test(actionText);
+              
               return `\n\n**CRITICAL - CAMERA ANGLE: SELFIE CAMERA (MANDATORY):**
 The video MUST be recorded as if the character is holding the phone/camera themselves while recording (selfie-style). This means:
 - The character is actively holding the phone and recording themselves while performing the actions
@@ -292,8 +298,20 @@ The video MUST be recorded as if the character is holding the phone/camera thems
 - Natural handheld camera movements: slight shake, imperfect zoom, quick pan - all authentic to iPhone selfie recording
 - The character is actively engaging with the camera, speaking to it, demonstrating, and showing things directly to the viewer
 - The video should feel like authentic selfie-style content where the creator is both the performer and the videographer
+${hasWalking ? `- **CRITICAL - CONTINUOUS WALKING (MANDATORY)**: Since the action text mentions "walking" or "caminando", the character MUST walk CONTINUOUSLY and NOTABLY throughout the scene. The character should NOT stop walking, pause, or become static. The walking must be:
+  * **Continuous movement**: The character walks steadily and continuously, not just a few steps then stopping
+  * **Notable and visible**: The walking is clearly visible and noticeable - the character's body moves forward, legs move in walking motion, background changes as they move
+  * **Natural walking pace**: The character walks at a natural, steady pace while speaking or performing actions
+  * **No static moments**: The character does NOT stop walking to speak or perform actions - they continue walking while doing everything
+  * **Background movement**: As the character walks, the background/environment should show movement and change, indicating continuous forward motion
+  * **MANDATORY**: The prompt must explicitly describe continuous, notable walking throughout the entire scene - the character is walking while speaking, walking while demonstrating, walking while interacting with the camera. The walking is a continuous, prominent action, not a brief moment.` : ''}
 ${hasMovement ? `- **CRITICAL - ENHANCED SHAKY CAMERA DUE TO MOVEMENT**: Since the action involves character movement, action, or scene motion (e.g., running, walking, active movements, gestures, dynamic actions), the camera shake MUST be MORE PRONOUNCED and REALISTIC. The camera should shake more noticeably as if the person is genuinely holding the phone with their hand while moving - this is CRITICAL for authenticity. The shake should feel like real handheld recording during movement: natural hand tremors, body movement affecting camera stability, slight rotation and tilt as the person moves, all while maintaining the character${mentionsProduct ? ' and product' : ''} in frame. This enhanced shake makes it look 100% real, as if someone is actually holding their phone while walking, running, or moving around. The shake should be authentic and natural - more pronounced than static shots, but not so extreme that it becomes distracting. The content must remain clear and hyperrealistic despite the enhanced shake.` : `- **HYPERREALISM WITH SHAKY CAMERA**: The camera must be hyperrealistic but with natural shaky movements typical of handheld selfie recording. The shake should be subtle but noticeable, authentic to someone holding their phone while recording. The shake should feel authentic and natural, not excessive or distracting.`}
-- **CRITICAL**: Even with shaky camera, all content must be clear, sharp, and hyperrealistic. The shake should enhance authenticity without compromising visual clarity.`;
+- **NATURAL SELFIE CAMERA MOVEMENTS (AUTHENTICITY)**: The character can naturally adjust the camera position while recording to create more authentic, dynamic selfie footage. This includes:
+  * **Natural camera adjustments**: The character may subtly adjust the camera angle, tilt it slightly up or down, move it closer or further away, or change the framing naturally as they speak or demonstrate
+  * **Dynamic camera positioning**: The camera position can change organically - for example, raising it slightly higher to show more of the environment, lowering it to focus on something, or adjusting the angle to better frame the action
+  * **Authentic selfie behavior**: These camera movements should feel completely natural and unscripted, as if the person is genuinely adjusting their phone while recording themselves
+  * **Not excessive**: Camera movements should be subtle and natural, not dramatic or distracting - they should enhance authenticity without being the focus
+- **CRITICAL**: Even with shaky camera and natural camera adjustments, all content must be clear, sharp, and hyperrealistic. The movements should enhance authenticity without compromising visual clarity.`;
             } else if (angle === 'Frontal Camera') {
               return `\n\n**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA / POV (MANDATORY):**
 The video MUST be recorded as a POV (Point of View) perspective - the character is NOT visible in the frame, only their perspective from behind the camera. This means:
@@ -760,12 +778,13 @@ This scene uses LIP SYNC mode. The character MUST visibly speak the words from t
 - **Natural movements**: Mouth movements should be natural and match the pronunciation of each word
 - **Facial expressions**: Facial expressions should match the tone and emotion of the dialogue
 - **ENHANCED NATURAL GESTURES WHEN SPEAKING (CRITICAL)**: When the character is speaking, they MUST use natural, organic hand gestures and body language that feel completely spontaneous and authentic:
-  * **Natural hand gestures**: Pointing, gesturing, hand movements that naturally accompany speech (e.g., showing, demonstrating, emphasizing points)
-  * **Organic body language**: Subtle head movements, natural posture shifts, authentic body positioning that feels unscripted
-  * **Spontaneous movements**: Gestures should feel like they're happening naturally as the person speaks, not rehearsed or robotic
-  * **Eye contact**: Natural eye contact with the camera while speaking, with occasional natural breaks
-  * **Varied expressions**: Facial expressions should change naturally throughout the dialogue, matching the emotional tone
-  * **Authentic reactions**: Natural reactions and responses that feel genuine and unscripted
+  * **Natural hand gestures**: Pointing, gesturing, hand movements that naturally accompany speech (e.g., showing, demonstrating, emphasizing points). Gestures should be SPECIFICALLY ACORDED TO THE SCRIPT CONTENT - if the script mentions something specific, the gestures should naturally relate to that content (e.g., if script mentions "this product", character naturally points to or shows it; if script mentions "look at this", character naturally gestures to draw attention)
+  * **Organic body language**: Subtle head movements, natural posture shifts, authentic body positioning that feels unscripted. Body language should match the tone and content of the script - if script is enthusiastic, body language should reflect that; if script is explanatory, body language should be more demonstrative
+  * **Spontaneous movements**: Gestures should feel like they're happening naturally as the person speaks, not rehearsed or robotic. Movements should be TIMED WITH THE SCRIPT - gestures should naturally occur at moments that make sense with what's being said
+  * **Eye contact**: Natural eye contact with the camera while speaking, with occasional natural breaks. Eye contact should vary naturally - more direct when emphasizing points, occasional breaks when thinking or demonstrating
+  * **Varied expressions**: Facial expressions should change naturally throughout the dialogue, matching the emotional tone and content of the script. Expressions should be SPECIFICALLY ACORDED TO WHAT'S BEING SAID - if script is excited, show excitement; if script is serious, show seriousness
+  * **Authentic reactions**: Natural reactions and responses that feel genuine and unscripted. Reactions should be ACORDED TO THE SCRIPT - if script mentions something surprising, show surprise; if script mentions something positive, show positive reaction
+  * **Script-synchronized gestures**: All gestures, expressions, and movements should feel like they're naturally responding to and accompanying the specific words and content of the script, not generic or disconnected
 - **MANDATORY**: The prompt must explicitly describe that the character is visibly speaking with natural, organic gestures and body language that accompany the speech, making it feel completely authentic and human`)
       : '';
 
@@ -782,11 +801,12 @@ This scene uses VOICEOVER mode. The voice plays while actions happen, but the ch
 - **No lip sync**: The character's mouth should be closed or in a neutral position, NOT matching the words
 - **Voice over scene**: The dialogue is heard as a voiceover while the character performs visual actions
 - **ENHANCED NATURAL GESTURES DURING VOICEOVER (CRITICAL)**: While the voiceover plays, the character MUST use natural, organic gestures and body language that feel completely spontaneous and authentic:
-  * **Natural hand gestures**: Pointing, demonstrating, showing, gesturing naturally as they perform actions (e.g., showing the product, demonstrating use, emphasizing points)
-  * **Organic body language**: Subtle head movements, natural posture shifts, authentic body positioning that feels unscripted
-  * **Spontaneous movements**: Gestures should feel like they're happening naturally as the person acts, not rehearsed or robotic
-  * **Natural reactions**: Authentic reactions and responses to what they're doing, feeling genuine and unscripted
-  * **Varied expressions**: Facial expressions should change naturally throughout the scene, matching the actions and tone
+  * **Natural hand gestures**: Pointing, demonstrating, showing, gesturing naturally as they perform actions (e.g., showing the product, demonstrating use, emphasizing points). Gestures should be SPECIFICALLY ACORDED TO THE VOICEOVER CONTENT - if voiceover mentions something specific, the gestures should naturally relate to that content (e.g., if voiceover mentions "this product", character naturally points to or shows it; if voiceover mentions "look at this", character naturally gestures to draw attention)
+  * **Organic body language**: Subtle head movements, natural posture shifts, authentic body positioning that feels unscripted. Body language should match the tone and content of the voiceover - if voiceover is enthusiastic, body language should reflect that; if voiceover is explanatory, body language should be more demonstrative
+  * **Spontaneous movements**: Gestures should feel like they're happening naturally as the person acts, not rehearsed or robotic. Movements should be TIMED WITH THE VOICEOVER - gestures should naturally occur at moments that make sense with what's being said in the voiceover
+  * **Natural reactions**: Authentic reactions and responses to what they're doing, feeling genuine and unscripted. Reactions should be ACORDED TO THE VOICEOVER - if voiceover mentions something surprising, show surprise; if voiceover mentions something positive, show positive reaction
+  * **Varied expressions**: Facial expressions should change naturally throughout the scene, matching the actions and tone. Expressions should be SPECIFICALLY ACORDED TO THE VOICEOVER CONTENT - if voiceover is excited, show excitement; if voiceover is serious, show seriousness
+  * **Voiceover-synchronized gestures**: All gestures, expressions, and movements should feel like they're naturally responding to and accompanying the specific words and content of the voiceover, not generic or disconnected
 - **MANDATORY**: The prompt must explicitly state that the voice plays as narration/voiceover, the character does NOT visibly speak the words, but the character uses natural, organic gestures and body language while performing actions`)
       : '';
     const criticalEnhancementSection = isScene4Plus
@@ -918,6 +938,13 @@ The final output must be strictly a single, continuous paragraph, without line b
 - **Subtle mobile grain**: Authentic iPhone camera grain and noise characteristics
 - **Genuine ambient lighting**: Without professional artifices, exactly as iPhone cameras capture real-world lighting
 - **Natural character behavior**: Characters must behave like real people - with natural expressions, authentic gestures, organic movements, and genuine reactions. They must NOT appear robotic, static, or artificial.
+${hasWalking ? `- **CRITICAL - CONTINUOUS WALKING (MANDATORY)**: Since the action text mentions "walking" or "caminando", the character MUST walk CONTINUOUSLY and NOTABLY throughout the entire scene. The character should NOT stop walking, pause, or become static at any point. The walking must be:
+  * **Continuous and steady**: The character walks steadily and continuously from start to finish, not just a few steps then stopping
+  * **Clearly visible**: The walking is prominently visible - the character's body moves forward continuously, legs move in natural walking motion, background/environment changes as they move forward
+  * **Natural walking pace**: The character walks at a natural, steady pace while speaking, demonstrating, or performing any actions
+  * **No static moments**: The character does NOT stop walking to speak or perform actions - they continue walking while doing everything (speaking, demonstrating, interacting with camera)
+  * **Background movement**: As the character walks, the background/environment should show continuous movement and change, clearly indicating forward motion throughout the scene
+  * **MANDATORY**: The prompt must explicitly describe continuous, notable walking throughout the ENTIRE scene duration - the character is walking while speaking, walking while demonstrating, walking while interacting with the camera. The walking is a continuous, prominent, and visible action from beginning to end, not a brief moment or occasional movement.` : ''}
 
 The goal is to simulate the maximum authenticity and credibility of real-life, non-POV user-generated content with ABSOLUTE HYPERREALISM. The video should be impossible to distinguish from a real iPhone recording. Every shadow, light, texture, and detail must be hyperrealistic and photorealistic. The background must be completely sharp and in focus, just like real iPhone footage in vertical mode. **CRITICAL PROHIBITION - NO TEXT OVERLAY: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. The prompt must describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.**
 
