@@ -28,7 +28,7 @@ export default function ImagePromptGenerator() {
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
 
   // Compress and resize image to reduce file size
-  const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.85): Promise<File> => {
+  const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.85, targetSizeKB?: number): Promise<File> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -63,21 +63,55 @@ export default function ImagePromptGenerator() {
 
           ctx.drawImage(img, 0, 0, width, height);
 
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) {
-                reject(new Error('Failed to compress image'));
-                return;
-              }
-              const compressedFile = new File([blob], file.name, {
-                type: file.type,
-                lastModified: Date.now(),
-              });
-              resolve(compressedFile);
-            },
-            file.type,
-            quality
-          );
+          // If target size is specified, try to achieve it with binary search
+          const compressWithTargetSize = (currentQuality: number): Promise<File> => {
+            return new Promise((resolveCompress, rejectCompress) => {
+              canvas.toBlob(
+                (blob) => {
+                  if (!blob) {
+                    rejectCompress(new Error('Failed to compress image'));
+                    return;
+                  }
+                  
+                  const compressedFile = new File([blob], file.name, {
+                    type: 'image/jpeg', // Always use JPEG for better compression
+                    lastModified: Date.now(),
+                  });
+                  
+                  // If target size is specified and we haven't reached it, try lower quality
+                  if (targetSizeKB && compressedFile.size > targetSizeKB * 1024 && currentQuality > 0.3) {
+                    compressWithTargetSize(Math.max(0.3, currentQuality - 0.1))
+                      .then(resolveCompress)
+                      .catch(rejectCompress);
+                  } else {
+                    resolveCompress(compressedFile);
+                  }
+                },
+                'image/jpeg', // Always use JPEG for better compression
+                currentQuality
+              );
+            });
+          };
+
+          if (targetSizeKB) {
+            compressWithTargetSize(quality).then(resolve).catch(reject);
+          } else {
+            canvas.toBlob(
+              (blob) => {
+                if (!blob) {
+                  reject(new Error('Failed to compress image'));
+                  return;
+                }
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg', // Always use JPEG for better compression
+                  lastModified: Date.now(),
+                });
+                resolve(compressedFile);
+              },
+              'image/jpeg', // Always use JPEG for better compression
+              quality
+            );
+          }
         };
         img.onerror = () => reject(new Error('Failed to load image'));
         img.src = e.target?.result as string;
@@ -275,24 +309,37 @@ export default function ImagePromptGenerator() {
     setCostInfo(null);
 
     try {
+      // Calculate total number of images to determine compression strategy
+      const totalImages = (referenceImage ? 1 : 0) + productImages.length + characterImages.length + elementImages.length;
+      
+      // More aggressive compression when multiple images
+      // Target size per image: smaller when there are more images
+      const maxSizePerImageKB = totalImages > 3 ? 400 : totalImages > 1 ? 600 : 800; // 400KB, 600KB, or 800KB per image
+      const maxSizeBytes = maxSizePerImageKB * 1024;
+      
+      // Total request body limit (3.5MB to stay under Vercel's 4.5MB limit)
+      const maxTotalSizeBytes = 3.5 * 1024 * 1024; // 3.5MB total for all images combined
+      let totalSizeBytes = 0;
+
       // Convert reference image to base64 if provided
       let referenceImageBase64: string | null = null;
-      const maxSizeBytes = 3 * 1024 * 1024; // 3MB per image
       
       if (referenceImage) {
         let imageToProcess = referenceImage;
         
-        // If image is too large, compress it
-        if (referenceImage.size > maxSizeBytes) {
-          console.log(`Reference image size (${(referenceImage.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+        // Always compress reference image when there are multiple images
+        if (totalImages > 1 || referenceImage.size > maxSizeBytes) {
+          console.log(`Reference image size (${(referenceImage.size / 1024 / 1024).toFixed(2)}MB), compressing...`);
           try {
-            imageToProcess = await compressImage(referenceImage, 1920, 1920, 0.85);
+            // More aggressive compression for multiple images
+            const targetSize = totalImages > 3 ? 300 : totalImages > 1 ? 500 : undefined;
+            imageToProcess = await compressImage(referenceImage, 1280, 1280, 0.7, targetSize);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             
-            // If still too large after compression, compress more aggressively
+            // If still too large, compress even more aggressively
             if (imageToProcess.size > maxSizeBytes) {
               console.log('Still too large, compressing more aggressively...');
-              imageToProcess = await compressImage(referenceImage, 1280, 1280, 0.75);
+              imageToProcess = await compressImage(referenceImage, 1024, 1024, 0.6, maxSizePerImageKB);
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
@@ -305,10 +352,12 @@ export default function ImagePromptGenerator() {
         // Convert to base64
         referenceImageBase64 = await fileToBase64(imageToProcess);
         
-        // Check final base64 size (should be ~33% larger than original)
+        // Check final base64 size
         const base64Size = new Blob([referenceImageBase64]).size;
-        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError('Reference image is too large even after compression. Please use images smaller than 3MB.');
+        totalSizeBytes += base64Size;
+        
+        if (base64Size > maxSizeBytes * 1.4) { // Base64 is ~33% larger
+          setError('Reference image is too large even after compression. Please use a smaller image.');
           return;
         }
       }
@@ -320,17 +369,19 @@ export default function ImagePromptGenerator() {
         const image = productImages[i];
         let imageToProcess = image;
         
-        // If image is too large, compress it
-        if (image.size > maxSizeBytes) {
-          console.log(`Product image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+        // Always compress when there are multiple images or if image is too large
+        if (totalImages > 1 || image.size > maxSizeBytes) {
+          console.log(`Product image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB), compressing...`);
           try {
-            imageToProcess = await compressImage(image, 1920, 1920, 0.85);
+            // More aggressive compression for multiple images
+            const targetSize = totalImages > 3 ? 300 : totalImages > 1 ? 500 : undefined;
+            imageToProcess = await compressImage(image, 1280, 1280, 0.7, targetSize);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             
-            // If still too large after compression, compress more aggressively
+            // If still too large, compress even more aggressively
             if (imageToProcess.size > maxSizeBytes) {
               console.log('Still too large, compressing more aggressively...');
-              imageToProcess = await compressImage(image, 1280, 1280, 0.75);
+              imageToProcess = await compressImage(image, 1024, 1024, 0.6, maxSizePerImageKB);
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
@@ -343,10 +394,18 @@ export default function ImagePromptGenerator() {
         // Convert to base64
         const base64 = await fileToBase64(imageToProcess);
         
-        // Check final base64 size (should be ~33% larger than original)
+        // Check final base64 size
         const base64Size = new Blob([base64]).size;
-        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError(`Product image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+        totalSizeBytes += base64Size;
+        
+        // Check if total size exceeds limit
+        if (totalSizeBytes > maxTotalSizeBytes) {
+          setError(`Total size of all images (${(totalSizeBytes / 1024 / 1024).toFixed(2)}MB) exceeds the limit. Please use fewer or smaller images.`);
+          return;
+        }
+        
+        if (base64Size > maxSizeBytes * 1.4) { // Base64 is ~33% larger
+          setError(`Product image ${i + 1} is too large even after compression. Please use a smaller image.`);
           return;
         }
         
@@ -360,17 +419,19 @@ export default function ImagePromptGenerator() {
         const image = characterImages[i];
         let imageToProcess = image;
         
-        // If image is too large, compress it
-        if (image.size > maxSizeBytes) {
-          console.log(`Character image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+        // Always compress when there are multiple images or if image is too large
+        if (totalImages > 1 || image.size > maxSizeBytes) {
+          console.log(`Character image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB), compressing...`);
           try {
-            imageToProcess = await compressImage(image, 1920, 1920, 0.85);
+            // More aggressive compression for multiple images
+            const targetSize = totalImages > 3 ? 300 : totalImages > 1 ? 500 : undefined;
+            imageToProcess = await compressImage(image, 1280, 1280, 0.7, targetSize);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             
-            // If still too large after compression, compress more aggressively
+            // If still too large, compress even more aggressively
             if (imageToProcess.size > maxSizeBytes) {
               console.log('Still too large, compressing more aggressively...');
-              imageToProcess = await compressImage(image, 1280, 1280, 0.75);
+              imageToProcess = await compressImage(image, 1024, 1024, 0.6, maxSizePerImageKB);
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
@@ -383,10 +444,18 @@ export default function ImagePromptGenerator() {
         // Convert to base64
         const base64 = await fileToBase64(imageToProcess);
         
-        // Check final base64 size (should be ~33% larger than original)
+        // Check final base64 size
         const base64Size = new Blob([base64]).size;
-        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError(`Character image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+        totalSizeBytes += base64Size;
+        
+        // Check if total size exceeds limit
+        if (totalSizeBytes > maxTotalSizeBytes) {
+          setError(`Total size of all images (${(totalSizeBytes / 1024 / 1024).toFixed(2)}MB) exceeds the limit. Please use fewer or smaller images.`);
+          return;
+        }
+        
+        if (base64Size > maxSizeBytes * 1.4) { // Base64 is ~33% larger
+          setError(`Character image ${i + 1} is too large even after compression. Please use a smaller image.`);
           return;
         }
         
@@ -400,17 +469,19 @@ export default function ImagePromptGenerator() {
         const image = elementImages[i];
         let imageToProcess = image;
         
-        // If image is too large, compress it
-        if (image.size > maxSizeBytes) {
-          console.log(`Element image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB) exceeds limit, compressing...`);
+        // Always compress when there are multiple images or if image is too large
+        if (totalImages > 1 || image.size > maxSizeBytes) {
+          console.log(`Element image ${i + 1} size (${(image.size / 1024 / 1024).toFixed(2)}MB), compressing...`);
           try {
-            imageToProcess = await compressImage(image, 1920, 1920, 0.85);
+            // More aggressive compression for multiple images
+            const targetSize = totalImages > 3 ? 300 : totalImages > 1 ? 500 : undefined;
+            imageToProcess = await compressImage(image, 1280, 1280, 0.7, targetSize);
             console.log(`Compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             
-            // If still too large after compression, compress more aggressively
+            // If still too large, compress even more aggressively
             if (imageToProcess.size > maxSizeBytes) {
               console.log('Still too large, compressing more aggressively...');
-              imageToProcess = await compressImage(image, 1280, 1280, 0.75);
+              imageToProcess = await compressImage(image, 1024, 1024, 0.6, maxSizePerImageKB);
               console.log(`Re-compressed to ${(imageToProcess.size / 1024 / 1024).toFixed(2)}MB`);
             }
           } catch (compressError) {
@@ -423,14 +494,28 @@ export default function ImagePromptGenerator() {
         // Convert to base64
         const base64 = await fileToBase64(imageToProcess);
         
-        // Check final base64 size (should be ~33% larger than original)
+        // Check final base64 size
         const base64Size = new Blob([base64]).size;
-        if (base64Size > 4 * 1024 * 1024) { // 4MB limit for base64 string
-          setError(`Element image ${i + 1} is too large even after compression. Please use images smaller than 3MB.`);
+        totalSizeBytes += base64Size;
+        
+        // Check if total size exceeds limit
+        if (totalSizeBytes > maxTotalSizeBytes) {
+          setError(`Total size of all images (${(totalSizeBytes / 1024 / 1024).toFixed(2)}MB) exceeds the limit. Please use fewer or smaller images.`);
+          return;
+        }
+        
+        if (base64Size > maxSizeBytes * 1.4) { // Base64 is ~33% larger
+          setError(`Element image ${i + 1} is too large even after compression. Please use a smaller image.`);
           return;
         }
         
         elementImagesBase64.push(base64);
+      }
+      
+      // Final check of total size
+      if (totalSizeBytes > maxTotalSizeBytes) {
+        setError(`Total size of all images (${(totalSizeBytes / 1024 / 1024).toFixed(2)}MB) exceeds the limit of ${(maxTotalSizeBytes / 1024 / 1024).toFixed(2)}MB. Please use fewer or smaller images.`);
+        return;
       }
 
       const response = await fetch('/api/generate-image-prompt', {
