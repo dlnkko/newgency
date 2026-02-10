@@ -41,7 +41,20 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     console.log('AI client initialized');
     
-    const body = await request.json();
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (jsonError: any) {
+      console.error('Error parsing request body:', jsonError);
+      return NextResponse.json(
+        {
+          error: 'Invalid request format',
+          details: 'The request body is not valid JSON. Please try again.'
+        },
+        { status: 400 }
+      );
+    }
+    
     console.log('Request body received:', {
       hasDescription: !!body.description,
       style: body.style,
@@ -101,7 +114,39 @@ export async function POST(request: NextRequest) {
     if (mainReferenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'change-elements')) {
       try {
         console.log('Uploading main reference image to Gemini Files...');
-        const referenceBuffer = Buffer.from(mainReferenceImage.split(',')[1], 'base64');
+        
+        // Validate base64 image format
+        if (!mainReferenceImage.includes(',')) {
+          return NextResponse.json(
+            { 
+              error: 'Invalid image format', 
+              details: 'The reference image is not in a valid base64 format. Please try uploading the image again.'
+            },
+            { status: 400 }
+          );
+        }
+        
+        let referenceBuffer: Buffer;
+        try {
+          const base64Data = mainReferenceImage.split(',')[1];
+          if (!base64Data || base64Data.trim() === '') {
+            throw new Error('Empty base64 data');
+          }
+          referenceBuffer = Buffer.from(base64Data, 'base64');
+          if (referenceBuffer.length === 0) {
+            throw new Error('Invalid base64 data');
+          }
+        } catch (base64Error: any) {
+          console.error('Error parsing base64 image:', base64Error);
+          return NextResponse.json(
+            { 
+              error: 'Invalid image data', 
+              details: 'The reference image data is corrupted or invalid. Please try uploading the image again.'
+            },
+            { status: 400 }
+          );
+        }
+        
         let referenceMime = mainReferenceImage.split(';')[0].split(':')[1] || 'image/png';
         
         // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
@@ -191,7 +236,27 @@ export async function POST(request: NextRequest) {
     const uploadImageToGemini = async (imageBase64: string, imageNumber: number, imageType: 'product' | 'character' | 'element'): Promise<any> => {
       try {
         console.log(`Uploading ${imageType} image ${imageNumber} to Gemini Files...`);
-        const imageBuffer = Buffer.from(imageBase64.split(',')[1], 'base64');
+        
+        // Validate base64 image format
+        if (!imageBase64.includes(',')) {
+          throw new Error(`Invalid ${imageType} image format: not in valid base64 format`);
+        }
+        
+        let imageBuffer: Buffer;
+        try {
+          const base64Data = imageBase64.split(',')[1];
+          if (!base64Data || base64Data.trim() === '') {
+            throw new Error('Empty base64 data');
+          }
+          imageBuffer = Buffer.from(base64Data, 'base64');
+          if (imageBuffer.length === 0) {
+            throw new Error('Invalid base64 data');
+          }
+        } catch (base64Error: any) {
+          console.error(`Error parsing base64 ${imageType} image ${imageNumber}:`, base64Error);
+          throw new Error(`Invalid ${imageType} image data: corrupted or invalid base64 format`);
+        }
+        
         let imageMime = imageBase64.split(';')[0].split(':')[1] || 'image/png';
           
           // Convert unsupported formats to PNG (Gemini supports: image/png, image/jpeg, image/webp, image/gif)
@@ -1903,6 +1968,39 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
           details: 'The GOOGLE_GENAI_API_KEY environment variable is missing or invalid. Please configure it in your production environment (Vercel dashboard → Settings → Environment Variables).'
         },
         { status: 500 }
+      );
+    }
+    
+    // Check for image-related errors
+    if (error.message?.includes('image') || error.message?.includes('Image') || error.message?.includes('base64') || error.message?.includes('corrupted') || error.message?.includes('Invalid')) {
+      return NextResponse.json(
+        {
+          error: 'Error processing image',
+          details: error.message || 'There was an error processing one of the uploaded images. Please ensure all images are valid image files (PNG, JPEG, WebP, or GIF) and try again.'
+        },
+        { status: 400 }
+      );
+    }
+    
+    // Check for file upload errors
+    if (error.message?.includes('file') || error.message?.includes('File') || error.message?.includes('upload') || error.message?.includes('Upload')) {
+      return NextResponse.json(
+        {
+          error: 'Error uploading image',
+          details: error.message || 'There was an error uploading the image to the server. Please try uploading a smaller image or check your internet connection.'
+        },
+        { status: 500 }
+      );
+    }
+    
+    // Check for timeout errors
+    if (error.message?.includes('timeout') || error.message?.includes('Timeout') || error.message?.includes('TIMEOUT')) {
+      return NextResponse.json(
+        {
+          error: 'Request timeout',
+          details: 'The request took too long to process. Please try again with a smaller image or simpler description.'
+        },
+        { status: 504 }
       );
     }
     

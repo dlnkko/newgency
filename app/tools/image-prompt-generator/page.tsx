@@ -499,9 +499,30 @@ export default function ImagePromptGenerator() {
       setGeneratedPrompt(data.prompt || '');
       setCostInfo(data.usage);
     } catch (err: any) {
-      const errorMessage = err?.message || 'An error occurred while generating the prompt';
-      setError(errorMessage);
       console.error('Error generating prompt:', err);
+      
+      // Provide more descriptive error messages
+      let errorMessage = 'An error occurred while generating the prompt';
+      
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.response?.status === 400) {
+        errorMessage = 'Invalid request. Please check your input and try again.';
+      } else if (err?.response?.status === 401) {
+        errorMessage = 'Authentication error. Please check your API configuration.';
+      } else if (err?.response?.status === 429) {
+        errorMessage = 'Rate limit exceeded. Please try again later.';
+      } else if (err?.response?.status === 500) {
+        errorMessage = 'Server error. Please try again or contact support if the problem persists.';
+      } else if (err?.response?.status === 504) {
+        errorMessage = 'Request timeout. The image may be too large. Please try with a smaller image.';
+      } else if (err?.name === 'NetworkError' || err?.message?.includes('network') || err?.message?.includes('fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (err?.message?.includes('image') || err?.message?.includes('Image')) {
+        errorMessage = `Image error: ${err.message}`;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsGenerating(false);
     }
