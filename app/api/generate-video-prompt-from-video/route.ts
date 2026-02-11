@@ -39,22 +39,158 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     
-    let body: any;
-    try {
-      body = await request.json();
-    } catch (jsonError: any) {
-      console.error('Error parsing request body:', jsonError);
-      return NextResponse.json(
-        {
-          error: 'Invalid request format',
-          details: 'The request body is not valid JSON. Please try again.'
-        },
-        { status: 400 }
-      );
-    }
+    // Check if request is FormData (new format) or JSON (old format)
+    const contentType = request.headers.get('content-type') || '';
+    const isFormData = contentType.includes('multipart/form-data');
     
-    // Support both old format (base64) and new format (file URIs)
-    const { video, videoFileUri, videoMimeType, image, imageFileUri, imageMimeType, duration, changes, script } = body;
+    let videoFileUri: string | null = null;
+    let videoMimeType: string | null = null;
+    let imageFileUri: string | null = null;
+    let imageMimeType: string | null = null;
+    let duration: number;
+    let changes: string | null = null;
+    let script: string | null = null;
+    let video: string | null = null;
+    let image: string | null = null;
+
+    if (isFormData) {
+      // New format: FormData with files
+      console.log('Processing FormData request...');
+      const formData = await request.formData();
+      
+      const videoFile = formData.get('video') as File;
+      const imageFile = formData.get('image') as File | null;
+      duration = parseInt(formData.get('duration') as string) || 10;
+      changes = (formData.get('changes') as string) || null;
+      script = (formData.get('script') as string) || null;
+
+      if (!videoFile || !(videoFile instanceof File)) {
+        return NextResponse.json(
+          { error: 'Video file is required' },
+          { status: 400 }
+        );
+      }
+
+      // Upload video directly to Gemini Files
+      console.log(`Uploading video: ${(videoFile.size / 1024 / 1024).toFixed(2)}MB`);
+      let videoMime = videoFile.type || 'video/mp4';
+      const supportedFormats = ['video/mp4', 'video/mov', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/avi'];
+      if (!supportedFormats.includes(videoMime.toLowerCase())) {
+        videoMime = 'video/mp4';
+      }
+
+      try {
+        const uploadedVideo = await ai.files.upload({
+          file: videoFile,
+          config: { mimeType: videoMime }
+        });
+        console.log('Video uploaded:', uploadedVideo.uri);
+
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 120000;
+        const checkInterval = 3000;
+        const startTime = Date.now();
+
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error(`Timeout waiting for video to be ready`);
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status:`, err);
+            }
+          }
+          return file;
+        };
+
+        const videoFileName = uploadedVideo.name || uploadedVideo.uri?.split('/').pop() || '';
+        if (videoFileName) {
+          const activeVideo = await waitForFile(uploadedVideo, videoFileName);
+          videoFileUri = activeVideo.uri || null;
+          videoMimeType = activeVideo.mimeType || videoMime;
+        } else {
+          videoFileUri = uploadedVideo.uri || null;
+          videoMimeType = videoMime;
+        }
+
+        // Upload image if provided
+        if (imageFile && imageFile instanceof File) {
+          let imageMime = imageFile.type || 'image/png';
+          const supportedImageFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+          if (!supportedImageFormats.includes(imageMime.toLowerCase())) {
+            imageMime = 'image/png';
+          }
+
+          const uploadedImage = await ai.files.upload({
+            file: imageFile,
+            config: { mimeType: imageMime }
+          });
+          console.log('Image uploaded:', uploadedImage.uri);
+
+          const maxWaitTime = 60000;
+          const checkInterval = 2000;
+          const startTime = Date.now();
+
+          const waitForFile = async (file: any, fileName: string) => {
+            if (file.state === 'ACTIVE') return file;
+            while (file.state !== 'ACTIVE') {
+              if (Date.now() - startTime > maxWaitTime) {
+                throw new Error(`Timeout waiting for image to be ready`);
+              }
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+              try {
+                const fileInfo = await ai.files.get({ name: fileName });
+                file = fileInfo;
+              } catch (err) {
+                console.error(`Error checking file status:`, err);
+              }
+            }
+            return file;
+          };
+
+          const imageFileName = uploadedImage.name || uploadedImage.uri?.split('/').pop() || '';
+          if (imageFileName) {
+            const activeImage = await waitForFile(uploadedImage, imageFileName);
+            imageFileUri = activeImage.uri || null;
+            imageMimeType = activeImage.mimeType || imageMime;
+          } else {
+            imageFileUri = uploadedImage.uri || null;
+            imageMimeType = imageMime;
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('Error uploading files:', uploadError);
+        return NextResponse.json(
+          { 
+            error: 'Error uploading video to Gemini', 
+            details: uploadError.message || 'Could not upload the video to Gemini Files'
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      // Old format: JSON with base64 or file URIs
+      let body: any;
+      try {
+        body = await request.json();
+      } catch (jsonError: any) {
+        console.error('Error parsing request body:', jsonError);
+        return NextResponse.json(
+          {
+            error: 'Invalid request format',
+            details: 'The request body is not valid JSON. Please try again.'
+          },
+          { status: 400 }
+        );
+      }
+      
+      ({ video, videoFileUri, videoMimeType, image, imageFileUri, imageMimeType, duration, changes, script } = body);
+    }
 
     // Check if using new format (file URIs) or old format (base64)
     const useFileUris = !!(videoFileUri || imageFileUri);
@@ -105,7 +241,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Old format: Handle base64 (for backward compatibility)
       // Validate video base64 format
-      if (!video.includes(',')) {
+      if (!video || !video.includes(',')) {
         return NextResponse.json(
           { 
             error: 'Invalid video format', 

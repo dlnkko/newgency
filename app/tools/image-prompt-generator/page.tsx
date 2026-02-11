@@ -5,7 +5,7 @@ import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
 import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
-type StyleType = 'hyperrealistic' | 'studio-quality' | 'design' | 'change-elements' | null;
+type StyleType = 'hyperrealistic-ugc' | 'hyperrealistic-cinematic' | 'studio-quality' | 'design' | 'change-elements' | null;
 
 export default function ImagePromptGenerator() {
   const [description, setDescription] = useState<string>('');
@@ -96,21 +96,21 @@ export default function ImagePromptGenerator() {
           if (targetSizeKB) {
             compressWithTargetSize(quality).then(resolve).catch(reject);
           } else {
-            canvas.toBlob(
-              (blob) => {
-                if (!blob) {
-                  reject(new Error('Failed to compress image'));
-                  return;
-                }
-                const compressedFile = new File([blob], file.name, {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to compress image'));
+                return;
+              }
+              const compressedFile = new File([blob], file.name, {
                   type: 'image/jpeg', // Always use JPEG for better compression
-                  lastModified: Date.now(),
-                });
-                resolve(compressedFile);
-              },
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
               'image/jpeg', // Always use JPEG for better compression
-              quality
-            );
+            quality
+          );
           }
         };
         img.onerror = () => reject(new Error('Failed to load image'));
@@ -293,7 +293,7 @@ export default function ImagePromptGenerator() {
     }
 
     if (!selectedStyle) {
-      setError('Please select a style (Hyperrealistic, Studio Quality, Design, or Change Elements in Image)');
+      setError('Please select a style (Hyperrealistic UGC, Hyperrealistic Cinematic, Studio Quality, Design, or Change Elements in Image)');
       return;
     }
 
@@ -673,20 +673,36 @@ export default function ImagePromptGenerator() {
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
             Select Style
           </label>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <button
-              onClick={() => setSelectedStyle('hyperrealistic')}
+              onClick={() => setSelectedStyle('hyperrealistic-ugc')}
               disabled={isGenerating}
               className={`rounded-xl border-2 p-6 text-left transition-all ${
-                selectedStyle === 'hyperrealistic'
+                selectedStyle === 'hyperrealistic-ugc'
                   ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 shadow-[0_0_30px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30'
                   : 'border-zinc-700/50 bg-zinc-800/30 hover:border-amber-500/50 hover:bg-zinc-800/50'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              <div className="mb-2 text-2xl">🎯</div>
-              <h3 className="mb-2 text-lg font-bold text-zinc-50">Hyperrealistic</h3>
+              <div className="mb-2 text-2xl">📱</div>
+              <h3 className="mb-2 text-lg font-bold text-zinc-50">Hyperrealistic UGC</h3>
               <p className="text-xs text-zinc-400">
-                Maximum realism with authentic shadows, lights, textures, and colors. Perfect for realistic people, environments, and objects.
+                iPhone-style hyperrealism with authentic shadows, lights, textures, and colors. Perfect for UGC-style content that looks like real phone photos.
+              </p>
+            </button>
+
+            <button
+              onClick={() => setSelectedStyle('hyperrealistic-cinematic')}
+              disabled={isGenerating}
+              className={`rounded-xl border-2 p-6 text-left transition-all ${
+                selectedStyle === 'hyperrealistic-cinematic'
+                  ? 'border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 shadow-[0_0_30px_rgba(250,204,21,0.2)] ring-1 ring-amber-500/30'
+                  : 'border-zinc-700/50 bg-zinc-800/30 hover:border-amber-500/50 hover:bg-zinc-800/50'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <div className="mb-2 text-2xl">🎬</div>
+              <h3 className="mb-2 text-lg font-bold text-zinc-50">Hyperrealistic Cinematic</h3>
+              <p className="text-xs text-zinc-400">
+                Cinematic hyperrealism with professional camera quality, dramatic lighting, and film-like aesthetics. Perfect for high-production, cinematic visuals.
               </p>
             </button>
 
@@ -740,15 +756,17 @@ export default function ImagePromptGenerator() {
           </div>
         </div>
 
-        {/* Reference Image Upload (for design, studio-quality, hyperrealistic, and change-elements) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic' || selectedStyle === 'change-elements') && (
+        {/* Reference Image Upload (for design, studio-quality, hyperrealistic variants, and change-elements) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic' || selectedStyle === 'change-elements') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
               {selectedStyle === 'change-elements' ? 'Image to Change Elements' : 'Reference Image'}
             </label>
             <p className="mb-3 text-xs text-zinc-400">
-              {selectedStyle === 'hyperrealistic' 
-                ? 'Upload a reference image that defines the style (lighting, angle, hyperrealism). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact style, angle, lighting, and hyperrealism level.'
+              {selectedStyle === 'hyperrealistic-ugc' 
+                ? 'Upload a reference image that defines the UGC style (lighting, angle, iPhone-style hyperrealism). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact UGC style, angle, lighting, and iPhone-style hyperrealism level.'
+                : selectedStyle === 'hyperrealistic-cinematic'
+                ? 'Upload a reference image that defines the cinematic style (lighting, angle, cinematic hyperrealism). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact cinematic style, angle, lighting, and cinematic hyperrealism level.'
                 : selectedStyle === 'studio-quality'
                 ? 'Upload a reference image that defines the style (lighting, composition, professional quality). This image will be uploaded to Nano Banana Pro model and placed first. The generated prompt will specify that the result must match this exact style, lighting, and professional quality.'
                 : selectedStyle === 'change-elements'

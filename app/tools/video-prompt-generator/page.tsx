@@ -254,77 +254,28 @@ export default function VideoPromptGenerator() {
         console.warn('Video type not recognized, but proceeding:', referenceVideo.type);
       }
 
-      // Upload video and image to Gemini Files using FormData (avoids 413 error)
-      console.log('Uploading video to Gemini Files...');
-      const uploadFormData = new FormData();
-      uploadFormData.append('video', referenceVideo);
+      // Send video directly as FormData to the main endpoint (avoids 413 error)
+      // The endpoint will handle the upload to Gemini Files internally
+      console.log('Sending video to generate prompt...');
+      const formData = new FormData();
+      formData.append('video', referenceVideo);
       if (copyVideoImage) {
-        uploadFormData.append('image', copyVideoImage);
+        formData.append('image', copyVideoImage);
+      }
+      formData.append('duration', copyVideoDuration.toString());
+      if (copyVideoChanges.trim()) {
+        formData.append('changes', copyVideoChanges.trim());
+      }
+      if (copyVideoScript.trim()) {
+        formData.append('script', copyVideoScript.trim());
       }
 
-      let uploadResponse: Response;
-      try {
-        uploadResponse = await fetch('/api/upload-video-to-gemini', {
-          method: 'POST',
-          body: uploadFormData,
-        });
-      } catch (uploadError: any) {
-        console.error('Error uploading video:', uploadError);
-        setError('Network error while uploading video. Please check your internet connection and try again.');
-        setIsGenerating(false);
-        return;
-      }
-
-      let uploadData: any;
-      try {
-        uploadData = await uploadResponse.json();
-      } catch (jsonError) {
-        const statusText = uploadResponse.statusText || 'Unknown error';
-        setError(`Error ${uploadResponse.status}: ${statusText}`);
-        setIsGenerating(false);
-        return;
-      }
-
-      if (!uploadResponse.ok) {
-        if (uploadResponse.status === 402) {
-          setIsInsufficientCredits(true);
-          setError(null);
-        } else if (uploadResponse.status === 429) {
-          setError(`Rate limit exceeded. ${uploadData.details || 'Please try again later.'}`);
-          setIsInsufficientCredits(false);
-        } else {
-          const errorMessage = uploadData.error || 'Failed to upload video';
-          const errorDetails = uploadData.details ? `\n\nDetails: ${uploadData.details}` : '';
-          setError(`${errorMessage}${errorDetails}`);
-          setIsInsufficientCredits(false);
-        }
-        setIsGenerating(false);
-        return;
-      }
-
-      if (!uploadData.videoFile || !uploadData.videoFile.uri) {
-        setError('Failed to upload video. Please try again.');
-        setIsGenerating(false);
-        return;
-      }
-
-      // Now send the request with file URIs instead of base64
       let response: Response;
       try {
         response = await fetch('/api/generate-video-prompt-from-video', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            videoFileUri: uploadData.videoFile.uri,
-            videoMimeType: uploadData.videoFile.mimeType,
-            imageFileUri: uploadData.imageFile?.uri || null,
-            imageMimeType: uploadData.imageFile?.mimeType || null,
-            duration: copyVideoDuration,
-            changes: copyVideoChanges.trim() || null,
-            script: copyVideoScript.trim() || null
-          }),
+          body: formData,
+          // Don't set Content-Type header - browser will set it automatically with boundary for FormData
         });
       } catch (fetchError: any) {
         console.error('Error making request:', fetchError);

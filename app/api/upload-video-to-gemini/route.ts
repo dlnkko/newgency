@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     if (!(videoFile instanceof File)) {
       console.error('Video file is not a File instance:', {
         type: typeof videoFile,
-        constructor: videoFile?.constructor?.name,
+        constructor: (videoFile as any)?.constructor?.name,
         value: videoFile
       });
       return NextResponse.json(

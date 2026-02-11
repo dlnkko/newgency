@@ -94,9 +94,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!style || !['hyperrealistic', 'studio-quality', 'design', 'change-elements'].includes(style)) {
+    if (!style || !['hyperrealistic-ugc', 'hyperrealistic-cinematic', 'studio-quality', 'design', 'change-elements'].includes(style)) {
       return NextResponse.json(
-        { error: 'Valid style is required (hyperrealistic, studio-quality, design, or change-elements)' },
+        { error: 'Valid style is required (hyperrealistic-ugc, hyperrealistic-cinematic, studio-quality, design, or change-elements)' },
         { status: 400 }
       );
     }
@@ -109,9 +109,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Handle main reference image upload if provided (for design, studio-quality, hyperrealistic, and change-elements styles)
+    // Handle main reference image upload if provided (for design, studio-quality, hyperrealistic variants, and change-elements styles)
     let mainReferenceImageFile: any = null;
-    if (mainReferenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic' || style === 'change-elements')) {
+    if (mainReferenceImage && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic-ugc' || style === 'hyperrealistic-cinematic' || style === 'change-elements')) {
       try {
         console.log('Uploading main reference image to Gemini Files...');
         
@@ -362,7 +362,7 @@ export async function POST(request: NextRequest) {
 
     // Handle character images upload if provided
     const characterImageFiles: any[] = [];
-    if (characterImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic')) {
+    if (characterImagesArray.length > 0 && (style === 'design' || style === 'studio-quality' || style === 'hyperrealistic-ugc' || style === 'hyperrealistic-cinematic')) {
       const imagesToProcess = characterImagesArray.slice(0, 3);
       
       for (let i = 0; i < imagesToProcess.length; i++) {
@@ -920,7 +920,7 @@ These character images are additional references for character appearance, pose,
 
     // Build reference image note - MAIN REFERENCE IMAGE is the primary style reference
     let referenceImageNote = '';
-    if (style === 'hyperrealistic') {
+    if (style === 'hyperrealistic-ugc' || style === 'hyperrealistic-cinematic') {
       if (mainReferenceImageFile && mainReferenceImagePrompt) {
         // Main reference image with prompt - this is the PRIMARY style reference
         const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
@@ -1138,13 +1138,12 @@ ${!copyCameraAngle && !copyLighting ? `
       referenceImageNote = '';
     }
 
-    // Build style instructions based on UGC detection
-    if (style === 'hyperrealistic') {
-      styleInstructions = `${ugcDetectionInstructions}
+    // Build style instructions based on style type
+    if (style === 'hyperrealistic-ugc') {
+      // UGC style - iPhone photography hyperrealism
+      styleInstructions = `
+**HYPERREALISTIC UGC STYLE REQUIREMENTS (iPhone Photography Hyperrealism):**
 
-**HYPERREALISTIC STYLE REQUIREMENTS (APPLY BASED ON UGC DETECTION):**
-
-**IF UGC IS DETECTED:**
 You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo:
 
 - **iPhone photography aesthetic**: The image must look exactly like it was captured with an iPhone camera - authentic iPhone color science, iPhone's characteristic depth of field, iPhone's natural image processing, iPhone's realistic skin tones and color reproduction
@@ -1231,42 +1230,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
   - **Reference image priority**: ${mainReferenceImageFile ? (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.') : 'Choose the most natural camera angle that fits the scene.'}
 
-The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**
-
-**IF UGC IS NOT DETECTED:**
-You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM but with cinematic, professional, or high-production quality - NOT iPhone/UGC style. The image should look like it was captured with professional camera equipment (DSLR, cinema camera, etc.) - high-quality, polished, and professional:
-- **Professional camera aesthetic**: The image must look like it was captured with professional camera equipment - cinematic color grading, professional depth of field, high-end image processing, professional color science
-- **Cinematic or professional quality**: Based on the description, choose the most appropriate style:
-  - **Cinematic**: If the description suggests cinematic, film-like, or movie-quality content, use cinematic lighting, color grading, and composition (anamorphic lens look, film grain, cinematic color palette)
-  - **Professional photography**: If the description suggests professional photography, use professional camera characteristics (DSLR, mirrorless, or professional camera systems)
-  - **High-production commercial**: If the description suggests commercial or advertisement quality, use high-production, polished, professional aesthetic
-- **Professional camera characteristics**: 
-  - Professional depth of field and bokeh (cinematic blur)
-  - Professional color grading and color science
-  - High-resolution, sharp details
-  - Professional dynamic range
-  - Professional white balance and color temperature
-- **Professional lighting**: Based on the description, use appropriate professional lighting:
-  - Cinematic lighting for cinematic content (dramatic, moody, color-graded)
-  - Professional studio lighting for professional photography
-  - Natural but enhanced lighting for high-production content
-- **Ultra-realistic shadows**: Professional-quality shadows with proper falloff, realistic shadow edges, authentic shadow density and color
-- **Hyperrealistic lighting**: Professional lighting behavior, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
-- **Photorealistic textures**: Every surface must show realistic material properties - hyperrealistic textures with professional detail capture, all textures must look completely real and professional-quality
-- **Human facial features (CRITICAL)**: If the image includes human faces, facial features MUST be:
-  - **Soft and realistic**: Facial features must look soft and natural, exactly as real human faces appear - not harsh, not overly sharp, not artificial
-  - **Natural skin texture**: Skin must have soft, natural texture - smooth but not uniform, with subtle variations, natural pores, and realistic skin quality
-  - **Realistic facial structure**: Facial features must have the natural softness and subtlety of real human faces
-  - **Natural variations**: Skin texture must be non-uniform with natural variations in tone, texture, and detail
-  - **Hyperrealistic but natural**: Maximum realism while maintaining the natural softness and organic quality of real human faces
-  - **Professional-quality capture**: Should look like it was captured with professional camera equipment, not a phone
-- **Authentic colors**: Professional color grading, cinematic color palette, or professional color science based on the description
-- **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, professional depth of field
-- **Maximum realism**: Everything must look 100% real, as if photographed with professional camera equipment in real life
-- **No iPhone characteristics**: DO NOT mention iPhone, phone camera, mobile phone, or any phone-related characteristics. Use professional camera terminology instead (DSLR, cinema camera, professional camera, etc.)
-- **Style adaptation**: Analyze the description carefully and choose the most appropriate professional style (cinematic, professional photography, high-production commercial) that best fits the content
-
-The goal is absolute photorealism with professional/cinematic quality - the image should look like it was captured with professional camera equipment. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, but with professional, polished, high-production aesthetic - NOT iPhone/UGC style.${referenceImageNote}`;
+The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**${referenceImageNote}`;
     } else if (style === 'studio-quality') {
       // Build copy instructions based on user selection
       let copyInstructionsStudio = '';
@@ -1679,25 +1643,27 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
     }
 
     // Build conditional parts before template literal to avoid parsing issues
-    const styleSpecialization = style === 'hyperrealistic' 
-      ? 'hyperrealistic' 
+    const styleSpecialization = style === 'hyperrealistic-ugc' 
+      ? 'hyperrealistic UGC (iPhone photography)' 
+      : style === 'hyperrealistic-cinematic'
+      ? 'hyperrealistic cinematic (professional/cinematic)'
       : style === 'studio-quality' 
         ? 'professional studio photography' 
         : style === 'change-elements'
         ? 'element replacement in image'
         : 'professional design';
     
-    const styleApplicationNote = style === 'hyperrealistic' 
-      ? 'IF UGC is detected: Use iPhone/hyperrealistic UGC style. IF UGC is NOT detected: Use cinematic, professional, or high-production quality (still hyperrealistic, but NOT iPhone/UGC).'
+    const styleApplicationNote = style === 'hyperrealistic-ugc' 
+      ? 'Use iPhone/hyperrealistic UGC style - the image must look like it was taken with an iPhone with authentic iPhone photography characteristics.'
+      : style === 'hyperrealistic-cinematic'
+      ? 'Use cinematic, professional, or high-production quality - the image must look like it was captured with professional camera equipment (DSLR, cinema camera) with cinematic lighting, color grading, and composition.'
       : style === 'studio-quality' 
         ? 'Use professional studio photography quality'
         : style === 'change-elements'
         ? 'Replace specific elements in the base image with new elements while maintaining all other characteristics'
         : 'Use professional design quality';
     
-    const criticalRequirementsNote = style === 'hyperrealistic' 
-      ? '**CRITICAL**: You MUST analyze the description first. If it explicitly mentions UGC, user-generated, casual, amateur, iPhone video, or similar UGC indicators, use iPhone/UGC style. If it mentions cinematic, professional, high-production, or suggests polished content, use cinematic/professional style (NOT iPhone/UGC). If it is ambiguous, choose the style that best fits the description.'
-      : '';
+    const criticalRequirementsNote = '';
 
     // Build the critical requirements section to avoid template literal nesting issues
     const criticalRequirementsSection = criticalRequirementsNote 
@@ -1716,9 +1682,8 @@ ${styleInstructions}
 
 **Your Task:**
 Generate an extremely detailed, comprehensive prompt that:
-1. **First analyzes** the user's description to determine if it's UGC or not (if style is hyperrealistic)
-2. **Faithfully follows** the user's description: "${description}"
-3. **Applies the appropriate style** based on your analysis:
+1. **Faithfully follows** the user's description: "${description}"
+2. **Applies the appropriate style**:
    - ${styleApplicationNote}
 4. **Enhances and expands** the user's description with professional details, technical specifications, and visual elements
 5. **Ensures maximum quality** for the selected style
