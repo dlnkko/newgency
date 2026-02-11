@@ -125,6 +125,11 @@ function getRateLimiter() {
         limiter: Ratelimit.slidingWindow(15, '1 h'), // 15 requests per hour
         analytics: true,
       }),
+      uploadVideoToGemini: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
+        analytics: true,
+      }),
       generateFrameAnimation: new Ratelimit({
         redis: Redis.fromEnv(),
         limiter: Ratelimit.slidingWindow(20, '1 h'),
@@ -172,6 +177,9 @@ function getRateLimiter() {
       generateVideoPromptFromVideo: {
         limit: (identifier: string) => inMemory.limit(identifier, 15, 3600), // 15 per hour
       },
+      uploadVideoToGemini: {
+        limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
+      },
       generateFrameAnimation: {
         limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
       },
@@ -196,7 +204,7 @@ function getIdentifier(request: Request | NextRequest): string {
 
 // Rate limit middleware
 export async function checkRateLimit(
-  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt' | 'generateVideoPromptAuto' | 'generateViralScriptPerplexity' | 'researchPerplexity' | 'generateVideoPromptFromVideo' | 'generateVideoPromptFromScript' | 'generateFrameAnimation',
+  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt' | 'generateVideoPromptAuto' | 'generateViralScriptPerplexity' | 'researchPerplexity' | 'generateVideoPromptFromVideo' | 'generateVideoPromptFromScript' | 'generateFrameAnimation' | 'uploadVideoToGemini',
   request: Request | NextRequest
 ): Promise<{ success: boolean; limit?: number; remaining?: number; reset?: number; error?: string }> {
   try {

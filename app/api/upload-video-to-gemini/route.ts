@@ -1,21 +1,111 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGoogleGenAI } from '@/lib/gemini';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
 export const maxDuration = 120; // 120 seconds for video processing
 
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit('uploadVideoToGemini', request);
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          details: rateLimitResult.error,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          reset: rateLimitResult.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit?.toString() || '',
+            'X-RateLimit-Remaining': rateLimitResult.remaining?.toString() || '0',
+            'X-RateLimit-Reset': rateLimitResult.reset?.toString() || '',
+            'Retry-After': rateLimitResult.reset?.toString() || '3600',
+          },
+        }
+      );
+    }
+
+    // Check and consume user credit
+    const creditError = await verifyAndConsumeCredit(request);
+    if (creditError) {
+      return creditError;
+    }
+
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     
     // Get FormData from request
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      console.log('Parsing FormData...');
+      formData = await request.formData();
+      console.log('FormData parsed successfully');
+    } catch (formDataError: any) {
+      console.error('Error parsing FormData:', {
+        message: formDataError.message,
+        name: formDataError.name,
+        stack: process.env.NODE_ENV === 'development' ? formDataError.stack : undefined
+      });
+      return NextResponse.json(
+        {
+          error: 'Invalid request format',
+          details: 'The request body is not valid FormData. Please try uploading the video again.'
+        },
+        { status: 400 }
+      );
+    }
+    
     const videoFile = formData.get('video') as File;
     const imageFile = formData.get('image') as File | null;
 
+    console.log('Video file from FormData:', {
+      exists: !!videoFile,
+      type: videoFile ? typeof videoFile : 'null',
+      isFile: videoFile instanceof File,
+      size: videoFile instanceof File ? videoFile.size : 'N/A',
+      name: videoFile instanceof File ? videoFile.name : 'N/A',
+      mimeType: videoFile instanceof File ? videoFile.type : 'N/A'
+    });
+
     if (!videoFile) {
+      console.error('No video file found in FormData');
       return NextResponse.json(
-        { error: 'Video file is required' },
+        { 
+          error: 'Video file is required',
+          details: 'No video file was found in the request. Please make sure to upload a video file.'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate that videoFile is actually a File object
+    if (!(videoFile instanceof File)) {
+      console.error('Video file is not a File instance:', {
+        type: typeof videoFile,
+        constructor: videoFile?.constructor?.name,
+        value: videoFile
+      });
+      return NextResponse.json(
+        { 
+          error: 'Invalid video file', 
+          details: 'The uploaded file is not a valid video file. Please try again.'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate file size
+    if (videoFile.size === 0) {
+      return NextResponse.json(
+        { 
+          error: 'Video file is empty', 
+          details: 'The uploaded video file is empty. Please upload a valid video file.'
+        },
         { status: 400 }
       );
     }
