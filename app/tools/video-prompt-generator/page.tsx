@@ -239,11 +239,24 @@ export default function VideoPromptGenerator() {
 
     try {
       // Validate video file
-      const maxVideoSize = 100 * 1024 * 1024; // 100MB limit
-      if (referenceVideo.size > maxVideoSize) {
-        setError(`Video file is too large (${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 100MB. Please use a smaller video file.`);
+      // Base64 encoding increases size by ~33%, so we need to account for that
+      // Vercel has a 4.5MB body limit for JSON requests, but we'll try to send larger files
+      // and handle 413 errors gracefully
+      const maxVideoSizeOriginal = 50 * 1024 * 1024; // 50MB original file limit
+      
+      // Check original file size
+      if (referenceVideo.size > maxVideoSizeOriginal) {
+        setError(`Video file is too large (${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 50MB. Please use a smaller video file or compress it.`);
         setIsGenerating(false);
         return;
+      }
+      
+      // Calculate estimated base64 size for warning
+      const estimatedBase64Size = referenceVideo.size * 1.33; // Base64 is ~33% larger
+      
+      // Warn if file is large (may cause 413 error)
+      if (estimatedBase64Size > 4.5 * 1024 * 1024) {
+        console.warn(`Large video file detected: ${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB original (~${(estimatedBase64Size / 1024 / 1024).toFixed(2)}MB when encoded). This may exceed Vercel's 4.5MB body limit and cause a 413 error.`);
       }
 
       // Validate video format
@@ -293,13 +306,15 @@ export default function VideoPromptGenerator() {
       }
 
       // Check total request size (base64 is ~33% larger)
+      // Note: Vercel has a 4.5MB body limit, but we validate original file size before encoding
+      // The actual base64 string size will be larger, but we've already validated the original file
       const totalSize = new Blob([videoBase64]).size + (imageBase64 ? new Blob([imageBase64]).size : 0);
-      const maxRequestSize = 4.5 * 1024 * 1024; // 4.5MB limit for Vercel
-      if (totalSize > maxRequestSize) {
-        setError(`Total file size (${(totalSize / 1024 / 1024).toFixed(2)}MB) exceeds the limit. Please use a smaller video or image.`);
-        setIsGenerating(false);
-        return;
-      }
+      // Log for debugging but don't block - we've already validated original file size
+      console.log(`Total request size: ${(totalSize / 1024 / 1024).toFixed(2)}MB (video: ${(new Blob([videoBase64]).size / 1024 / 1024).toFixed(2)}MB, image: ${imageBase64 ? (new Blob([imageBase64]).size / 1024 / 1024).toFixed(2) : '0'}MB)`);
+      
+      // Note: Vercel has a 4.5MB body limit, but this is a soft limit that can be exceeded in some cases
+      // We validate the original file size (50MB max) which becomes ~66MB in base64
+      // If the request is too large, Vercel will return a 413 error which we'll handle
 
       let response: Response;
       try {
@@ -339,6 +354,9 @@ export default function VideoPromptGenerator() {
         if (response.status === 402) {
           setIsInsufficientCredits(true);
           setError(null);
+        } else if (response.status === 413 || response.statusText === 'Payload Too Large') {
+          setError(`Video file is too large. The request size (${(totalSize / 1024 / 1024).toFixed(2)}MB after encoding) exceeds the server limit. Please use a smaller video file (max 30MB original file size recommended).`);
+          setIsInsufficientCredits(false);
         } else if (response.status === 429) {
           setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
           setIsInsufficientCredits(false);

@@ -115,13 +115,14 @@ export async function POST(request: NextRequest) {
       finalMime = 'video/mp4';
     }
     
-    // Validate video buffer size (max 100MB)
-    const maxVideoSize = 100 * 1024 * 1024; // 100MB
+    // Validate video buffer size (max 70MB for base64 decoded)
+    // This corresponds to ~50MB original file size (base64 is ~33% larger)
+    const maxVideoSize = 70 * 1024 * 1024; // 70MB (allows ~50MB original files)
     if (videoBuffer.length > maxVideoSize) {
       return NextResponse.json(
         { 
           error: 'Video file too large', 
-          details: `Video size (${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB) exceeds the maximum limit of 100MB. Please use a smaller video file.`
+          details: `Video size (${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB) exceeds the maximum limit of 70MB (after encoding). Please use a smaller video file (max 50MB original file size).`
         },
         { status: 400 }
       );
