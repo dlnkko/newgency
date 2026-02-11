@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       },
       imageFile: imageFileResult ? {
         uri: imageFileResult.uri,
-        mimeType: imageFileResult.mimeType || imageFile.type || 'image/png'
+        mimeType: imageFileResult.mimeType || (imageFile ? imageFile.type : 'image/png') || 'image/png'
       } : null
     });
   } catch (error: any) {
