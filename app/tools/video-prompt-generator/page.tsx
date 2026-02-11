@@ -239,24 +239,13 @@ export default function VideoPromptGenerator() {
 
     try {
       // Validate video file
-      // Base64 encoding increases size by ~33%, so we need to account for that
-      // Vercel has a 4.5MB body limit for JSON requests, but we'll try to send larger files
-      // and handle 413 errors gracefully
-      const maxVideoSizeOriginal = 50 * 1024 * 1024; // 50MB original file limit
+      const maxVideoSizeOriginal = 100 * 1024 * 1024; // 100MB original file limit
       
       // Check original file size
       if (referenceVideo.size > maxVideoSizeOriginal) {
-        setError(`Video file is too large (${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 50MB. Please use a smaller video file or compress it.`);
+        setError(`Video file is too large (${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 100MB. Please use a smaller video file or compress it.`);
         setIsGenerating(false);
         return;
-      }
-      
-      // Calculate estimated base64 size for warning
-      const estimatedBase64Size = referenceVideo.size * 1.33; // Base64 is ~33% larger
-      
-      // Warn if file is large (may cause 413 error)
-      if (estimatedBase64Size > 4.5 * 1024 * 1024) {
-        console.warn(`Large video file detected: ${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB original (~${(estimatedBase64Size / 1024 / 1024).toFixed(2)}MB when encoded). This may exceed Vercel's 4.5MB body limit and cause a 413 error.`);
       }
 
       // Validate video format
@@ -265,57 +254,61 @@ export default function VideoPromptGenerator() {
         console.warn('Video type not recognized, but proceeding:', referenceVideo.type);
       }
 
-      // Compress video if needed
-      let videoToProcess: File;
-      try {
-        videoToProcess = await compressVideo(referenceVideo);
-      } catch (compressError: any) {
-        console.error('Error compressing video:', compressError);
-        setError('Failed to process video file. Please try a different video format.');
-        setIsGenerating(false);
-        return;
-      }
-      
-      // Convert video to base64
-      let videoBase64: string;
-      try {
-        videoBase64 = await fileToBase64(videoToProcess);
-        
-        // Validate base64 conversion
-        if (!videoBase64 || !videoBase64.includes(',')) {
-          throw new Error('Invalid video data format');
-        }
-      } catch (base64Error: any) {
-        console.error('Error converting video to base64:', base64Error);
-        setError('Failed to process video file. The video may be corrupted or in an unsupported format.');
-        setIsGenerating(false);
-        return;
-      }
-
-      // Convert image to base64 if provided
-      let imageBase64 = null;
+      // Upload video and image to Gemini Files using FormData (avoids 413 error)
+      console.log('Uploading video to Gemini Files...');
+      const uploadFormData = new FormData();
+      uploadFormData.append('video', referenceVideo);
       if (copyVideoImage) {
-        try {
-          imageBase64 = await compressAndConvertToBase64(copyVideoImage);
-        } catch (imageError: any) {
-          console.error('Error processing image:', imageError);
-          setError('Failed to process image file. Please try a different image.');
-          setIsGenerating(false);
-          return;
-        }
+        uploadFormData.append('image', copyVideoImage);
       }
 
-      // Check total request size (base64 is ~33% larger)
-      // Note: Vercel has a 4.5MB body limit, but we validate original file size before encoding
-      // The actual base64 string size will be larger, but we've already validated the original file
-      const totalSize = new Blob([videoBase64]).size + (imageBase64 ? new Blob([imageBase64]).size : 0);
-      // Log for debugging but don't block - we've already validated original file size
-      console.log(`Total request size: ${(totalSize / 1024 / 1024).toFixed(2)}MB (video: ${(new Blob([videoBase64]).size / 1024 / 1024).toFixed(2)}MB, image: ${imageBase64 ? (new Blob([imageBase64]).size / 1024 / 1024).toFixed(2) : '0'}MB)`);
-      
-      // Note: Vercel has a 4.5MB body limit, but this is a soft limit that can be exceeded in some cases
-      // We validate the original file size (50MB max) which becomes ~66MB in base64
-      // If the request is too large, Vercel will return a 413 error which we'll handle
+      let uploadResponse: Response;
+      try {
+        uploadResponse = await fetch('/api/upload-video-to-gemini', {
+          method: 'POST',
+          body: uploadFormData,
+        });
+      } catch (uploadError: any) {
+        console.error('Error uploading video:', uploadError);
+        setError('Network error while uploading video. Please check your internet connection and try again.');
+        setIsGenerating(false);
+        return;
+      }
 
+      let uploadData: any;
+      try {
+        uploadData = await uploadResponse.json();
+      } catch (jsonError) {
+        const statusText = uploadResponse.statusText || 'Unknown error';
+        setError(`Error ${uploadResponse.status}: ${statusText}`);
+        setIsGenerating(false);
+        return;
+      }
+
+      if (!uploadResponse.ok) {
+        if (uploadResponse.status === 402) {
+          setIsInsufficientCredits(true);
+          setError(null);
+        } else if (uploadResponse.status === 429) {
+          setError(`Rate limit exceeded. ${uploadData.details || 'Please try again later.'}`);
+          setIsInsufficientCredits(false);
+        } else {
+          const errorMessage = uploadData.error || 'Failed to upload video';
+          const errorDetails = uploadData.details ? `\n\nDetails: ${uploadData.details}` : '';
+          setError(`${errorMessage}${errorDetails}`);
+          setIsInsufficientCredits(false);
+        }
+        setIsGenerating(false);
+        return;
+      }
+
+      if (!uploadData.videoFile || !uploadData.videoFile.uri) {
+        setError('Failed to upload video. Please try again.');
+        setIsGenerating(false);
+        return;
+      }
+
+      // Now send the request with file URIs instead of base64
       let response: Response;
       try {
         response = await fetch('/api/generate-video-prompt-from-video', {
@@ -324,9 +317,11 @@ export default function VideoPromptGenerator() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            video: videoBase64,
+            videoFileUri: uploadData.videoFile.uri,
+            videoMimeType: uploadData.videoFile.mimeType,
+            imageFileUri: uploadData.imageFile?.uri || null,
+            imageMimeType: uploadData.imageFile?.mimeType || null,
             duration: copyVideoDuration,
-            image: imageBase64,
             changes: copyVideoChanges.trim() || null,
             script: copyVideoScript.trim() || null
           }),
@@ -355,7 +350,7 @@ export default function VideoPromptGenerator() {
           setIsInsufficientCredits(true);
           setError(null);
         } else if (response.status === 413 || response.statusText === 'Payload Too Large') {
-          setError(`Video file is too large. The request size (${(totalSize / 1024 / 1024).toFixed(2)}MB after encoding) exceeds the server limit. Please use a smaller video file (max 30MB original file size recommended).`);
+          setError(`Video file is too large. The request size exceeds the server limit. Please use a smaller video file (max 100MB original file size).`);
           setIsInsufficientCredits(false);
         } else if (response.status === 429) {
           setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);

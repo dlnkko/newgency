@@ -53,22 +53,22 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const { video, duration, image, changes, script } = body;
+    // Support both old format (base64) and new format (file URIs)
+    const { video, videoFileUri, videoMimeType, image, imageFileUri, imageMimeType, duration, changes, script } = body;
 
-    if (!video) {
+    // Check if using new format (file URIs) or old format (base64)
+    const useFileUris = !!(videoFileUri || imageFileUri);
+    
+    if (!useFileUris && !video) {
       return NextResponse.json(
         { error: 'Video is required' },
         { status: 400 }
       );
     }
 
-    // Validate video base64 format
-    if (!video.includes(',')) {
+    if (useFileUris && !videoFileUri) {
       return NextResponse.json(
-        { 
-          error: 'Invalid video format', 
-          details: 'The video data is not in a valid base64 format. Please try uploading the video again.'
-        },
+        { error: 'Video file URI is required' },
         { status: 400 }
       );
     }
@@ -82,181 +82,88 @@ export async function POST(request: NextRequest) {
 
     console.log('Processing video for prompt generation...');
     console.log('Target duration:', duration, 'seconds');
+    console.log('Using file URIs:', useFileUris);
 
-    // Convert base64 to Buffer with error handling
-    let videoBuffer: Buffer;
-    let videoMime: string;
-    try {
-      const base64Data = video.split(',')[1];
-      if (!base64Data || base64Data.trim() === '') {
-        throw new Error('Empty base64 data');
-      }
-      videoBuffer = Buffer.from(base64Data, 'base64');
-      if (videoBuffer.length === 0) {
-        throw new Error('Invalid base64 data');
-      }
-      videoMime = video.split(';')[0].split(':')[1] || 'video/mp4';
-    } catch (base64Error: any) {
-      console.error('Error parsing base64 video:', base64Error);
-      return NextResponse.json(
-        { 
-          error: 'Invalid video data', 
-          details: 'The video data is corrupted or invalid. Please try uploading the video again.'
-        },
-        { status: 400 }
-      );
-    }
-    
-    // Convert to supported format if needed
-    let finalMime = videoMime;
-    const supportedFormats = ['video/mp4', 'video/mov', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/avi'];
-    if (!supportedFormats.includes(videoMime.toLowerCase())) {
-      console.log(`Converting unsupported format ${videoMime} to MP4`);
-      finalMime = 'video/mp4';
-    }
-    
-    // Validate video buffer size (max 70MB for base64 decoded)
-    // This corresponds to ~50MB original file size (base64 is ~33% larger)
-    const maxVideoSize = 70 * 1024 * 1024; // 70MB (allows ~50MB original files)
-    if (videoBuffer.length > maxVideoSize) {
-      return NextResponse.json(
-        { 
-          error: 'Video file too large', 
-          details: `Video size (${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB) exceeds the maximum limit of 70MB (after encoding). Please use a smaller video file (max 50MB original file size).`
-        },
-        { status: 400 }
-      );
-    }
-    
-    console.log(`Video size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB, MIME type: ${finalMime}`);
-
-    // Upload video to Gemini Files
     let videoFile = null;
-    try {
-      console.log('Uploading video to Gemini Files...');
-      const videoUint8Array = new Uint8Array(videoBuffer);
-      const videoBlob = new Blob([videoUint8Array], { type: finalMime });
-      
-      videoFile = await ai.files.upload({
-        file: videoBlob,
-        config: { mimeType: finalMime }
-      });
-      console.log('Video uploaded:', videoFile.uri);
+    let imageFile = null;
 
-      // Wait for file to be ACTIVE
-      const maxWaitTime = 120000; // 2 minutes for videos
-      const checkInterval = 3000; // Check every 3 seconds
-      const startTime = Date.now();
-
-      const waitForFile = async (file: any, fileName: string) => {
-        if (file.state === 'ACTIVE') return file;
-        
-        while (file.state !== 'ACTIVE') {
-          if (Date.now() - startTime > maxWaitTime) {
-            throw new Error(`Timeout waiting for video to be ready`);
-          }
-          await new Promise(resolve => setTimeout(resolve, checkInterval));
-          
-          try {
-            const fileInfo = await ai.files.get({ name: fileName });
-            file = fileInfo;
-          } catch (err) {
-            console.error(`Error checking file status for ${fileName}:`, err);
-          }
-        }
-        return file;
+    if (useFileUris) {
+      // New format: Use file URIs directly (files already uploaded to Gemini)
+      console.log('Using pre-uploaded video file URI:', videoFileUri);
+      videoFile = {
+        uri: videoFileUri,
+        mimeType: videoMimeType || 'video/mp4'
       };
 
-      const videoFileName = videoFile.name || videoFile.uri?.split('/').pop() || '';
-      if (videoFileName) {
-        videoFile = await waitForFile(videoFile, videoFileName);
-        if (!videoFile.uri) {
-          return NextResponse.json(
-            { error: 'Video file is missing required URI property' },
-            { status: 500 }
-          );
-        }
-        console.log('Video file is ready:', videoFile.state);
+      if (imageFileUri) {
+        console.log('Using pre-uploaded image file URI:', imageFileUri);
+        imageFile = {
+          uri: imageFileUri,
+          mimeType: imageMimeType || 'image/png'
+        };
       }
-    } catch (uploadError: any) {
-      console.error('Error uploading video:', {
-        message: uploadError.message,
-        status: uploadError.status,
-        code: uploadError.code,
-        response: uploadError.response?.data,
-        stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
-      });
-      
-      // Check for API key errors
-      if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+    } else {
+      // Old format: Handle base64 (for backward compatibility)
+      // Validate video base64 format
+      if (!video.includes(',')) {
         return NextResponse.json(
           { 
-            error: 'Google Gemini API key is not valid', 
-            details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+            error: 'Invalid video format', 
+            details: 'The video data is not in a valid base64 format. Please try uploading the video again.'
           },
-          { status: 401 }
+          { status: 400 }
+        );
+      }
+
+      // Convert base64 to Buffer with error handling
+      let videoBuffer: Buffer;
+      let videoMime: string;
+      try {
+        const base64Data = video.split(',')[1];
+        if (!base64Data || base64Data.trim() === '') {
+          throw new Error('Empty base64 data');
+        }
+        videoBuffer = Buffer.from(base64Data, 'base64');
+        if (videoBuffer.length === 0) {
+          throw new Error('Invalid base64 data');
+        }
+        videoMime = video.split(';')[0].split(':')[1] || 'video/mp4';
+      } catch (base64Error: any) {
+        console.error('Error parsing base64 video:', base64Error);
+        return NextResponse.json(
+          { 
+            error: 'Invalid video data', 
+            details: 'The video data is corrupted or invalid. Please try uploading the video again.'
+          },
+          { status: 400 }
         );
       }
       
-      return NextResponse.json(
-        { 
-          error: 'Error uploading video', 
-          details: uploadError.message || 'Could not upload the video to Gemini Files',
-          ...(process.env.NODE_ENV === 'development' && {
-            fullError: uploadError.toString(),
-            stack: uploadError.stack
-          })
-        },
-        { status: 500 }
-      );
-    }
+      // Convert to supported format if needed
+      let finalMime = videoMime;
+      const supportedFormats = ['video/mp4', 'video/mov', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/avi'];
+      if (!supportedFormats.includes(videoMime.toLowerCase())) {
+        console.log(`Converting unsupported format ${videoMime} to MP4`);
+        finalMime = 'video/mp4';
+      }
+      
+      console.log(`Video size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB, MIME type: ${finalMime}`);
 
-    // Upload image to Gemini Files if provided
-    let imageFile = null;
-    if (image) {
+      // Upload video to Gemini Files
       try {
-        console.log('Uploading reference image to Gemini Files...');
+        console.log('Uploading video to Gemini Files...');
+        const videoUint8Array = new Uint8Array(videoBuffer);
+        const videoBlob = new Blob([videoUint8Array], { type: finalMime });
         
-        // Validate image base64 format
-        if (!image.includes(',')) {
-          throw new Error('Invalid image format: not in valid base64 format');
-        }
-        
-        let imageBuffer: Buffer;
-        try {
-          const base64Data = image.split(',')[1];
-          if (!base64Data || base64Data.trim() === '') {
-            throw new Error('Empty base64 data');
-          }
-          imageBuffer = Buffer.from(base64Data, 'base64');
-          if (imageBuffer.length === 0) {
-            throw new Error('Invalid base64 data');
-          }
-        } catch (base64Error: any) {
-          console.error('Error parsing base64 image:', base64Error);
-          throw new Error('Invalid image data: corrupted or invalid base64 format');
-        }
-        
-        let imageMime = image.split(';')[0].split(':')[1] || 'image/png';
-        
-        // Convert unsupported formats to PNG
-        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-        if (!supportedFormats.includes(imageMime.toLowerCase())) {
-          console.log(`Converting unsupported format ${imageMime} to PNG`);
-          imageMime = 'image/png';
-        }
-        
-        const imageUint8Array = new Uint8Array(imageBuffer);
-        const imageBlob = new Blob([imageUint8Array], { type: imageMime });
-        imageFile = await ai.files.upload({
-          file: imageBlob,
-          config: { mimeType: imageMime }
+        videoFile = await ai.files.upload({
+          file: videoBlob,
+          config: { mimeType: finalMime }
         });
-        console.log('Reference image uploaded:', imageFile.uri);
+        console.log('Video uploaded:', videoFile.uri);
 
         // Wait for file to be ACTIVE
-        const maxWaitTime = 60000;
-        const checkInterval = 2000;
+        const maxWaitTime = 120000; // 2 minutes for videos
+        const checkInterval = 3000; // Check every 3 seconds
         const startTime = Date.now();
 
         const waitForFile = async (file: any, fileName: string) => {
@@ -264,7 +171,7 @@ export async function POST(request: NextRequest) {
           
           while (file.state !== 'ACTIVE') {
             if (Date.now() - startTime > maxWaitTime) {
-              throw new Error(`Timeout waiting for image to be ready`);
+              throw new Error(`Timeout waiting for video to be ready`);
             }
             await new Promise(resolve => setTimeout(resolve, checkInterval));
             
@@ -278,19 +185,130 @@ export async function POST(request: NextRequest) {
           return file;
         };
 
-        const imageFileName = imageFile.name || imageFile.uri?.split('/').pop() || '';
-        if (imageFileName) {
-          imageFile = await waitForFile(imageFile, imageFileName);
-          if (!imageFile.uri) {
-            throw new Error('Image file is missing required URI property');
+        const videoFileName = videoFile.name || videoFile.uri?.split('/').pop() || '';
+        if (videoFileName) {
+          videoFile = await waitForFile(videoFile, videoFileName);
+          if (!videoFile.uri) {
+            return NextResponse.json(
+              { error: 'Video file is missing required URI property' },
+              { status: 500 }
+            );
           }
+          console.log('Video file is ready:', videoFile.state);
         }
       } catch (uploadError: any) {
-        console.error('Error uploading image:', uploadError);
+        console.error('Error uploading video:', {
+          message: uploadError.message,
+          status: uploadError.status,
+          code: uploadError.code,
+          response: uploadError.response?.data,
+          stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+        });
+        
+        // Check for API key errors
+        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          return NextResponse.json(
+            { 
+              error: 'Google Gemini API key is not valid', 
+              details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+            },
+            { status: 401 }
+          );
+        }
+        
         return NextResponse.json(
-          { error: 'Error uploading image to Gemini', details: uploadError.message },
+          { 
+            error: 'Error uploading video', 
+            details: uploadError.message || 'Could not upload the video to Gemini Files',
+            ...(process.env.NODE_ENV === 'development' && {
+              fullError: uploadError.toString(),
+              stack: uploadError.stack
+            })
+          },
           { status: 500 }
         );
+      }
+
+      // Upload image to Gemini Files if provided
+      if (image) {
+        try {
+          console.log('Uploading reference image to Gemini Files...');
+          
+          // Validate image base64 format
+          if (!image.includes(',')) {
+            throw new Error('Invalid image format: not in valid base64 format');
+          }
+          
+          let imageBuffer: Buffer;
+          try {
+            const base64Data = image.split(',')[1];
+            if (!base64Data || base64Data.trim() === '') {
+              throw new Error('Empty base64 data');
+            }
+            imageBuffer = Buffer.from(base64Data, 'base64');
+            if (imageBuffer.length === 0) {
+              throw new Error('Invalid base64 data');
+            }
+          } catch (base64Error: any) {
+            console.error('Error parsing base64 image:', base64Error);
+            throw new Error('Invalid image data: corrupted or invalid base64 format');
+          }
+          
+          let imageMime = image.split(';')[0].split(':')[1] || 'image/png';
+          
+          // Convert unsupported formats to PNG
+          const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+          if (!supportedFormats.includes(imageMime.toLowerCase())) {
+            console.log(`Converting unsupported format ${imageMime} to PNG`);
+            imageMime = 'image/png';
+          }
+          
+          const imageUint8Array = new Uint8Array(imageBuffer);
+          const imageBlob = new Blob([imageUint8Array], { type: imageMime });
+          imageFile = await ai.files.upload({
+            file: imageBlob,
+            config: { mimeType: imageMime }
+          });
+          console.log('Reference image uploaded:', imageFile.uri);
+
+          // Wait for file to be ACTIVE
+          const maxWaitTime = 60000;
+          const checkInterval = 2000;
+          const startTime = Date.now();
+
+          const waitForFile = async (file: any, fileName: string) => {
+            if (file.state === 'ACTIVE') return file;
+            
+            while (file.state !== 'ACTIVE') {
+              if (Date.now() - startTime > maxWaitTime) {
+                throw new Error(`Timeout waiting for image to be ready`);
+              }
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+              
+              try {
+                const fileInfo = await ai.files.get({ name: fileName });
+                file = fileInfo;
+              } catch (err) {
+                console.error(`Error checking file status for ${fileName}:`, err);
+              }
+            }
+            return file;
+          };
+
+          const imageFileName = imageFile.name || imageFile.uri?.split('/').pop() || '';
+          if (imageFileName) {
+            imageFile = await waitForFile(imageFile, imageFileName);
+            if (!imageFile.uri) {
+              throw new Error('Image file is missing required URI property');
+            }
+          }
+        } catch (uploadError: any) {
+          console.error('Error uploading image:', uploadError);
+          return NextResponse.json(
+            { error: 'Error uploading image to Gemini', details: uploadError.message },
+            { status: 500 }
+          );
+        }
       }
     }
 
@@ -446,8 +464,8 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       const videoParts: any[] = [
         {
           fileData: {
-            fileUri: videoFile.uri,
-            mimeType: videoFile.mimeType || finalMime
+            fileUri: (videoFile as any).uri || (videoFile as any).fileUri,
+            mimeType: (videoFile as any).mimeType || videoMimeType || 'video/mp4'
           }
         }
       ];
@@ -456,8 +474,8 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       if (imageFile) {
         videoParts.push({
           fileData: {
-            fileUri: imageFile.uri,
-            mimeType: imageFile.mimeType || 'image/png'
+            fileUri: (imageFile as any).uri || (imageFile as any).fileUri,
+            mimeType: (imageFile as any).mimeType || 'image/png'
           }
         });
       }
