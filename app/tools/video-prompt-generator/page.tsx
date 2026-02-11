@@ -113,6 +113,7 @@ export default function VideoPromptGenerator() {
   const [copyVideoImage, setCopyVideoImage] = useState<File | null>(null);
   const [copyVideoImagePreview, setCopyVideoImagePreview] = useState<string | null>(null);
   const [copyVideoChanges, setCopyVideoChanges] = useState<string>('');
+  const [copyVideoScript, setCopyVideoScript] = useState<string>('');
   
   // Shared state
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
@@ -237,32 +238,102 @@ export default function VideoPromptGenerator() {
     setGeneratedPrompt('');
 
     try {
+      // Validate video file
+      const maxVideoSize = 100 * 1024 * 1024; // 100MB limit
+      if (referenceVideo.size > maxVideoSize) {
+        setError(`Video file is too large (${(referenceVideo.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 100MB. Please use a smaller video file.`);
+        setIsGenerating(false);
+        return;
+      }
+
+      // Validate video format
+      const validVideoTypes = ['video/mp4', 'video/mov', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/avi'];
+      if (!validVideoTypes.includes(referenceVideo.type) && !referenceVideo.name.match(/\.(mp4|mov|webm|avi)$/i)) {
+        console.warn('Video type not recognized, but proceeding:', referenceVideo.type);
+      }
+
       // Compress video if needed
-      const videoToProcess = await compressVideo(referenceVideo);
+      let videoToProcess: File;
+      try {
+        videoToProcess = await compressVideo(referenceVideo);
+      } catch (compressError: any) {
+        console.error('Error compressing video:', compressError);
+        setError('Failed to process video file. Please try a different video format.');
+        setIsGenerating(false);
+        return;
+      }
       
       // Convert video to base64
-      const videoBase64 = await fileToBase64(videoToProcess);
+      let videoBase64: string;
+      try {
+        videoBase64 = await fileToBase64(videoToProcess);
+        
+        // Validate base64 conversion
+        if (!videoBase64 || !videoBase64.includes(',')) {
+          throw new Error('Invalid video data format');
+        }
+      } catch (base64Error: any) {
+        console.error('Error converting video to base64:', base64Error);
+        setError('Failed to process video file. The video may be corrupted or in an unsupported format.');
+        setIsGenerating(false);
+        return;
+      }
 
       // Convert image to base64 if provided
       let imageBase64 = null;
       if (copyVideoImage) {
-        imageBase64 = await compressAndConvertToBase64(copyVideoImage);
+        try {
+          imageBase64 = await compressAndConvertToBase64(copyVideoImage);
+        } catch (imageError: any) {
+          console.error('Error processing image:', imageError);
+          setError('Failed to process image file. Please try a different image.');
+          setIsGenerating(false);
+          return;
+        }
       }
 
-      const response = await fetch('/api/generate-video-prompt-from-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          video: videoBase64,
-          duration: copyVideoDuration,
-          image: imageBase64,
-          changes: copyVideoChanges.trim() || null
-        }),
-      });
+      // Check total request size (base64 is ~33% larger)
+      const totalSize = new Blob([videoBase64]).size + (imageBase64 ? new Blob([imageBase64]).size : 0);
+      const maxRequestSize = 4.5 * 1024 * 1024; // 4.5MB limit for Vercel
+      if (totalSize > maxRequestSize) {
+        setError(`Total file size (${(totalSize / 1024 / 1024).toFixed(2)}MB) exceeds the limit. Please use a smaller video or image.`);
+        setIsGenerating(false);
+        return;
+      }
 
-      const data = await response.json();
+      let response: Response;
+      try {
+        response = await fetch('/api/generate-video-prompt-from-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            video: videoBase64,
+            duration: copyVideoDuration,
+            image: imageBase64,
+            changes: copyVideoChanges.trim() || null,
+            script: copyVideoScript.trim() || null
+          }),
+        });
+      } catch (fetchError: any) {
+        console.error('Error making request:', fetchError);
+        setError('Network error. Please check your internet connection and try again.');
+        setIsGenerating(false);
+        return;
+      }
+
+      // Check if response is ok before parsing JSON
+      let data: any;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If response is not JSON, use status text
+        const statusText = response.statusText || 'Unknown error';
+        setError(`Error ${response.status}: ${statusText}`);
+        setIsGenerating(false);
+        return;
+      }
 
       if (!response.ok) {
         if (response.status === 402) {
@@ -270,6 +341,14 @@ export default function VideoPromptGenerator() {
           setError(null);
         } else if (response.status === 429) {
           setError(`Rate limit exceeded. ${data.details || 'Please try again later.'}`);
+          setIsInsufficientCredits(false);
+        } else if (response.status === 400) {
+          setError(data.error || 'Invalid request. Please check your video file and try again.');
+          setIsInsufficientCredits(false);
+        } else if (response.status === 500) {
+          const errorMessage = data.error || 'Server error while processing video';
+          const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+          setError(`${errorMessage}${errorDetails}`);
           setIsInsufficientCredits(false);
         } else {
           const errorMessage = data.error || 'Failed to generate prompt from video';
@@ -280,10 +359,31 @@ export default function VideoPromptGenerator() {
         return;
       }
 
+      if (!data.prompt) {
+        setError('No prompt was generated. Please try again.');
+        return;
+      }
+
       setGeneratedPrompt(data.prompt || '');
-    } catch (err) {
-      setError('An error occurred while generating the prompt from video');
+    } catch (err: any) {
       console.error('Error generating prompt from video:', err);
+      
+      // Provide more descriptive error messages
+      let errorMessage = 'An error occurred while generating the prompt from video';
+      
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.name === 'NetworkError' || err?.message?.includes('network') || err?.message?.includes('fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (err?.message?.includes('video') || err?.message?.includes('Video')) {
+        errorMessage = `Video error: ${err.message}`;
+      } else if (err?.message?.includes('size') || err?.message?.includes('too large')) {
+        errorMessage = 'Video file is too large. Please use a smaller video file (max 100MB).';
+      } else if (err?.message?.includes('format') || err?.message?.includes('Format')) {
+        errorMessage = 'Unsupported video format. Please use MP4, MOV, or WebM format.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -1723,6 +1823,7 @@ export default function VideoPromptGenerator() {
                   setCopyVideoImage(null);
                   setCopyVideoImagePreview(null);
                   setCopyVideoChanges('');
+                  setCopyVideoScript('');
                 }}
                 className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
               >
@@ -1846,6 +1947,31 @@ export default function VideoPromptGenerator() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Script Input (Optional) */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-4 text-lg font-bold text-green-300">
+                Script (Optional)
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                Enter the script/dialogue that should be spoken in the video. The AI will integrate it with the actions and adjust it to fit the selected duration ({copyVideoDuration} seconds).
+              </p>
+              <textarea
+                value={copyVideoScript}
+                onChange={(e) => setCopyVideoScript(e.target.value)}
+                placeholder="Enter the script/dialogue that should be spoken in the video. The AI will integrate it with the actions and adjust it to fit the selected duration..."
+                rows={5}
+                disabled={isGenerating}
+                className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-green-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+              />
+              {copyVideoScript.trim() && (
+                <div className="mt-3 rounded-lg border border-green-500/30 bg-green-950/20 p-3">
+                  <p className="text-xs text-green-300">
+                    <strong>Note:</strong> The script will be integrated with the actions from the video. The script duration target is {copyVideoDuration} seconds. If the script is too long, it will be adapted to fit the duration without sacrificing too much content.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Image Upload (Optional) */}

@@ -3,6 +3,8 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getGoogleGenAI } from '@/lib/gemini';
 import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
+export const maxDuration = 120; // 120 seconds for video processing (Vercel Pro plan)
+
 export async function POST(request: NextRequest) {
   try {
     // Check rate limit
@@ -37,12 +39,36 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     
-    const body = await request.json();
-    const { video, duration, image, changes } = body;
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (jsonError: any) {
+      console.error('Error parsing request body:', jsonError);
+      return NextResponse.json(
+        {
+          error: 'Invalid request format',
+          details: 'The request body is not valid JSON. Please try again.'
+        },
+        { status: 400 }
+      );
+    }
+    
+    const { video, duration, image, changes, script } = body;
 
     if (!video) {
       return NextResponse.json(
         { error: 'Video is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate video base64 format
+    if (!video.includes(',')) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid video format', 
+          details: 'The video data is not in a valid base64 format. Please try uploading the video again.'
+        },
         { status: 400 }
       );
     }
@@ -57,17 +83,51 @@ export async function POST(request: NextRequest) {
     console.log('Processing video for prompt generation...');
     console.log('Target duration:', duration, 'seconds');
 
-    // Convert base64 to Buffer
-    const videoBuffer = Buffer.from(video.split(',')[1], 'base64');
-    const videoMime = video.split(';')[0].split(':')[1] || 'video/mp4';
+    // Convert base64 to Buffer with error handling
+    let videoBuffer: Buffer;
+    let videoMime: string;
+    try {
+      const base64Data = video.split(',')[1];
+      if (!base64Data || base64Data.trim() === '') {
+        throw new Error('Empty base64 data');
+      }
+      videoBuffer = Buffer.from(base64Data, 'base64');
+      if (videoBuffer.length === 0) {
+        throw new Error('Invalid base64 data');
+      }
+      videoMime = video.split(';')[0].split(':')[1] || 'video/mp4';
+    } catch (base64Error: any) {
+      console.error('Error parsing base64 video:', base64Error);
+      return NextResponse.json(
+        { 
+          error: 'Invalid video data', 
+          details: 'The video data is corrupted or invalid. Please try uploading the video again.'
+        },
+        { status: 400 }
+      );
+    }
     
     // Convert to supported format if needed
     let finalMime = videoMime;
-    const supportedFormats = ['video/mp4', 'video/mov', 'video/quicktime', 'video/webm'];
+    const supportedFormats = ['video/mp4', 'video/mov', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/avi'];
     if (!supportedFormats.includes(videoMime.toLowerCase())) {
       console.log(`Converting unsupported format ${videoMime} to MP4`);
       finalMime = 'video/mp4';
     }
+    
+    // Validate video buffer size (max 100MB)
+    const maxVideoSize = 100 * 1024 * 1024; // 100MB
+    if (videoBuffer.length > maxVideoSize) {
+      return NextResponse.json(
+        { 
+          error: 'Video file too large', 
+          details: `Video size (${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB) exceeds the maximum limit of 100MB. Please use a smaller video file.`
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log(`Video size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)}MB, MIME type: ${finalMime}`);
 
     // Upload video to Gemini Files
     let videoFile = null;
@@ -155,7 +215,27 @@ export async function POST(request: NextRequest) {
     if (image) {
       try {
         console.log('Uploading reference image to Gemini Files...');
-        const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
+        
+        // Validate image base64 format
+        if (!image.includes(',')) {
+          throw new Error('Invalid image format: not in valid base64 format');
+        }
+        
+        let imageBuffer: Buffer;
+        try {
+          const base64Data = image.split(',')[1];
+          if (!base64Data || base64Data.trim() === '') {
+            throw new Error('Empty base64 data');
+          }
+          imageBuffer = Buffer.from(base64Data, 'base64');
+          if (imageBuffer.length === 0) {
+            throw new Error('Invalid base64 data');
+          }
+        } catch (base64Error: any) {
+          console.error('Error parsing base64 image:', base64Error);
+          throw new Error('Invalid image data: corrupted or invalid base64 format');
+        }
+        
         let imageMime = image.split(';')[0].split(':')[1] || 'image/png';
         
         // Convert unsupported formats to PNG
@@ -242,6 +322,52 @@ A reference image has been uploaded and will be attached. This image provides vi
 - The image will be attached to the final prompt, so reference it appropriately`;
     }
 
+    // Build script instruction if provided
+    let scriptInstruction = '';
+    if (script && script.trim()) {
+      // Calculate script word count and estimated duration
+      const scriptWords = script.trim().split(/\s+/).length;
+      const estimatedScriptDuration = Math.round(scriptWords / 2.5); // Average speaking rate: 2.5 words per second
+      
+      scriptInstruction = `\n\n**SCRIPT/DIALOGUE PROVIDED:**
+A script/dialogue has been provided for this video. You MUST integrate it seamlessly and coherently with the actions and movements from the reference video.
+
+**Script provided:**
+"${script.trim()}"
+
+**Script Analysis:**
+- Script word count: ~${scriptWords} words
+- Estimated script duration: ~${estimatedScriptDuration} seconds
+- Target video duration: ${duration} seconds
+
+**CRITICAL - SCRIPT INTEGRATION REQUIREMENTS:**
+1. **Script-Action Synchronization**: 
+   - Map script portions to specific actions from the reference video
+   - Integrate dialogue with actions using natural phrasing like "while [action], says [script portion]" or "as [action], narrates [script portion]"
+   - Ensure script portions align with the timing of corresponding actions
+
+2. **Duration Adjustment**:
+   - The video must be exactly ${duration} seconds long
+   - If the script is too long for ${duration} seconds, adapt it intelligently:
+     * Prioritize the most important parts of the script
+     * Condense or summarize less critical portions
+     * Maintain coherence and natural flow
+     * Do not sacrifice too much content, but ensure it fits within ${duration} seconds
+   - If the script is shorter than ${duration} seconds, distribute it naturally throughout the video, synchronized with actions
+   - The script should be mentioned as early as possible if it's long but achievable within the time limit
+
+3. **Natural Integration**:
+   - Script should feel natural and organic, not forced
+   - Dialogue should flow naturally with the actions
+   - Maintain the pacing and rhythm of the reference video while incorporating the script
+   - If the reference video has dialogue, replace it with the provided script while maintaining the same timing and structure
+
+4. **Voiceover/Lip Sync**:
+   - If the reference video shows the character speaking (lip sync), the script should be synchronized with lip movements
+   - If the reference video uses voiceover (character doesn't visibly speak), maintain that style with the new script
+   - Match the delivery style (tone, pace, emphasis) from the reference video`;
+    }
+
     // Generate prompt from video analysis
     const videoAnalysisPrompt = `You are an expert AI video prompt engineer. Analyze the attached reference video${imageFile ? ' and reference image' : ''} and create an extremely detailed, comprehensive prompt that would generate this exact video${changes && changes.trim() ? ' with the requested modifications' : ''}.
 
@@ -311,7 +437,7 @@ Create an extremely detailed prompt that describes:
 - **MOST IMPORTANT**: The prompt must describe a video that will be exactly ${duration} seconds long when generated. Adjust pacing, number of shots, and action timing accordingly.
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact video${changes && changes.trim() ? ' with the requested changes applied' : ''}, adjusted to ${duration} seconds duration.${changesInstruction}${imageInstruction}`;
+Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact video${changes && changes.trim() ? ' with the requested changes applied' : ''}, adjusted to ${duration} seconds duration.${changesInstruction}${imageInstruction}${scriptInstruction}`;
 
     try {
       console.log('Generating prompt from video analysis...');
@@ -398,27 +524,102 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
         usage: usageMetadata
       });
     } catch (geminiError: any) {
-      console.error('Error calling Gemini:', geminiError);
+      console.error('Error calling Gemini:', {
+        message: geminiError.message,
+        status: geminiError.status,
+        code: geminiError.code,
+        response: geminiError.response?.data,
+        stack: process.env.NODE_ENV === 'development' ? geminiError.stack : undefined
+      });
+      
+      // Check for API key errors
+      if (geminiError.message?.includes('API key') || geminiError.message?.includes('API_KEY') || geminiError.status === 401) {
+        return NextResponse.json(
+          { 
+            error: 'Google Gemini API key is not valid', 
+            details: 'The GOOGLE_GENAI_API_KEY environment variable is not valid or has expired. Please verify it in your production environment settings (Vercel dashboard → Settings → Environment Variables).'
+          },
+          { status: 401 }
+        );
+      }
+      
+      // Check for rate limit errors
+      if (geminiError.status === 429 || geminiError.message?.includes('rate limit')) {
+        return NextResponse.json(
+          { 
+            error: 'Rate limit exceeded',
+            details: 'Too many requests to Google Gemini API. Please try again later.'
+          },
+          { status: 429 }
+        );
+      }
+      
+      // Check for video-related errors
+      if (geminiError.message?.includes('video') || geminiError.message?.includes('Video') || geminiError.message?.includes('file')) {
+        return NextResponse.json(
+          { 
+            error: 'Error processing video',
+            details: geminiError.message || 'The video file could not be processed. Please ensure the video is in a supported format (MP4, MOV, WebM) and try again.'
+          },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json(
         { 
           error: 'Error generating prompt from video',
-          details: geminiError.message || 'Could not process video with AI'
+          details: geminiError.message || 'Could not process video with AI. Please try again with a different video.'
         },
         { status: 500 }
       );
     }
   } catch (error: any) {
-    console.error('Error generating video prompt from video:', error);
+    console.error('Error generating video prompt from video (outer catch):', {
+      message: error.message,
+      name: error.name,
+      status: error.status,
+      code: error.code,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
     
-    if (error.message?.includes('API key')) {
+    // Check for API key initialization errors
+    if (error.message?.includes('GOOGLE_GENAI_API_KEY') || error.message?.includes('API key')) {
       return NextResponse.json(
-        { error: 'API configuration error. Please check your environment variables.' },
+        {
+          error: 'Google Gemini API key is not configured',
+          details: 'The GOOGLE_GENAI_API_KEY environment variable is missing or invalid. Please configure it in your production environment (Vercel dashboard → Settings → Environment Variables).'
+        },
         { status: 500 }
+      );
+    }
+    
+    // Check for video-related errors
+    if (error.message?.includes('video') || error.message?.includes('Video') || error.message?.includes('file') || error.message?.includes('base64')) {
+      return NextResponse.json(
+        {
+          error: 'Error processing video',
+          details: error.message || 'There was an error processing the video file. Please ensure the video is in a supported format (MP4, MOV, WebM) and try again.'
+        },
+        { status: 400 }
+      );
+    }
+    
+    // Check for timeout errors
+    if (error.message?.includes('timeout') || error.message?.includes('Timeout') || error.message?.includes('TIMEOUT')) {
+      return NextResponse.json(
+        {
+          error: 'Request timeout',
+          details: 'The request took too long to process. Please try again with a smaller video file.'
+        },
+        { status: 504 }
       );
     }
 
     return NextResponse.json(
-      { error: error.message || 'Failed to generate video prompt from video' },
+      { 
+        error: error.message || 'Failed to generate video prompt from video',
+        details: 'An unexpected error occurred. Please try again or contact support if the problem persists.'
+      },
       { status: 500 }
     );
   }
