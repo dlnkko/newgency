@@ -946,8 +946,8 @@ export default function ImagePromptGenerator() {
           </div>
         )}
 
-        {/* Product Images Upload (for design, studio-quality, hyperrealistic) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic') && (
+        {/* Product Images Upload (for design, studio-quality, hyperrealistic variants) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
               Product (Optional - Up to 3)
@@ -1027,8 +1027,8 @@ export default function ImagePromptGenerator() {
           </div>
         )}
 
-        {/* Character Images Upload (for design, studio-quality, hyperrealistic) */}
-        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic') && (
+        {/* Character Images Upload (for design, studio-quality, hyperrealistic variants) */}
+        {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic') && (
           <div className="mb-8">
             <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
               Characters (Optional - Up to 3)
@@ -1146,13 +1146,14 @@ export default function ImagePromptGenerator() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold uppercase tracking-wide text-amber-400">
-                    {selectedStyle === 'hyperrealistic' && 'Hyperrealistic Image Prompt'}
+                    {(selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic') && 'Hyperrealistic Image Prompt'}
                     {selectedStyle === 'studio-quality' && 'Studio Quality Image Prompt'}
                     {selectedStyle === 'design' && 'Design Image Prompt'}
                     {selectedStyle === 'change-elements' && 'Change Elements in Image Prompt'}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1">
-                    Style: {selectedStyle === 'hyperrealistic' && 'Hyperrealistic'}
+                    Style: {selectedStyle === 'hyperrealistic-ugc' && 'Hyperrealistic UGC'}
+                    {selectedStyle === 'hyperrealistic-cinematic' && 'Hyperrealistic Cinematic'}
                     {selectedStyle === 'studio-quality' && 'Studio Quality'}
                     {selectedStyle === 'design' && 'Design'}
                     {selectedStyle === 'change-elements' && 'Change Elements in Image'}
