@@ -945,21 +945,49 @@ ${contentInput}
 
 **YOUR COMPREHENSIVE ANALYSIS:**
 
+**Part 0: Complete Script Transcription**
+
+**COMPLETE SCRIPT:**
+[Provide a complete, word-for-word transcription of ALL dialogue, voiceover, narration, text overlays, captions, and any spoken or written words in the video. Present it as a continuous paragraph or text block. Include every word exactly as it appears or is spoken, maintaining the original language and phrasing. If there are text overlays, indicate them clearly. If there are multiple speakers or sections, separate them but include everything. This should be the FULL script from start to finish.]
+
+---
+
 **Part 1: Deep Psychological Analysis**
 
 Provide a comprehensive psychological analysis using Wundt's principles. Analyze:
 
-**1. Why the Hook Worked:**
-   - What made the opening compelling from a psychological perspective?
-   - Which Wundtian principles (attention, emotion, perception) were activated in the hook?
-   - What specific elements (visual, auditory, narrative) made people stop scrolling?
-   - What psychological mechanisms captured immediate attention?
+**1. Deep Script and Hook Analysis:**
+   - **Analyze the complete script** (refer to the Complete Script Transcription above): Break down the script into key sections (hook, body, CTA) and analyze each section in detail.
+   - **Hook Analysis - Why it worked:**
+     * What exact words, phrases, or statements were used in the hook (first 3-5 seconds)?
+     * What made the opening compelling from a psychological perspective?
+     * Which Wundtian principles (attention, emotion, perception) were activated in the hook?
+     * What specific elements (visual, auditory, narrative) made people stop scrolling?
+     * What psychological mechanisms captured immediate attention?
+     * Why did these specific words/phrases work? What emotional or cognitive response did they trigger?
+   - **Script Structure Analysis:**
+     * How is the script structured? (Problem-Agitate-Solve, Story-Transformation, Question-Answer, etc.)
+     * What is the narrative arc? How does the script build tension, curiosity, or emotional investment?
+     * At what specific moments in the script does engagement peak? Why?
+     * What transitions or pivot points in the script maintain attention?
+     * How does the script pace information delivery? (Fast vs slow, dense vs sparse)
+   - **Why Specific Script Elements Worked:**
+     * Identify 3-5 key phrases, statements, or moments in the script that were particularly effective
+     * For each, explain: What was said exactly? Why did it work psychologically? What emotion or thought did it trigger? What made it memorable or impactful?
+     * How did the script use language patterns (repetition, contrast, questions, statements) to create impact?
+     * What rhetorical devices were used (metaphors, analogies, direct address, storytelling) and why were they effective?
+   - **Script-Audience Connection:**
+     * What specific words or phrases in the script resonated with the target audience? Why?
+     * How did the script speak the audience's language? (slang, terminology, references, cultural touchpoints)
+     * What unspoken thoughts or feelings did the script articulate for the audience?
+     * How did the script validate, challenge, or transform the audience's perspective?
 
 **2. Why the Video Had Engagement:**
    - What elements drove viewers to engage (like, comment, share, watch until the end)?
    - How did the content maintain attention throughout?
    - What psychological triggers kept viewers engaged?
    - What made the content shareable or worth commenting on?
+   - **Script-driven engagement**: How did specific script moments create engagement spikes? What was said at those moments?
 
 **3. Why This Content Connected with This Audience:**
    - What specific things did the content say or show that resonated with the audience?
@@ -990,11 +1018,35 @@ Provide a comprehensive psychological analysis using Wundt's principles. Analyze
    - What perceptual elements (contrast, movement, novelty) create immediate engagement?
    - How does the structure guide the viewer's attention through the experience?
 
-**8. What You Can Replicate:**
+**8. Script Replication Strategy:**
+   - **Replicable Script Patterns:**
+     * What script structures, formats, or frameworks can be replicated? (e.g., "Problem-Agitate-Solve", "Before-After-Bridge", "Story-Transformation")
+     * What specific hook formulas or opening patterns worked? How can they be adapted?
+     * What language patterns, rhetorical devices, or speaking styles were effective?
+     * What script pacing, rhythm, or information delivery methods worked?
+   - **Replicable Phrases and Language:**
+     * List 5-10 specific phrases, questions, or statements from the script that can be adapted
+     * For each, explain: What made it work? How can it be modified for different products/audiences?
+     * What word choices, tone, or linguistic patterns created impact?
+   - **Script Timing and Pacing:**
+     * At what seconds did key script moments occur? (e.g., "Hook at 0-3s", "Problem statement at 5-8s", "Solution at 15-20s")
+     * What was the optimal information density? (How much information per second?)
+     * How did script timing align with visual moments? What made this effective?
+   - **Hook Replication Formula:**
+     * What is the exact hook structure? (Question? Statement? Story opening? Visual + audio combo?)
+     * What elements made the hook work? (Curiosity gap? Emotional trigger? Relatable statement? Bold claim?)
+     * How can this hook formula be replicated with different products/audiences?
+   - **Script-to-Visual Synchronization:**
+     * How did the script complement or contrast with visuals? What made this effective?
+     * What script moments were enhanced by specific visuals? How?
+     * What visual-script combinations created the strongest impact?
+
+**9. What You Can Replicate (Overall Strategy):**
    - Based on all the insights above, what specific elements, strategies, or approaches can be replicated?
    - What psychological principles can be applied to other content?
    - What structural elements worked and why?
    - What emotional triggers were most effective?
+   - **Complete Replication Blueprint**: Provide a step-by-step blueprint for replicating this ad's success, including script structure, hook formula, key phrases, timing, and visual-script synchronization.
 
 **Part 2: Audience Insights**
 
@@ -1021,11 +1073,15 @@ INSIGHT 3: [Another deep hidden truth about this audience]
 [Brief context: What in the video revealed this insight. What this tells us about the audience's psychology, needs, pain points, or hidden truths. Keep it focused - 2-3 sentences max.]
 
 **OUTPUT FORMAT:**
-1. Start with the comprehensive psychological analysis (sections 1-8 above)
-2. Then provide "AUDIENCE:" estimation
-3. Then provide exactly 3 insights labeled "INSIGHT 1:", "INSIGHT 2:", "INSIGHT 3:"
-4. Separate the audience section and insights with "---" on its own line
-5. All content must be in English`;
+1. **FIRST**: Start with "Part 0: Complete Script Transcription" - provide the COMPLETE SCRIPT as a continuous paragraph/text block with every word transcribed (dialogue, voiceover, narration, text overlays, captions - everything)
+2. Then provide the comprehensive psychological analysis (sections 1-9 above)
+   - **CRITICAL**: In section 1, reference the Complete Script Transcription and analyze it in extreme detail, explaining why specific words, phrases, and moments worked
+   - **CRITICAL**: Provide specific timestamps for key script moments when possible
+3. Then provide "AUDIENCE:" estimation
+4. Then provide exactly 3 insights labeled "INSIGHT 1:", "INSIGHT 2:", "INSIGHT 3:"
+5. Separate the audience section and insights with "---" on its own line
+6. All content must be in English
+7. **IMPORTANT**: Focus heavily on script analysis - this is critical for understanding and replicating the ad's success`;
 
     // Analyze with Gemini
     console.log('Analyzing content with Gemini...');
