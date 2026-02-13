@@ -235,6 +235,7 @@ Scene 3:
       text: generationPrompt
     });
 
+    console.log('Sending request to Gemini with prompt length:', generationPrompt.length);
     const result = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [
@@ -245,20 +246,52 @@ Scene 3:
       ]
     });
 
+    console.log('Gemini response received:', {
+      hasCandidates: !!result.candidates,
+      candidatesLength: result.candidates?.length,
+      firstCandidate: result.candidates?.[0] ? 'exists' : 'missing'
+    });
+
     // Extract the generated prompt
-    let generatedPrompt = '';
+    let generatedText = '';
     if (result.candidates && result.candidates[0]?.content?.parts) {
-      generatedPrompt = result.candidates[0].content.parts
+      generatedText = result.candidates[0].content.parts
         .map((part: any) => part.text || '')
         .join('')
         .trim();
     } else if ((result as any).text) {
-      generatedPrompt = (result as any).text.trim();
+      generatedText = (result as any).text.trim();
     }
 
-    if (!generatedPrompt) {
+    console.log('Extracted prompt length:', generatedText.length);
+    console.log('First 200 chars of generated prompt:', generatedText.substring(0, 200));
+
+    if (!generatedText) {
+      console.error('No prompt generated - result structure:', JSON.stringify(result, null, 2));
       return NextResponse.json(
-        { error: 'Failed to generate prompt' },
+        { error: 'Failed to generate prompt - no content returned from AI' },
+        { status: 500 }
+      );
+    }
+
+    // Validate that the generated prompt is not just the input script
+    const scriptLower = script.toLowerCase().trim();
+    const promptLower = generatedText.toLowerCase().trim();
+    
+    // Check if the generated prompt is too similar to the input (likely means AI just echoed the input)
+    if (promptLower.includes(scriptLower) && promptLower.length < scriptLower.length * 2) {
+      console.error('Generated prompt appears to be just the input script. Prompt:', generatedText.substring(0, 200));
+      return NextResponse.json(
+        { error: 'AI returned input instead of generating prompt. Please try again.' },
+        { status: 500 }
+      );
+    }
+
+    // Ensure the prompt contains scene markers (indicates it was actually generated)
+    if (!generatedText.includes('Scene') && !generatedText.includes('scene')) {
+      console.error('Generated prompt does not contain scene markers. Prompt:', generatedText.substring(0, 200));
+      return NextResponse.json(
+        { error: 'Generated prompt does not match expected format. Please try again.' },
         { status: 500 }
       );
     }
@@ -267,7 +300,7 @@ Scene 3:
 
     return NextResponse.json({
       success: true,
-      prompt: generatedPrompt
+      prompt: generatedText
     });
   } catch (error: any) {
     console.error('Error generating video prompt from script:', error);

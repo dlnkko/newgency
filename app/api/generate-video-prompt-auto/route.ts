@@ -232,6 +232,7 @@ ${isUGC ? '- **MANDATORY**: All scenes must maintain hyperrealistic UGC characte
       text: generationPrompt
     });
 
+    console.log('Sending request to Gemini with prompt length:', generationPrompt.length);
     const result = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [
@@ -242,29 +243,73 @@ ${isUGC ? '- **MANDATORY**: All scenes must maintain hyperrealistic UGC characte
       ]
     });
 
+    console.log('Gemini response received:', {
+      hasCandidates: !!result.candidates,
+      candidatesLength: result.candidates?.length,
+      firstCandidate: result.candidates?.[0] ? 'exists' : 'missing'
+    });
+
     // Extract the generated prompt
-    let generatedPrompt = '';
+    let generatedText = '';
     if (result.candidates && result.candidates[0]?.content?.parts) {
-      generatedPrompt = result.candidates[0].content.parts
+      generatedText = result.candidates[0].content.parts
         .map((part: any) => part.text || '')
         .join('')
         .trim();
     } else if ((result as any).text) {
-      generatedPrompt = (result as any).text.trim();
+      generatedText = (result as any).text.trim();
     }
 
-    if (!generatedPrompt) {
+    console.log('Extracted prompt length:', generatedText.length);
+    console.log('First 200 chars of generated prompt:', generatedText.substring(0, 200));
+
+    if (!generatedText) {
+      console.error('No prompt generated - result structure:', JSON.stringify(result, null, 2));
       return NextResponse.json(
-        { error: 'Failed to generate prompt' },
+        { error: 'Failed to generate prompt - no content returned from AI' },
+        { status: 500 }
+      );
+    }
+
+    // Validate that the generated prompt is not just the input description
+    const descriptionLower = description.toLowerCase().trim();
+    const promptLower = generatedText.toLowerCase().trim();
+    
+    // Check if the generated prompt is too similar to the input (likely means AI just echoed the input)
+    if (promptLower.includes(descriptionLower) && promptLower.length < descriptionLower.length * 2) {
+      console.error('Generated prompt appears to be just the input description. Prompt:', generatedText.substring(0, 200));
+      return NextResponse.json(
+        { error: 'AI returned input instead of generating prompt. Please try again.' },
+        { status: 500 }
+      );
+    }
+
+    // Ensure the response contains JSON structure (indicates it was actually generated)
+    if (!generatedText.includes('{') && !generatedText.includes('Scene')) {
+      console.error('Generated prompt does not contain expected structure. Prompt:', generatedText.substring(0, 200));
+      return NextResponse.json(
+        { error: 'Generated prompt does not match expected format. Please try again.' },
         { status: 500 }
       );
     }
 
     // Credit already consumed in verifyAndConsumeCredit
 
+    // Try to parse as JSON if it looks like JSON, otherwise return as text
+    let scenes = null;
+    if (generatedText.includes('{') && generatedText.includes('}')) {
+      try {
+        scenes = JSON.parse(generatedText);
+      } catch (e) {
+        // Not valid JSON, that's okay - return as text prompt
+        console.log('Response is not valid JSON, returning as text prompt');
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      prompt: generatedPrompt
+      prompt: generatedText,
+      scenes: scenes
     });
   } catch (error: any) {
     console.error('Error generating automatic video prompt:', error);
