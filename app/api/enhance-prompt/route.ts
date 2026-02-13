@@ -993,6 +993,7 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         text: enhancementPrompt
       });
 
+      console.log('Sending request to Gemini for prompt enhancement...');
       result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [
@@ -1001,6 +1002,13 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
             parts: parts
           }
         ]
+      });
+      
+      console.log('Gemini response received:', {
+        hasCandidates: !!result.candidates,
+        candidatesLength: result.candidates?.length || 0,
+        firstCandidateExists: !!result.candidates?.[0],
+        resultKeys: Object.keys(result || {})
       });
     } catch (geminiError: any) {
       console.error('Error calling Gemini:', geminiError);
@@ -1013,30 +1021,118 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
       );
     }
 
-    // Extraer el texto mejorado
+    // Extraer el texto mejorado con múltiples métodos
     let enhancedText = null;
     try {
-      if (result.candidates && result.candidates[0]?.content?.parts) {
-        enhancedText = result.candidates[0].content.parts
-          .map((part: any) => part.text || '')
-          .join('')
-          .trim();
-      } else if ((result as any).text) {
+      // Método 1: Estructura estándar con candidates
+      if (result.candidates && result.candidates[0]) {
+        const candidate = result.candidates[0];
+        
+        // Verificar si hay content
+        if (candidate.content) {
+          // Método 1a: content.parts
+          if (candidate.content.parts && Array.isArray(candidate.content.parts)) {
+            enhancedText = candidate.content.parts
+              .map((part: any) => {
+                if (typeof part === 'string') return part;
+                if (part.text) return part.text;
+                if (part.inlineData) return ''; // Skip inline data
+                return '';
+              })
+              .filter((text: string) => text && text.trim().length > 0)
+              .join('')
+              .trim();
+          }
+          
+          // Método 1b: content.text (fallback)
+          if ((!enhancedText || enhancedText === '') && (candidate.content as any).text) {
+            enhancedText = (candidate.content as any).text.trim();
+          }
+        }
+        
+        // Método 1c: candidate.text directamente (fallback)
+        if ((!enhancedText || enhancedText === '') && (candidate as any).text) {
+          enhancedText = (candidate as any).text.trim();
+        }
+      }
+      
+      // Método 2: result.text directamente
+      if ((!enhancedText || enhancedText === '') && (result as any).text) {
         enhancedText = (result as any).text.trim();
       }
       
-      // Log para debugging
-      console.log('Enhanced text extracted:', {
+      // Método 3: result.response (algunas versiones de la API)
+      if ((!enhancedText || enhancedText === '') && (result as any).response) {
+        const response = (result as any).response;
+        if (response.text) {
+          enhancedText = response.text.trim();
+        } else if (response.candidates && response.candidates[0]?.content?.parts) {
+          enhancedText = response.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('')
+            .trim();
+        }
+      }
+      
+      // Log detallado para debugging
+      console.log('Enhanced text extraction result:', {
         hasText: !!enhancedText,
         textLength: enhancedText?.length || 0,
         originalLength: actionText.length,
-        textPreview: enhancedText?.substring(0, 100) || 'N/A',
-        hasProductImage: !!productImageFile
+        textPreview: enhancedText?.substring(0, 200) || 'N/A',
+        hasProductImage: !!productImageFile,
+        resultStructure: {
+          hasCandidates: !!result.candidates,
+          candidatesLength: result.candidates?.length || 0,
+          firstCandidateStructure: result.candidates?.[0] ? Object.keys(result.candidates[0]) : []
+        }
       });
       
-      // Si no se obtuvo texto mejorado
+      // Verificar si hay bloqueos de seguridad o errores en la respuesta
+      if (result.candidates && result.candidates[0]) {
+        const candidate = result.candidates[0];
+        
+        // Verificar finishReason para ver si hay problemas
+        if (candidate.finishReason) {
+          if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION') {
+            console.error('Gemini blocked response due to safety/recitation:', candidate.finishReason);
+            return NextResponse.json(
+              { 
+                error: 'Content was blocked by safety filters',
+                details: 'The AI blocked the response. Please try with different content.'
+              },
+              { status: 500 }
+            );
+          }
+          
+          if (candidate.finishReason === 'MAX_TOKENS' || candidate.finishReason === 'OTHER') {
+            console.warn('Gemini response finished with reason:', candidate.finishReason);
+          }
+        }
+        
+        // Verificar si hay safety ratings que bloqueen
+        if (candidate.safetyRatings && Array.isArray(candidate.safetyRatings)) {
+          const blockedRatings = candidate.safetyRatings.filter((rating: any) => 
+            rating.category && rating.probability === 'HIGH'
+          );
+          if (blockedRatings.length > 0) {
+            console.error('Gemini blocked due to safety ratings:', blockedRatings);
+            return NextResponse.json(
+              { 
+                error: 'Content was blocked by safety filters',
+                details: 'The AI blocked the response due to safety concerns. Please try with different content.'
+              },
+              { status: 500 }
+            );
+          }
+        }
+      }
+      
+      // Si no se obtuvo texto mejorado, loggear la estructura completa para debugging
       if (!enhancedText || enhancedText === '') {
         console.error('CRITICAL: No enhanced text extracted from Gemini response');
+        console.error('Full result structure:', JSON.stringify(result, null, 2));
+        console.error('First candidate structure:', result.candidates?.[0] ? JSON.stringify(result.candidates[0], null, 2) : 'No candidates');
         return NextResponse.json(
           { 
             error: 'Failed to enhance prompt',
