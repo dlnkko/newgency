@@ -51,6 +51,13 @@ const tools = [
     path: '/tools/image-prompt-generator',
     description: 'Generate AI image prompts with different styles',
     active: true
+  },
+  {
+    id: 'research-competitors',
+    name: 'Research Competitors',
+    path: '/tools/research-competitors',
+    description: 'Find related Instagram profiles and competitors',
+    active: true
   }
 ];
 

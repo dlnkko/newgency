@@ -53,6 +53,15 @@ export default function DashboardPage() {
       borderGlow: 'rgba(236, 72, 153, 0.3)',
     },
     {
+      id: 'research-competitors',
+      name: 'Research Competitors',
+      path: '/tools/research-competitors',
+      description: 'Find related Instagram profiles and competitors',
+      icon: '🔍',
+      gradient: 'from-indigo-500/20 via-purple-500/10 to-pink-500/20',
+      borderGlow: 'rgba(99, 102, 241, 0.3)',
+    },
+    {
       id: 'image-prompt-generator',
       name: 'Image Prompt Generator',
       path: '/tools/image-prompt-generator',

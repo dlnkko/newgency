@@ -3,6 +3,8 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getGoogleGenAI } from '@/lib/gemini';
 import { verifyAndConsumeCredit } from '@/lib/credit-check';
 
+export const maxDuration = 60; // 60 seconds for Vercel Pro plan
+
 export async function POST(request: NextRequest) {
   try {
     // Check rate limit
@@ -993,7 +995,14 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         text: enhancementPrompt
       });
 
-      console.log('Sending request to Gemini for prompt enhancement...');
+      console.log('Sending request to Gemini for prompt enhancement...', {
+        model: 'gemini-3-flash-preview',
+        partsCount: parts.length,
+        hasProductImage: !!productImageFile,
+        hasReferenceImage: !!referenceImageFile,
+        environment: process.env.NODE_ENV || 'unknown'
+      });
+      
       result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [
@@ -1008,7 +1017,8 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         hasCandidates: !!result.candidates,
         candidatesLength: result.candidates?.length || 0,
         firstCandidateExists: !!result.candidates?.[0],
-        resultKeys: Object.keys(result || {})
+        resultKeys: Object.keys(result || {}),
+        environment: process.env.NODE_ENV || 'unknown'
       });
     } catch (geminiError: any) {
       console.error('Error calling Gemini:', geminiError);
@@ -1131,12 +1141,45 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
       // Si no se obtuvo texto mejorado, loggear la estructura completa para debugging
       if (!enhancedText || enhancedText === '') {
         console.error('CRITICAL: No enhanced text extracted from Gemini response');
+        console.error('Environment:', process.env.NODE_ENV || 'unknown');
         console.error('Full result structure:', JSON.stringify(result, null, 2));
         console.error('First candidate structure:', result.candidates?.[0] ? JSON.stringify(result.candidates[0], null, 2) : 'No candidates');
+        console.error('Result type:', typeof result);
+        console.error('Result constructor:', result?.constructor?.name);
+        
+        // Intentar extraer cualquier texto disponible para debugging
+        const debugInfo: any = {
+          hasResult: !!result,
+          resultType: typeof result,
+          resultKeys: result ? Object.keys(result) : [],
+          hasCandidates: !!result?.candidates,
+          candidatesLength: result?.candidates?.length || 0,
+          environment: process.env.NODE_ENV || 'unknown'
+        };
+        
+        if (result?.candidates?.[0]) {
+          const candidate = result.candidates[0];
+          debugInfo.candidateKeys = Object.keys(candidate);
+          debugInfo.hasContent = !!candidate.content;
+          debugInfo.finishReason = candidate.finishReason;
+          if (candidate.content) {
+            debugInfo.contentKeys = Object.keys(candidate.content);
+            debugInfo.hasParts = !!candidate.content.parts;
+            debugInfo.partsLength = candidate.content.parts?.length || 0;
+            if (candidate.content.parts?.[0]) {
+              debugInfo.firstPartType = typeof candidate.content.parts[0];
+              debugInfo.firstPartKeys = Object.keys(candidate.content.parts[0] || {});
+            }
+          }
+        }
+        
+        console.error('Debug info:', JSON.stringify(debugInfo, null, 2));
+        
         return NextResponse.json(
           { 
             error: 'Failed to enhance prompt',
-            details: 'The AI did not return an enhanced prompt. Please try again.'
+            details: 'The AI did not return an enhanced prompt. Please try again.',
+            debug: process.env.NODE_ENV === 'development' ? debugInfo : undefined
           },
           { status: 500 }
         );
