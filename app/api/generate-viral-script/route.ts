@@ -50,12 +50,12 @@ export async function POST(request: NextRequest) {
     const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
     
     const body = await request.json();
-    const { videoUrl, metaAdUrl, productDescription, creativeAngle, duration } = body;
+    const { videoUrl, metaAdUrl, video, productDescription, creativeAngle, duration } = body;
 
-    // Either videoUrl or metaAdUrl must be provided
-    if ((!videoUrl || !videoUrl.trim()) && (!metaAdUrl || !metaAdUrl.trim())) {
+    // Either videoUrl, metaAdUrl, or uploaded video must be provided
+    if ((!videoUrl || !videoUrl.trim()) && (!metaAdUrl || !metaAdUrl.trim()) && !video) {
       return NextResponse.json(
-        { error: 'Either Video URL or Meta Ad URL is required' },
+        { error: 'Either Video URL, Meta Ad URL, or uploaded video is required' },
         { status: 400 }
       );
     }
@@ -93,11 +93,10 @@ export async function POST(request: NextRequest) {
 
         // Call ScrapeCreators API to get Meta Ad transcript
         const response = await axios.get(
-          `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}`,
+          `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}&get_transcript=true`,
           {
             headers: {
-              'x-api-key': scrapeCreatorsApiKey,
-              'get_transcript': 'true'
+              'x-api-key': scrapeCreatorsApiKey
             },
             timeout: 30000,
             validateStatus: (status) => status < 500
@@ -253,6 +252,103 @@ export async function POST(request: NextRequest) {
           { 
             error: 'Failed to extract transcript from video',
             details: scrapeError.response?.data?.message || scrapeError.message || 'Could not access video transcript'
+          },
+          { status: 500 }
+        );
+      }
+    } else if (video) {
+      // Handle uploaded video
+      try {
+        console.log('Processing uploaded video for transcript extraction...');
+        const videoBuffer = Buffer.from(video.split(',')[1], 'base64');
+        const videoUint8Array = new Uint8Array(videoBuffer);
+        const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
+        
+        // Upload video to Gemini Files
+        console.log('Uploading video to Gemini Files...');
+        let myfile = await ai.files.upload({
+          file: videoBlob,
+          config: { mimeType: 'video/mp4' }
+        });
+        
+        console.log('Video uploaded to Gemini:', myfile.uri);
+        
+        // Wait for file to be ACTIVE
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        
+        let fileName = myfile.name;
+        if (!fileName && myfile.uri) {
+          const uriParts = myfile.uri.split('/');
+          fileName = uriParts[uriParts.length - 1];
+        }
+        
+        if (myfile.state !== 'ACTIVE') {
+          while (myfile.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error('Timeout waiting for video to be ready');
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            
+            try {
+              if (fileName) {
+                const fileInfo = await ai.files.get({ name: fileName });
+                myfile = fileInfo;
+              }
+            } catch (err) {
+              console.error('Error checking file status:', err);
+            }
+          }
+        }
+        
+        console.log('Video is ready, extracting transcript...');
+        
+        // Extract transcript using Gemini
+        const transcriptPrompt = `Extract the complete transcript from this video. Include all spoken words, dialogue, and narration. Return ONLY the transcript text, nothing else. If there is no speech in the video, return "No speech detected in video."`;
+        
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  fileData: {
+                    fileUri: myfile.uri,
+                    mimeType: myfile.mimeType
+                  }
+                },
+                { text: transcriptPrompt }
+              ]
+            }
+          ]
+        });
+        
+        // Extract transcript from response
+        if (result.candidates && result.candidates[0]?.content?.parts) {
+          transcript = result.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('')
+            .trim();
+        } else if ((result as any).text) {
+          transcript = (result as any).text.trim();
+        }
+        
+        if (!transcript || transcript.toLowerCase().includes('no speech detected')) {
+          return NextResponse.json(
+            { error: 'No speech detected in the uploaded video. The video may not have audio or dialogue.' },
+            { status: 400 }
+          );
+        }
+        
+        console.log('Transcript extracted from uploaded video:', transcript.substring(0, 100) + '...');
+      } catch (videoError: any) {
+        console.error('Error processing uploaded video:', videoError);
+        return NextResponse.json(
+          { 
+            error: 'Failed to extract transcript from uploaded video',
+            details: videoError.message || 'Could not process video'
           },
           { status: 500 }
         );

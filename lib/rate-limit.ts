@@ -136,6 +136,16 @@ function getRateLimiter() {
         analytics: true,
         prefix: '@upstash/ratelimit/generateFrameAnimation',
       }),
+      generateFirstFramePrompt: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
+        analytics: true,
+      }),
+      generateExtendPrompt: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(20, '1 h'), // 20 requests per hour
+        analytics: true,
+      }),
     };
   } else {
     // Use in-memory rate limiting for development
@@ -183,6 +193,12 @@ function getRateLimiter() {
       generateFrameAnimation: {
         limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
       },
+      generateFirstFramePrompt: {
+        limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
+      },
+      generateExtendPrompt: {
+        limit: (identifier: string) => inMemory.limit(identifier, 20, 3600), // 20 per hour
+      },
     };
   }
 
@@ -204,7 +220,7 @@ function getIdentifier(request: Request | NextRequest): string {
 
 // Rate limit middleware
 export async function checkRateLimit(
-  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt' | 'generateVideoPromptAuto' | 'generateViralScriptPerplexity' | 'researchPerplexity' | 'generateVideoPromptFromVideo' | 'generateVideoPromptFromScript' | 'generateFrameAnimation' | 'uploadVideoToGemini',
+  endpoint: 'analyze' | 'generateStaticAd' | 'generateProductVideo' | 'enhancePrompt' | 'scrapeUrl' | 'generateViralScript' | 'generateImagePrompt' | 'generateVideoPromptAuto' | 'generateViralScriptPerplexity' | 'researchPerplexity' | 'generateVideoPromptFromVideo' | 'generateVideoPromptFromScript' | 'generateFrameAnimation' | 'uploadVideoToGemini' | 'generateFirstFramePrompt' | 'generateExtendPrompt',
   request: Request | NextRequest
 ): Promise<{ success: boolean; limit?: number; remaining?: number; reset?: number; error?: string }> {
   try {

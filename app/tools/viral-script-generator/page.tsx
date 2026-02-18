@@ -8,6 +8,8 @@ import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 export default function ViralScriptGenerator() {
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [metaAdUrl, setMetaAdUrl] = useState<string>('');
+  const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [productDescription, setProductDescription] = useState<string>('');
   const [creativeAngle, setCreativeAngle] = useState<string>('');
   const [duration, setDuration] = useState<number | null>(null);
@@ -18,9 +20,43 @@ export default function ViralScriptGenerator() {
   const [isScraping, setIsScraping] = useState<boolean>(false);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
 
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file type
+      if (!file.type.startsWith('video/')) {
+        setError('Please upload a video file');
+        return;
+      }
+      setUploadedVideo(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVideoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      // Clear URL inputs when video is uploaded
+      setVideoUrl('');
+      setMetaAdUrl('');
+    }
+  };
+
+  const removeUploadedVideo = () => {
+    setUploadedVideo(null);
+    setVideoPreview(null);
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const handleGenerate = async () => {
-    if (!videoUrl.trim() && !metaAdUrl.trim()) {
-      setError('Please enter either a video URL (Instagram Reel or TikTok) or a Meta Ad URL');
+    if (!videoUrl.trim() && !metaAdUrl.trim() && !uploadedVideo) {
+      setError('Please enter a video URL (Instagram Reel or TikTok), a Meta Ad URL, or upload a video');
       return;
     }
 
@@ -36,6 +72,12 @@ export default function ViralScriptGenerator() {
     setGeneratedScript('');
 
     try {
+      // Convert video to base64 if uploaded
+      let videoBase64 = null;
+      if (uploadedVideo) {
+        videoBase64 = await fileToBase64(uploadedVideo);
+      }
+
       const response = await fetch('/api/generate-viral-script', {
         method: 'POST',
         headers: {
@@ -44,6 +86,7 @@ export default function ViralScriptGenerator() {
         body: JSON.stringify({
           videoUrl: videoUrl.trim() || null,
           metaAdUrl: metaAdUrl.trim() || null,
+          video: videoBase64,
           productDescription,
           creativeAngle: creativeAngle.trim() || null,
           duration: duration,
@@ -146,17 +189,76 @@ export default function ViralScriptGenerator() {
           </p>
         </div>
 
+        {/* Video Upload Input */}
+        <div className="mb-8">
+          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+            Upload Video <span className="text-xs font-normal text-zinc-500">(Optional if URL provided)</span>
+          </label>
+          {videoPreview ? (
+            <div className="relative">
+              <video
+                src={videoPreview}
+                controls
+                className="w-full max-w-md rounded-xl border-2 border-zinc-700/50"
+              />
+              <button
+                onClick={removeUploadedVideo}
+                disabled={isGenerating}
+                className="absolute right-2 top-2 rounded-full bg-red-500/80 hover:bg-red-500 text-white p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Remove video"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 p-8 transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+              <svg className="mb-2 h-8 w-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm text-zinc-400">Click to upload video</span>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={handleVideoUpload}
+                className="hidden"
+                disabled={isGenerating}
+              />
+            </label>
+          )}
+          <p className="mt-2 text-xs text-zinc-500">
+            Upload a video file to extract the script. The video will be analyzed to generate a transcript.
+          </p>
+        </div>
+
         {/* Video URL Input */}
         <div className="mb-8">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Instagram Reel or TikTok URL <span className="text-xs font-normal text-zinc-500">(Optional if Meta Ad URL provided)</span>
+            Instagram Reel or TikTok URL <span className="text-xs font-normal text-zinc-500">(Optional if video uploaded or Meta Ad URL provided)</span>
           </label>
           <input
             type="text"
             value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
+            onChange={(e) => {
+              setVideoUrl(e.target.value);
+              if (e.target.value.trim()) {
+                setUploadedVideo(null);
+                setVideoPreview(null);
+              }
+            }}
             placeholder="https://www.instagram.com/reel/... or https://www.tiktok.com/..."
-            disabled={isGenerating}
+            disabled={isGenerating || !!uploadedVideo}
             className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {videoUrl && (
@@ -171,14 +273,20 @@ export default function ViralScriptGenerator() {
         {/* Meta Ad URL Input */}
         <div className="mb-8">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Meta Ad URL <span className="text-xs font-normal text-zinc-500">(Optional if Video URL provided)</span>
+            Meta Ad URL <span className="text-xs font-normal text-zinc-500">(Optional if video uploaded or Video URL provided)</span>
           </label>
           <input
             type="text"
             value={metaAdUrl}
-            onChange={(e) => setMetaAdUrl(e.target.value)}
+            onChange={(e) => {
+              setMetaAdUrl(e.target.value);
+              if (e.target.value.trim()) {
+                setUploadedVideo(null);
+                setVideoPreview(null);
+              }
+            }}
             placeholder="https://www.facebook.com/ads/library/?id=XXXXX"
-            disabled={isGenerating}
+            disabled={isGenerating || !!uploadedVideo}
             className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {metaAdUrl && (
@@ -188,7 +296,7 @@ export default function ViralScriptGenerator() {
             </p>
           )}
           <p className="mt-2 text-xs text-zinc-500">
-            Provide either a video URL (Instagram/TikTok) or a Meta Ad URL. The script will be generated from the transcript of the provided source.
+            Provide either a video upload, video URL (Instagram/TikTok), or a Meta Ad URL. The script will be generated from the transcript of the provided source.
           </p>
         </div>
 
@@ -255,7 +363,7 @@ export default function ViralScriptGenerator() {
         <div className="mb-8">
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || (!videoUrl.trim() && !metaAdUrl.trim()) || !productDescription.trim()}
+            disabled={isGenerating || (!videoUrl.trim() && !metaAdUrl.trim() && !uploadedVideo) || !productDescription.trim()}
             className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 text-base font-bold text-white shadow-[0_0_30px_rgba(250,204,21,0.4)] transition-all hover:from-amber-400 hover:to-amber-500 hover:shadow-[0_0_40px_rgba(250,204,21,0.5)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500 disabled:hover:to-amber-600"
           >
             {isScraping ? 'Scraping transcript...' : isGenerating ? 'Generating viral script...' : 'Generate Viral Script'}

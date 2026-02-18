@@ -14,6 +14,7 @@ interface Scene {
   id: number;
   action: string;
   script: string | null; // Script text for the scene
+  scriptAdaptation: 'adapt' | 'keep'; // Adapt script to time or keep all script
   composition: Composition[];
   cameraAngle: string[]; // Camera angle options (multiple selection)
   lighting: Lighting | null;
@@ -26,6 +27,7 @@ interface Scene {
   noDialogue: boolean; // No dialogue in this scene
   lipSync: boolean; // Lip sync mode - character visibly speaks the words
   voiceover: boolean; // Voiceover mode - voice plays while actions happen, character doesn't visibly speak
+  continuousAction: boolean; // No cuts - all actions happen continuously without cuts
 }
 
 const COMPOSITION_OPTIONS = {
@@ -54,6 +56,74 @@ const LIGHTING_OPTIONS = {
   ]
 };
 
+// Cinematic Camera Angle Options with descriptions
+const CINEMATIC_CAMERA_ANGLES = [
+  {
+    value: 'low angle',
+    label: 'Low Angle',
+    description: 'Cinematic shot from a lower perspective looking upward, creating a powerful and dominant visual presence.'
+  },
+  {
+    value: 'high angle',
+    label: 'High Angle',
+    description: 'Cinematic shot from an elevated perspective looking downward, adding vulnerability, scale, or dramatic context.'
+  },
+  {
+    value: 'over-the-shoulder',
+    label: 'Over-the-Shoulder',
+    description: 'Shot framed from behind a character\'s shoulder, adding depth and immersive storytelling perspective.'
+  },
+  {
+    value: 'wide establishing',
+    label: 'Wide Establishing',
+    description: 'Wide cinematic frame that reveals environment and spatial context, setting the scene before action.'
+  },
+  {
+    value: 'dutch angle',
+    label: 'Dutch Angle',
+    description: 'Slightly tilted frame creating tension, unease, or dynamic cinematic energy.'
+  },
+  {
+    value: 'extreme close-up',
+    label: 'Extreme Close-up',
+    description: 'Very tight framing on details like eyes, hands, or product textures to emphasize emotion or realism.'
+  }
+];
+
+// Cinematic Camera Movement Options with descriptions
+const CINEMATIC_CAMERA_MOVEMENTS = [
+  {
+    value: 'slow push-in',
+    label: 'Slow Push-in',
+    description: 'Smooth forward camera movement slowly approaching the subject to build intensity and focus.'
+  },
+  {
+    value: 'tracking shot',
+    label: 'Tracking Shot',
+    description: 'Camera moves laterally or follows the subject smoothly, maintaining motion while keeping cinematic flow.'
+  },
+  {
+    value: 'orbit shot',
+    label: 'Orbit Shot',
+    description: 'Camera moves in a circular path around the subject, creating dramatic cinematic emphasis.'
+  },
+  {
+    value: 'tilt up/down',
+    label: 'Tilt Up/Down',
+    description: 'Vertical camera movement revealing the subject from bottom to top or top to bottom.'
+  },
+  {
+    value: 'crane / jib motion',
+    label: 'Crane / Jib Motion',
+    description: 'Elevated sweeping camera movement moving vertically or diagonally for a grand cinematic reveal.'
+  },
+  {
+    value: 'handheld cinematic',
+    label: 'Handheld Cinematic',
+    description: 'Subtle controlled handheld motion adding realism and organic cinematic texture without looking amateur.'
+  }
+];
+
 // Default texts for each composition - Optimized for hyperrealistic UGC
 const DEFAULT_COMPOSITION_TEXTS: Record<string, string> = {
   'UGC Close-up': 'Extreme close-up mobile-style shot of [product], natural shaky camera, sharp focus on textures and details, shallow depth of field, authentic smartphone aesthetic',
@@ -77,6 +147,9 @@ export default function VideoPromptGenerator() {
   const mainStyle: MainStyle = 'hyperrealistic';
   const productFocus: ProductFocus = 'ugc';
   
+  // Generator type: 'ugc' or 'cinematic'
+  const [generatorType, setGeneratorType] = useState<'ugc' | 'cinematic' | null>(null);
+  
   // Mode: 'manual', 'automatic', or 'copy-video'
   const [mode, setMode] = useState<'manual' | 'automatic' | 'copy-video'>('manual');
   
@@ -86,6 +159,7 @@ export default function VideoPromptGenerator() {
     id: 1, 
     action: '', 
     script: null, 
+    scriptAdaptation: 'adapt', // Default: adapt script to time
     composition: [], 
     cameraAngle: [], 
     lighting: null, 
@@ -96,7 +170,8 @@ export default function VideoPromptGenerator() {
     copyCameraAngle: false,
     noDialogue: false,
     lipSync: false,
-    voiceover: false
+    voiceover: false,
+    continuousAction: false
   }]);
   const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
   
@@ -115,8 +190,24 @@ export default function VideoPromptGenerator() {
   const [copyVideoChanges, setCopyVideoChanges] = useState<string>('');
   const [copyVideoScript, setCopyVideoScript] = useState<string>('');
   
+  // Cinematic mode state
+  const [cinematicMode, setCinematicMode] = useState<'manual' | 'automatic'>('manual');
+  const [cinematicAutoMode, setCinematicAutoMode] = useState<'describe' | 'script'>('describe');
+  const [cinematicDescription, setCinematicDescription] = useState<string>('');
+  const [cinematicScript, setCinematicScript] = useState<string>('');
+  const [cinematicDuration, setCinematicDuration] = useState<number>(10);
+  const [cinematicCameraAngles, setCinematicCameraAngles] = useState<string[]>([]);
+  const [cinematicCameraMovements, setCinematicCameraMovements] = useState<string[]>([]);
+  
   // Shared state
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
+  const [firstFramePrompt, setFirstFramePrompt] = useState<string>('');
+  const [isGeneratingFirstFrame, setIsGeneratingFirstFrame] = useState<boolean>(false);
+  const [extendPrompt, setExtendPrompt] = useState<string>('');
+  const [isGeneratingExtend, setIsGeneratingExtend] = useState<boolean>(false);
+  const [showExtendModal, setShowExtendModal] = useState<boolean>(false);
+  const [extendScript, setExtendScript] = useState<string>('');
+  const [extendActions, setExtendActions] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [productImage, setProductImage] = useState<File | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
@@ -133,6 +224,7 @@ export default function VideoPromptGenerator() {
           id: i, 
           action: '', 
           script: null, 
+          scriptAdaptation: 'adapt',
           composition: [], 
           cameraAngle: [], 
           lighting: null, 
@@ -143,7 +235,8 @@ export default function VideoPromptGenerator() {
           copyCameraAngle: false,
           noDialogue: false,
           lipSync: false,
-          voiceover: false
+          voiceover: false,
+          continuousAction: false
         }
       );
     }
@@ -369,7 +462,9 @@ export default function VideoPromptGenerator() {
     copyCameraAngle?: boolean,
     noDialogue?: boolean,
     lipSync?: boolean,
-    voiceover?: boolean
+    voiceover?: boolean,
+    continuousAction?: boolean,
+    scriptAdaptation?: 'adapt' | 'keep'
   ) => {
     // Validate inputs with detailed logging
     if (!actionText || !actionText.trim()) {
@@ -431,6 +526,8 @@ export default function VideoPromptGenerator() {
           noDialogue: noDialogue || false,
           lipSync: lipSync || false,
           voiceover: voiceover || false,
+          continuousAction: continuousAction || false,
+          scriptAdaptation: scriptAdaptation || 'adapt',
           productPhotoWillBeAttached: productPhotoWillBeAttached
         }),
       });
@@ -619,7 +716,9 @@ export default function VideoPromptGenerator() {
                 scene.copyCameraAngle,
                 scene.noDialogue,
                 scene.lipSync,
-                scene.voiceover
+                scene.voiceover,
+                scene.continuousAction,
+                scene.scriptAdaptation
               );
               
               // Verify that the enhanced text is actually different from the original
@@ -646,7 +745,9 @@ export default function VideoPromptGenerator() {
                     scene.copyCameraAngle,
                     scene.noDialogue,
                     scene.lipSync,
-                    scene.voiceover
+                    scene.voiceover,
+                    scene.continuousAction,
+                    scene.scriptAdaptation
                   );
                   if (retryEnhanced && retryEnhanced.trim() && retryEnhanced !== finalAction) {
                     finalAction = retryEnhanced;
@@ -772,6 +873,7 @@ export default function VideoPromptGenerator() {
             id: `scene-${index}`,
             action: '',
             script: null,
+            scriptAdaptation: 'adapt',
             composition: [],
             cameraAngle: [],
             lighting: null,
@@ -782,7 +884,8 @@ export default function VideoPromptGenerator() {
             copyCameraAngle: false,
             noDialogue: false,
             lipSync: false,
-            voiceover: false
+            voiceover: false,
+            continuousAction: false
           };
 
           return {
@@ -968,6 +1071,243 @@ export default function VideoPromptGenerator() {
   const isAutomaticMode = mode === 'automatic';
   const showModeSelection = !mode || (isManualMode && currentStep === 'sceneCount' && !generatedPrompt) || (mode === 'copy-video' && !generatedPrompt);
 
+  // Function to generate cinematic prompt
+  const generateCinematicPrompt = async () => {
+    // Validate based on mode
+    if (cinematicMode === 'automatic') {
+      if (cinematicAutoMode === 'describe') {
+        if (!cinematicDescription.trim()) {
+          setError('Please describe what you want in your cinematic video');
+          return;
+        }
+      } else if (cinematicAutoMode === 'script') {
+        if (!cinematicScript.trim()) {
+          setError('Please enter a script');
+          return;
+        }
+      }
+    } else {
+      // Manual mode
+      if (!cinematicDescription.trim()) {
+        setError('Please describe what you want in your cinematic video');
+        return;
+      }
+
+      if (cinematicCameraAngles.length === 0) {
+        setError('Please select at least one camera angle');
+        return;
+      }
+
+      if (cinematicCameraMovements.length === 0) {
+        setError('Please select at least one camera movement');
+        return;
+      }
+    }
+
+    setIsGenerating(true);
+    setError(null);
+    setIsInsufficientCredits(false);
+    setGeneratedPrompt('');
+
+    try {
+      // Convert product image to base64 if provided
+      let productImageBase64 = null;
+      if (productImage) {
+        productImageBase64 = await fileToBase64(productImage);
+      }
+
+      const response = await fetch('/api/generate-cinematic-video-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: cinematicMode === 'automatic' && cinematicAutoMode === 'script' ? null : cinematicDescription.trim(),
+          script: cinematicMode === 'automatic' && cinematicAutoMode === 'script' ? cinematicScript.trim() : null,
+          duration: cinematicDuration,
+          mode: cinematicMode,
+          autoMode: cinematicMode === 'automatic' ? cinematicAutoMode : null,
+          cameraAngles: cinematicMode === 'manual' ? cinematicCameraAngles : null,
+          cameraMovements: cinematicMode === 'manual' ? cinematicCameraMovements : null,
+          productImage: productImageBase64,
+          productPhotoWillBeAttached: productPhotoWillBeAttached
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setError(null);
+          setGeneratedPrompt('');
+          setIsGenerating(false);
+          return;
+        }
+        throw new Error(data.error || 'Error generating cinematic prompt');
+      }
+
+      if (data.prompt) {
+        setGeneratedPrompt(data.prompt);
+        setError(null);
+        setIsInsufficientCredits(false);
+      } else {
+        throw new Error('No prompt generated');
+      }
+    } catch (error: any) {
+      console.error('Error generating cinematic prompt:', error);
+      if (error.message && error.message.includes('Insufficient credits')) {
+        setIsInsufficientCredits(true);
+        setError(null);
+      } else {
+        setError(`Error generating prompt: ${error.message || 'Please try again.'}`);
+        setIsInsufficientCredits(false);
+      }
+      setGeneratedPrompt('');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const toggleCinematicCameraAngle = (angle: string) => {
+    setCinematicCameraAngles(prev => 
+      prev.includes(angle) 
+        ? prev.filter(a => a !== angle)
+        : [...prev, angle]
+    );
+  };
+
+  const generateFirstFramePrompt = async () => {
+    if (!generatedPrompt || !generatedPrompt.trim()) {
+      setError('No video prompt available to generate first frame');
+      return;
+    }
+
+    setIsGeneratingFirstFrame(true);
+    setFirstFramePrompt('');
+    setError(null);
+    setIsInsufficientCredits(false);
+
+    try {
+      const response = await fetch('/api/generate-first-frame-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoPrompt: generatedPrompt
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setError(null);
+          setFirstFramePrompt('');
+          setIsGeneratingFirstFrame(false);
+          return;
+        }
+        throw new Error(data.error || 'Error generating first frame prompt');
+      }
+
+      if (data.prompt) {
+        setFirstFramePrompt(data.prompt);
+        setError(null);
+        setIsInsufficientCredits(false);
+      } else {
+        throw new Error('No first frame prompt generated');
+      }
+    } catch (error: any) {
+      console.error('Error generating first frame prompt:', error);
+      if (error.message && error.message.includes('Insufficient credits')) {
+        setIsInsufficientCredits(true);
+        setError(null);
+      } else {
+        setError(`Error generating first frame prompt: ${error.message || 'Please try again.'}`);
+        setIsInsufficientCredits(false);
+      }
+      setFirstFramePrompt('');
+    } finally {
+      setIsGeneratingFirstFrame(false);
+    }
+  };
+
+  const generateExtendPrompt = async () => {
+    if (!generatedPrompt || !generatedPrompt.trim()) {
+      setError('No video prompt available to extend');
+      return;
+    }
+
+    if (!extendScript.trim() && !extendActions.trim()) {
+      setError('Please provide either a new script or new actions');
+      return;
+    }
+
+    setIsGeneratingExtend(true);
+    setExtendPrompt('');
+    setError(null);
+    setIsInsufficientCredits(false);
+
+    try {
+      const response = await fetch('/api/generate-extend-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          originalPrompt: generatedPrompt,
+          newScript: extendScript.trim() || null,
+          newActions: extendActions.trim() || null
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setError(null);
+          setExtendPrompt('');
+          setIsGeneratingExtend(false);
+          setShowExtendModal(false);
+          return;
+        }
+        throw new Error(data.error || 'Error generating extend prompt');
+      }
+
+      if (data.prompt) {
+        setExtendPrompt(data.prompt);
+        setError(null);
+        setIsInsufficientCredits(false);
+        setShowExtendModal(false);
+      } else {
+        throw new Error('No extend prompt generated');
+      }
+    } catch (error: any) {
+      console.error('Error generating extend prompt:', error);
+      if (error.message && error.message.includes('Insufficient credits')) {
+        setIsInsufficientCredits(true);
+        setError(null);
+      } else {
+        setError(`Error generating extend prompt: ${error.message || 'Please try again.'}`);
+        setIsInsufficientCredits(false);
+      }
+      setExtendPrompt('');
+    } finally {
+      setIsGeneratingExtend(false);
+    }
+  };
+
+  const toggleCinematicCameraMovement = (movement: string) => {
+    setCinematicCameraMovements(prev => 
+      prev.includes(movement) 
+        ? prev.filter(m => m !== movement)
+        : [...prev, movement]
+    );
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8 text-left">
@@ -975,16 +1315,63 @@ export default function VideoPromptGenerator() {
           Video Prompt Generator
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-zinc-50 sm:text-4xl">
-          AI UGC Video Prompt Generator
+          AI Video Prompt Generator
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-          Create hyperrealistic UGC video prompts for AI video generation with scene-by-scene control.
+          Create professional video prompts for AI video generation with full control over cinematic elements.
         </p>
       </div>
 
       <div className="space-y-8">
-        {/* Mode Selection - Show when no mode selected or when manually navigating back */}
-        {showModeSelection && (
+        {/* Generator Type Selection - Show when no type selected */}
+        {generatorType === null && (
+          <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+            <div className="mb-6">
+              <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90 mb-2">
+                Select Generator Type
+              </label>
+              <p className="text-sm text-zinc-500 mb-6">
+                Choose between UGC (User-Generated Content) style or Cinematic professional style
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setGeneratorType('ugc');
+                    setMode('manual');
+                    setCurrentStep('sceneCount');
+                    setGeneratedPrompt('');
+                  }}
+                  className="group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30 hover:shadow-[0_0_30px_rgba(250,204,21,0.4)]"
+                >
+                  <div className="font-bold text-lg mb-2">UGC AI Prompt Generator</div>
+                  <div className="text-sm opacity-90">Create hyperrealistic UGC video prompts with authentic mobile aesthetics</div>
+                  <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs text-zinc-900 font-bold">
+                    →
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    setGeneratorType('cinematic');
+                    setGeneratedPrompt('');
+                  }}
+                  className="group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_25px_rgba(168,85,247,0.3)] ring-2 ring-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]"
+                >
+                  <div className="font-bold text-lg mb-2">Cinematic Video Prompt Generator</div>
+                  <div className="text-sm opacity-90">Create professional cinematic video prompts with advanced camera angles and movements</div>
+                  <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-xs text-zinc-900 font-bold">
+                    →
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* UGC Mode - Show existing UGC interface */}
+        {generatorType === 'ugc' && (
+          <>
+            {/* Mode Selection - Show when no mode selected or when manually navigating back */}
+            {showModeSelection && (
           <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
             <div className="mb-6">
               <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90 mb-2">
@@ -1191,9 +1578,40 @@ export default function VideoPromptGenerator() {
                     disabled={scene.isEnhancing}
                     className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
                   />
+                  
+                  {/* Script Adaptation Buttons */}
+                  {scene.script && scene.script.trim() && (
+                    <div className="mt-3 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => updateScene(scene.id, 'scriptAdaptation', 'adapt')}
+                        disabled={scene.isEnhancing}
+                        className={`flex-1 rounded-lg border-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+                          scene.scriptAdaptation === 'adapt'
+                            ? 'border-amber-500 bg-amber-500/20 text-amber-300 shadow-lg shadow-amber-500/20'
+                            : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-amber-500/50 hover:bg-zinc-800/70 hover:text-amber-400/90'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        Adapt My Script to the Time
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateScene(scene.id, 'scriptAdaptation', 'keep')}
+                        disabled={scene.isEnhancing}
+                        className={`flex-1 rounded-lg border-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+                          scene.scriptAdaptation === 'keep'
+                            ? 'border-amber-500 bg-amber-500/20 text-amber-300 shadow-lg shadow-amber-500/20'
+                            : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-amber-500/50 hover:bg-zinc-800/70 hover:text-amber-400/90'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        Keep All My Script
+                      </button>
+                    </div>
+                  )}
+                  
                   <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
                     <p className="text-xs text-amber-300">
-                      <strong>Note:</strong> The script will be integrated with the actions (e.g., "while lifting the head, says..."). The script duration target is {scene.duration === 1 ? '15 seconds (default)' : `${scene.duration} seconds`}. If the script is too long, it will be adapted to fit the duration without sacrificing too much content. The script will be mentioned as early as possible if it's long but achievable within the time limit.
+                      <strong>Note:</strong> The script will be integrated with the actions (e.g., "while lifting the head, says..."). {scene.scriptAdaptation === 'adapt' ? `The script duration target is ${scene.duration === 1 ? '15 seconds (default)' : `${scene.duration} seconds`}. If the script is too long, it will be adapted to fit the duration without sacrificing too much content.` : 'The entire script will be kept in the prompt without any adaptations, regardless of the duration.'}
                     </p>
                   </div>
                 </div>
@@ -1454,6 +1872,33 @@ export default function VideoPromptGenerator() {
                   {scene.noDialogue && (
                     <p className="mt-2 text-xs text-red-300 italic">
                       No dialogue will be included in this scene. The prompt will explicitly specify that no words should be spoken.
+                    </p>
+                  )}
+                </div>
+
+                {/* Continuous Action - No Cuts */}
+                <div className="mb-6">
+                  <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                    Action Continuity
+                  </label>
+                  <button
+                    onClick={() => {
+                      updateScene(scene.id, 'continuousAction', !scene.continuousAction);
+                    }}
+                    className={`w-full rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all duration-200 ${
+                      scene.continuousAction
+                        ? 'border-green-500/80 bg-gradient-to-br from-green-500/20 to-green-500/10 text-green-200 shadow-[0_0_20px_rgba(34,197,94,0.25)] ring-2 ring-green-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-green-500/50 hover:bg-zinc-800/50 hover:text-green-300/90 hover:shadow-[0_0_10px_rgba(34,197,94,0.1)]'
+                    }`}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      {scene.continuousAction ? '✓' : ''}
+                      <span>Continuous Action - No Cuts</span>
+                    </span>
+                  </button>
+                  {scene.continuousAction && (
+                    <p className="mt-2 text-xs text-green-300 italic">
+                      All actions will happen continuously without any cuts or transitions. The entire scene will be one continuous shot with all actions flowing seamlessly from start to finish.
                     </p>
                   )}
                 </div>
@@ -2201,24 +2646,22 @@ export default function VideoPromptGenerator() {
             </button>
           </div>
           </div>
-        )}
-
-        {/* Insufficient Credits Error */}
-        {isInsufficientCredits && (
-          <div className="mb-6">
-            <InsufficientCreditsError />
-          </div>
+          )}
+          </>
         )}
 
         {/* Error Message */}
-        {error && !isInsufficientCredits && (
+        {(generatorType === 'ugc' || generatorType === 'cinematic') && error && !isInsufficientCredits && (
           <div className="mb-6 rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-4 text-sm text-red-200">
             {error}
           </div>
         )}
 
-        {/* Generated Prompt - Show when prompt is generated */}
-        {((mode === 'manual' && currentStep === 'generate') || mode === 'automatic' || mode === 'copy-video') && generatedPrompt && !isInsufficientCredits && (
+        {/* Insufficient Credits Error */}
+        {(generatorType === 'ugc' || generatorType === 'cinematic') && isInsufficientCredits && <InsufficientCreditsError />}
+
+        {/* Generated Prompt - Show when prompt is generated (UGC Mode) */}
+        {generatorType === 'ugc' && ((mode === 'manual' && currentStep === 'generate') || mode === 'automatic' || mode === 'copy-video') && generatedPrompt && !isInsufficientCredits && (
           <div className={`rounded-2xl border-2 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-8 shadow-[0_0_50px_rgba(250,204,21,0.2)] ${
             mode === 'copy-video' 
               ? 'border-green-500/50 shadow-[0_0_50px_rgba(34,197,94,0.2)]' 
@@ -2240,6 +2683,527 @@ export default function VideoPromptGenerator() {
             <pre className="whitespace-pre-wrap rounded-xl border-2 border-zinc-800/50 bg-zinc-950/70 p-6 text-sm leading-relaxed text-zinc-200 font-mono">
               {generatedPrompt}
             </pre>
+            
+            {/* Prompt for First Frame and Extend Buttons */}
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={generateFirstFramePrompt}
+                disabled={isGeneratingFirstFrame}
+                className="flex-1 rounded-lg border-2 border-amber-500/50 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-300 transition-all hover:border-amber-500/70 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGeneratingFirstFrame ? 'Generating...' : 'Prompt for First Frame'}
+              </button>
+              <button
+                onClick={() => setShowExtendModal(true)}
+                disabled={isGeneratingExtend}
+                className="flex-1 rounded-lg border-2 border-green-500/50 bg-green-500/10 px-6 py-3 text-sm font-semibold text-green-300 transition-all hover:border-green-500/70 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Extend
+              </button>
+            </div>
+            
+            {/* First Frame Prompt Display */}
+            {firstFramePrompt && (
+              <div className="mt-6 rounded-xl border-2 border-blue-500/50 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-6 shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+                <div className="mb-4 flex items-center justify-between border-b border-zinc-800/50 pb-3">
+                  <div>
+                    <h4 className="text-lg font-bold text-blue-300">
+                      First Frame Prompt
+                    </h4>
+                    <p className="mt-1 text-xs text-zinc-500">Ready to use in your AI image generator</p>
+                  </div>
+                  <CopyButton 
+                    text={firstFramePrompt} 
+                    label="Copy"
+                    copiedLabel="Copied!"
+                  />
+                </div>
+                <pre className="whitespace-pre-wrap rounded-xl border-2 border-zinc-800/50 bg-zinc-950/70 p-4 text-sm leading-relaxed text-zinc-200 font-mono">
+                  {firstFramePrompt}
+                </pre>
+              </div>
+            )}
+            
+            {/* Extend Prompt Display */}
+            {extendPrompt && (
+              <div className="mt-6 rounded-xl border-2 border-green-500/50 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-6 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
+                <div className="mb-4 flex items-center justify-between border-b border-zinc-800/50 pb-3">
+                  <div>
+                    <h4 className="text-lg font-bold text-green-300">
+                      Extended Prompt (10 seconds)
+                    </h4>
+                    <p className="mt-1 text-xs text-zinc-500">Continuation of the original video</p>
+                  </div>
+                  <CopyButton 
+                    text={extendPrompt} 
+                    label="Copy"
+                    copiedLabel="Copied!"
+                  />
+                </div>
+                <pre className="whitespace-pre-wrap rounded-xl border-2 border-zinc-800/50 bg-zinc-950/70 p-4 text-sm leading-relaxed text-zinc-200 font-mono">
+                  {extendPrompt}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Extend Modal */}
+        {showExtendModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="relative w-full max-w-2xl rounded-2xl border-2 border-green-500/50 bg-gradient-to-br from-zinc-900/95 to-zinc-950/95 p-8 shadow-[0_0_50px_rgba(34,197,94,0.3)]">
+              <button
+                onClick={() => {
+                  setShowExtendModal(false);
+                  setExtendScript('');
+                  setExtendActions('');
+                }}
+                className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-200"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              
+              <h3 className="mb-6 text-2xl font-bold text-green-300">
+                Extend Video Prompt
+              </h3>
+              
+              <p className="mb-4 text-sm text-zinc-400">
+                Modify the script and/or actions to create a continuation of the original video. The extended prompt will be 10 seconds and maintain continuity with the original.
+              </p>
+              
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-semibold text-green-400">
+                  New Script (Optional)
+                </label>
+                <textarea
+                  value={extendScript}
+                  onChange={(e) => setExtendScript(e.target.value)}
+                  placeholder="Enter the new script/dialogue for the extended video..."
+                  rows={4}
+                  className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500/70 focus:border-green-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-green-500/20 resize-none"
+                />
+              </div>
+              
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-semibold text-green-400">
+                  New Actions (Optional)
+                </label>
+                <textarea
+                  value={extendActions}
+                  onChange={(e) => setExtendActions(e.target.value)}
+                  placeholder="Enter the new actions for the extended video..."
+                  rows={4}
+                  className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500/70 focus:border-green-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-green-500/20 resize-none"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={generateExtendPrompt}
+                  disabled={isGeneratingExtend || (!extendScript.trim() && !extendActions.trim())}
+                  className="flex-1 rounded-lg border-2 border-green-500/70 bg-green-500/20 px-6 py-3 text-sm font-semibold text-green-300 transition-all hover:border-green-500/90 hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingExtend ? 'Generating...' : 'Generate Extended Prompt'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowExtendModal(false);
+                    setExtendScript('');
+                    setExtendActions('');
+                  }}
+                  className="rounded-lg border-2 border-zinc-700/50 bg-zinc-800/50 px-6 py-3 text-sm font-semibold text-zinc-300 transition-all hover:border-zinc-600/50 hover:bg-zinc-800/70"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Generated Prompt - Show when prompt is generated (Cinematic Mode) */}
+        {generatorType === 'cinematic' && generatedPrompt && !isInsufficientCredits && (
+          <div className="rounded-2xl border-2 border-purple-500/50 bg-gradient-to-br from-zinc-900/90 to-zinc-950/80 p-8 shadow-[0_0_50px_rgba(168,85,247,0.2)]">
+            <div className="mb-6 flex items-center justify-between border-b border-zinc-800/50 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-purple-300">
+                  Generated Cinematic Prompt
+                </h3>
+                <p className="mt-1 text-xs text-zinc-500">Ready to use in your AI video generator</p>
+              </div>
+              <CopyButton 
+                text={generatedPrompt} 
+                label="Copy"
+                copiedLabel="Copied!"
+              />
+            </div>
+            <pre className="whitespace-pre-wrap rounded-xl border-2 border-zinc-800/50 bg-zinc-950/70 p-6 text-sm leading-relaxed text-zinc-200 font-mono">
+              {generatedPrompt}
+            </pre>
+          </div>
+        )}
+
+        {/* Cinematic Mode */}
+        {generatorType === 'cinematic' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-purple-300">Cinematic Video Prompt Generator</h3>
+              <button
+                onClick={() => {
+                  setGeneratorType(null);
+                  setCinematicMode('manual');
+                  setCinematicAutoMode('describe');
+                  setCinematicDescription('');
+                  setCinematicScript('');
+                  setCinematicCameraAngles([]);
+                  setCinematicCameraMovements([]);
+                  setGeneratedPrompt('');
+                }}
+                className="text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+              >
+                ← Back to Generator Selection
+              </button>
+            </div>
+
+            {/* Mode Selection: Manual vs Automatic */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                Select Mode
+              </label>
+              <p className="mb-4 text-xs text-zinc-500">
+                Choose between manual control (select camera angles and movements) or automatic (AI decides based on your description)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setCinematicMode('manual');
+                    setGeneratedPrompt('');
+                  }}
+                  disabled={isGenerating}
+                  className={`relative rounded-xl border-2 px-6 py-4 text-left transition-all duration-200 ${
+                    cinematicMode === 'manual'
+                      ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="font-bold text-base mb-1">Manual</div>
+                  <div className="text-xs opacity-90">Select camera angles and movements yourself</div>
+                  {cinematicMode === 'manual' && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setCinematicMode('automatic');
+                    setCinematicCameraAngles([]);
+                    setCinematicCameraMovements([]);
+                    setGeneratedPrompt('');
+                  }}
+                  disabled={isGenerating}
+                  className={`relative rounded-xl border-2 px-6 py-4 text-left transition-all duration-200 ${
+                    cinematicMode === 'automatic'
+                      ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <div className="font-bold text-base mb-1">Automatic</div>
+                  <div className="text-xs opacity-90">AI decides camera angles and movements based on your description</div>
+                  {cinematicMode === 'automatic' && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Automatic Mode: Describe vs Script Selection */}
+            {cinematicMode === 'automatic' && (
+              <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                  Select Input Method
+                </label>
+                <p className="mb-4 text-xs text-zinc-500">
+                  Choose between describing the video or providing a script to generate B-roll cinematic scenes
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => {
+                      setCinematicAutoMode('describe');
+                      setCinematicScript('');
+                      setGeneratedPrompt('');
+                    }}
+                    disabled={isGenerating}
+                    className={`relative rounded-xl border-2 px-6 py-4 text-left transition-all duration-200 ${
+                      cinematicAutoMode === 'describe'
+                        ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <div className="font-bold text-base mb-1">Describe Video</div>
+                    <div className="text-xs opacity-90">Describe what you want and AI will create cinematic scenes</div>
+                    {cinematicAutoMode === 'describe' && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCinematicAutoMode('script');
+                      setCinematicDescription('');
+                      setGeneratedPrompt('');
+                    }}
+                    disabled={isGenerating}
+                    className={`relative rounded-xl border-2 px-6 py-4 text-left transition-all duration-200 ${
+                      cinematicAutoMode === 'script'
+                        ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <div className="font-bold text-base mb-1">From Script</div>
+                    <div className="text-xs opacity-90">Paste your script and AI will generate B-roll cinematic scenes</div>
+                    {cinematicAutoMode === 'script' && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Description Input - Show in Manual mode or Automatic Describe mode */}
+            {(cinematicMode === 'manual' || (cinematicMode === 'automatic' && cinematicAutoMode === 'describe')) && (
+              <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                  Describe What You Want
+                </label>
+                <p className="mb-4 text-xs text-zinc-500">
+                  Describe the cinematic video you want to create. Be as detailed as possible about the scene, action, mood, and visual style.
+                </p>
+                <textarea
+                  value={cinematicDescription}
+                  onChange={(e) => setCinematicDescription(e.target.value)}
+                  placeholder="Example: A dramatic product reveal in a modern minimalist studio. The product slowly rotates on a pedestal while dramatic shadows play across its surface. The mood should be sophisticated and premium..."
+                  rows={6}
+                  disabled={isGenerating}
+                  className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-purple-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                />
+              </div>
+            )}
+
+            {/* Script Input - Show in Automatic Script mode */}
+            {cinematicMode === 'automatic' && cinematicAutoMode === 'script' && (
+              <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                  Script
+                </label>
+                <p className="mb-4 text-xs text-zinc-500">
+                  Paste your script here. The AI will analyze it and automatically generate cinematic B-roll scenes that complement and enhance the script's narrative, mood, and pacing.
+                </p>
+                <textarea
+                  value={cinematicScript}
+                  onChange={(e) => setCinematicScript(e.target.value)}
+                  placeholder="Example: 'Welcome to our premium skincare line. Each product is crafted with precision and care. Experience the luxury of nature meeting science...'"
+                  rows={8}
+                  disabled={isGenerating}
+                  className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-purple-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                />
+                <div className="mt-3 rounded-lg border border-purple-500/30 bg-purple-950/20 p-3">
+                  <p className="text-xs text-purple-300">
+                    <strong>Note:</strong> The AI will create cinematic B-roll scenes that visually support your script. These scenes will enhance the narrative, show product details, create atmosphere, and maintain professional cinematic quality throughout.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Duration Selection */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                Duration (seconds)
+              </label>
+              <p className="mb-4 text-xs text-zinc-500">
+                Select the duration for your cinematic video
+              </p>
+              <div className="grid grid-cols-4 gap-3">
+                {[5, 8, 10, 15].map((seconds) => (
+                  <button
+                    key={seconds}
+                    onClick={() => setCinematicDuration(seconds)}
+                    disabled={isGenerating}
+                    className={`relative rounded-xl border-2 px-6 py-4 text-center font-bold transition-all duration-200 ${
+                      cinematicDuration === seconds
+                        ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                        : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90 hover:shadow-[0_0_10px_rgba(168,85,247,0.1)]'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {seconds}s
+                    {cinematicDuration === seconds && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Camera Angle Selection - Only show in Manual mode */}
+            {cinematicMode === 'manual' && (
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                Camera Angle <span className="text-xs font-normal text-zinc-500">(Select multiple - AI will decide when to use each)</span>
+              </label>
+              <p className="mb-4 text-xs text-zinc-500">
+                Select one or more camera angles. The AI will intelligently distribute them throughout your video based on the action description.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CINEMATIC_CAMERA_ANGLES.map((angle) => {
+                  const isSelected = cinematicCameraAngles.includes(angle.value);
+                  return (
+                    <button
+                      key={angle.value}
+                      onClick={() => toggleCinematicCameraAngle(angle.value)}
+                      disabled={isGenerating}
+                      className={`group relative rounded-xl border-2 px-5 py-4 text-left transition-all duration-200 ${
+                        isSelected
+                          ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90 hover:shadow-[0_0_10px_rgba(168,85,247,0.1)]'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <div className="font-semibold text-sm mb-1">{angle.label}</div>
+                      <div className="text-xs opacity-80 leading-relaxed">{angle.description}</div>
+                      {isSelected && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {cinematicCameraAngles.length > 0 && (
+                <p className="mt-3 text-xs text-zinc-400 italic">
+                  Selected: {cinematicCameraAngles.map(a => CINEMATIC_CAMERA_ANGLES.find(opt => opt.value === a)?.label).join(', ')}. The AI will intelligently distribute these angles throughout your video.
+                </p>
+              )}
+            </div>
+            )}
+
+            {/* Camera Movement Selection - Only show in Manual mode */}
+            {cinematicMode === 'manual' && (
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                Camera Movement <span className="text-xs font-normal text-zinc-500">(Select multiple - AI will decide when to use each)</span>
+              </label>
+              <p className="mb-4 text-xs text-zinc-500">
+                Select one or more camera movements. The AI will intelligently distribute them throughout your video based on the action description.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CINEMATIC_CAMERA_MOVEMENTS.map((movement) => {
+                  const isSelected = cinematicCameraMovements.includes(movement.value);
+                  return (
+                    <button
+                      key={movement.value}
+                      onClick={() => toggleCinematicCameraMovement(movement.value)}
+                      disabled={isGenerating}
+                      className={`group relative rounded-xl border-2 px-5 py-4 text-left transition-all duration-200 ${
+                        isSelected
+                          ? 'border-purple-500/80 bg-gradient-to-br from-purple-500/20 to-purple-500/10 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-2 ring-purple-500/30'
+                          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-300 hover:border-purple-500/50 hover:bg-zinc-800/50 hover:text-purple-300/90 hover:shadow-[0_0_10px_rgba(168,85,247,0.1)]'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <div className="font-semibold text-sm mb-1">{movement.label}</div>
+                      <div className="text-xs opacity-80 leading-relaxed">{movement.description}</div>
+                      {isSelected && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400">✓</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {cinematicCameraMovements.length > 0 && (
+                <p className="mt-3 text-xs text-zinc-400 italic">
+                  Selected: {cinematicCameraMovements.map(m => CINEMATIC_CAMERA_MOVEMENTS.find(opt => opt.value === m)?.label).join(', ')}. The AI will intelligently distribute these movements throughout your video.
+                </p>
+              )}
+            </div>
+            )}
+
+            {/* Automatic Mode Info */}
+            {cinematicMode === 'automatic' && (
+              <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4">
+                <p className="text-xs text-purple-300">
+                  <strong>Automatic Mode:</strong> The AI will analyze your description and automatically decide which camera angles and movements best fit your video. You don't need to select them manually.
+                </p>
+              </div>
+            )}
+
+            {/* Product Image Upload (Optional) */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-purple-400/90">
+                Product Image (Optional)
+              </label>
+              <p className="mb-4 text-xs text-zinc-500">
+                Upload a product image to incorporate its visual details into the prompt
+              </p>
+              {productPreview ? (
+                <div className="relative">
+                  <img 
+                    src={productPreview} 
+                    alt="Product preview" 
+                    className="w-full max-w-md rounded-xl border-2 border-zinc-700/50"
+                  />
+                  <button
+                    onClick={() => {
+                      setProductImage(null);
+                      setProductPreview(null);
+                    }}
+                    className="absolute top-2 right-2 rounded-full bg-red-500/80 hover:bg-red-500 text-white p-2 transition-colors"
+                    title="Remove image"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-700/50 bg-zinc-800/30 p-8 transition-all hover:border-purple-500/50 hover:bg-zinc-800/50">
+                  <svg className="mb-2 h-8 w-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className="text-sm text-zinc-400">Click to upload product image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProductImageUpload}
+                    className="hidden"
+                  />
+                </label>
+              )}
+              {productImage && (
+                <div className="mt-4 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={productPhotoWillBeAttached}
+                    onChange={(e) => setProductPhotoWillBeAttached(e.target.checked)}
+                    className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-purple-500 focus:ring-purple-500/50"
+                  />
+                  <span className="text-sm text-zinc-300">Include product image in the final prompt</span>
+                </div>
+              )}
+            </div>
+
+            {/* Generate Button */}
+            <button
+              onClick={generateCinematicPrompt}
+              disabled={
+                isGenerating || 
+                (cinematicMode === 'manual' && (!cinematicDescription.trim() || cinematicCameraAngles.length === 0 || cinematicCameraMovements.length === 0)) ||
+                (cinematicMode === 'automatic' && cinematicAutoMode === 'describe' && !cinematicDescription.trim()) ||
+                (cinematicMode === 'automatic' && cinematicAutoMode === 'script' && !cinematicScript.trim())
+              }
+              className="w-full rounded-xl border-2 border-purple-500/70 bg-gradient-to-r from-purple-500/20 via-purple-500/15 to-purple-500/20 px-8 py-4 font-bold text-purple-200 shadow-[0_0_30px_rgba(168,85,247,0.25)] transition-all hover:from-purple-500/30 hover:via-purple-500/25 hover:to-purple-500/30 hover:shadow-[0_0_40px_rgba(168,85,247,0.35)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-purple-500/20 disabled:hover:via-purple-500/15 disabled:hover:to-purple-500/20 disabled:hover:scale-100"
+            >
+              {isGenerating ? (
+                <span className="flex items-center justify-center gap-3">
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></span>
+                  <span>{cinematicMode === 'automatic' && cinematicAutoMode === 'script' ? 'Generating B-roll cinematic scenes from script...' : 'Generating cinematic prompt...'}</span>
+                </span>
+              ) : (
+                cinematicMode === 'automatic' && cinematicAutoMode === 'script' ? 'Generate B-roll Cinematic Scenes' : 'Generate Cinematic Prompt'
+              )}
+            </button>
           </div>
         )}
       </div>

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue, lipSync, voiceover, productPhotoWillBeAttached } = body;
+    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue, lipSync, voiceover, continuousAction, scriptAdaptation, productPhotoWillBeAttached } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
@@ -439,12 +439,13 @@ This is scene ${currentSceneIndex !== undefined ? currentSceneIndex + 1 : 1} of 
     
     // Script integration instructions
     // For scenes 4+, use more concise script instructions
+    const scriptAdaptationMode = scriptAdaptation === 'keep' ? 'keep' : 'adapt';
     const scriptInstructions = script && script.trim()
       ? (isScene4Plus
           ? `\n\n**SCRIPT INTEGRATION (REQUIRED):**
 Script: "${script}". Action: "${actionText}". 
 REQUIRED: Identify all actions/B-roll from action text. Pair script portions with corresponding actions. Script word count: ~${script.split(/\s+/).length} words (~${Math.round(script.split(/\s+/).length / 2.5)}-${Math.round(script.split(/\s+/).length / 2.2)}s). Duration: ${effectiveDuration}s.
-Integration: "while [action], says [script portion]". If script too long, adapt but maintain coherence. Distribute script throughout scene synchronized with actions.`
+Integration: "while [action], says [script portion]". ${scriptAdaptationMode === 'keep' ? '**CRITICAL - KEEP ALL SCRIPT**: The ENTIRE script must be included EXACTLY as provided, without any adaptations, cuts, or modifications. Include every word of the script in the prompt, regardless of duration.' : 'If script too long, adapt but maintain coherence. Distribute script throughout scene synchronized with actions.'}`
           : `\n\n**CRITICAL - SCRIPT INTEGRATION WITH ACTIONS (MANDATORY):**
 A script/dialogue has been provided for this scene. You MUST integrate it seamlessly and coherently with the actions described.
 
@@ -481,10 +482,16 @@ A script/dialogue has been provided for this scene. You MUST integrate it seamle
    - Estimated speaking time: ~${Math.round(script.split(/\s+/).length / 2.5)}-${Math.round(script.split(/\s+/).length / 2.2)} seconds
    - Available time: ${effectiveDuration} seconds
 
-4. **Script Adaptation Decision**:
-   - **IF script fits comfortably** (estimated time ≤ ${effectiveDuration} seconds): Use the script EXACTLY as provided, but integrate each portion with its corresponding action
+4. **Script Adaptation Decision (${scriptAdaptationMode === 'keep' ? 'KEEP ALL SCRIPT MODE' : 'ADAPT SCRIPT MODE'}):**
+   ${scriptAdaptationMode === 'keep' 
+     ? `- **ABSOLUTE MANDATE - KEEP ALL SCRIPT**: The ENTIRE script must be included EXACTLY as provided, word-for-word, without ANY adaptations, cuts, modifications, or omissions
+   - **NO ADAPTATIONS**: Do NOT shorten, condense, or modify the script in any way
+   - **INCLUDE EVERY WORD**: Every single word of the script must appear in the generated prompt
+   - **DURATION IRRELEVANT**: The script must be kept complete regardless of whether it fits the ${effectiveDuration}-second duration or not
+   - **MANDATORY**: The prompt must include the complete, unmodified script as provided`
+     : `- **IF script fits comfortably** (estimated time ≤ ${effectiveDuration} seconds): Use the script EXACTLY as provided, but integrate each portion with its corresponding action
    - **IF script is slightly long** (estimated time > ${effectiveDuration} seconds but ≤ ${effectiveDuration + 2} seconds): Adapt it minimally - condense non-essential words while preserving all key content and maintaining script-action coherence
-   - **IF script is too long** (estimated time > ${effectiveDuration + 2} seconds): Adapt it significantly - prioritize key messages, remove redundant phrases, but maintain the core content and meaning, AND maintain coherence with actions
+   - **IF script is too long** (estimated time > ${effectiveDuration + 2} seconds): Adapt it significantly - prioritize key messages, remove redundant phrases, but maintain the core content and meaning, AND maintain coherence with actions`}
 
 5. **Integration with Actions (MANDATORY STRUCTURE)**:
    - **Break down actions**: Identify each distinct action, scene, B-roll, or visual moment from the action text
@@ -510,9 +517,11 @@ A script/dialogue has been provided for this scene. You MUST integrate it seamle
    - If the script is long, prioritize mentioning it early and distributing it across multiple action moments
 
 8. **Duration Compliance**:
-   - The final prompt must describe a scene where the script can be fully spoken within ${effectiveDuration} seconds
+   ${scriptAdaptationMode === 'keep' 
+     ? `- **KEEP ALL SCRIPT MODE**: The script must be kept complete regardless of duration. Include the entire script in the prompt even if it exceeds the ${effectiveDuration}-second timeframe.`
+     : `- The final prompt must describe a scene where the script can be fully spoken within ${effectiveDuration} seconds
    - Adjust pacing and script length accordingly
-   - Ensure actions, B-roll, multiple scenes, and script together fit naturally within the ${effectiveDuration}-second timeframe
+   - Ensure actions, B-roll, multiple scenes, and script together fit naturally within the ${effectiveDuration}-second timeframe`}
 
 **CRITICAL EXAMPLES:**
 
@@ -537,9 +546,10 @@ Example 3 - Action-script coherence:
 3. Create a prompt that:
    - Explicitly includes ALL actions/B-roll/scenes mentioned in the action text
    - Pairs each script portion with its corresponding action coherently
+   ${scriptAdaptationMode === 'keep' ? '- **MANDATORY**: Includes the ENTIRE script word-for-word without any modifications' : '- Adapts the script if needed to fit the duration while maintaining coherence'}
    - Ensures script portions are spoken DURING the relevant actions
    - Maintains natural flow and coherence between script and actions
-   - Fits within ${effectiveDuration} seconds`)
+   ${scriptAdaptationMode === 'keep' ? '- Includes the complete script regardless of duration' : `- Fits within ${effectiveDuration} seconds`}`)
       : '';
 
     // Duration-based instructions
@@ -828,6 +838,18 @@ This scene uses VOICEOVER mode. The voice plays while actions happen, but the ch
 - **FAILURE CONDITION**: If your response is similar to or identical to the original action text, you have COMPLETELY FAILED the task
 - **SUCCESS CONDITION**: Your response must be a complete, professional, detailed prompt that is ready for AI video generation - it should be 3-5x longer than the original action text and include all technical and visual details`;
 
+    // Continuous Action instruction
+    const continuousActionInstruction = continuousAction
+      ? `\n\n**CRITICAL - CONTINUOUS ACTION - NO CUTS (MANDATORY):**
+This scene MUST be filmed as ONE CONTINUOUS SHOT with ABSOLUTELY NO CUTS, NO TRANSITIONS, and NO EDITING. All actions described must happen seamlessly in a single, uninterrupted take:
+- **NO CUTS**: The entire scene must be one continuous shot from start to finish
+- **NO TRANSITIONS**: No jump cuts, fade transitions, or scene breaks
+- **SEAMLESS FLOW**: All actions must flow naturally and continuously without any interruptions
+- **SINGLE TAKE**: The camera must record everything in one continuous take
+- **NO EDITING**: The video must appear as if it was recorded in one go without any post-production cuts
+- **MANDATORY**: The prompt must explicitly state "one continuous shot", "no cuts", "single take", "no transitions", "continuous action", or similar language to ensure no cuts are made`
+      : '';
+
     const enhancementPrompt = `Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Generated Content (UGC)*. Your goal is to transform the basic action idea and user parameters into a single, high-density text prompt, ready for copy-pasting.
 
 ${criticalEnhancementSection}
@@ -840,7 +862,7 @@ ${criticalEnhancementSection}
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}${lipSyncInstructions}${voiceoverInstructions}
+${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}${lipSyncInstructions}${voiceoverInstructions}${continuousActionInstruction}
 
 **CRITICAL - PRODUCT REFERENCE IDENTIFICATION AND HANDLING (MANDATORY - NO INVENTING):**
 You MUST carefully identify when the action text refers to "the product" vs other items, and NEVER invent product details.
@@ -1002,7 +1024,7 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
         hasReferenceImage: !!referenceImageFile,
         environment: process.env.NODE_ENV || 'unknown'
       });
-      
+
       result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [
@@ -1050,8 +1072,8 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
                 return '';
               })
               .filter((text: string) => text && text.trim().length > 0)
-              .join('')
-              .trim();
+          .join('')
+          .trim();
           }
           
           // Método 1b: content.text (fallback)

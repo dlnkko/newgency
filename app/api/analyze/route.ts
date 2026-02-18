@@ -447,11 +447,10 @@ export async function POST(request: NextRequest) {
     try {
       const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
       const response = await axios.get(
-        `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}`,
+        `https://api.scrapecreators.com/v1/facebook/adLibrary/ad?id=${adId}&get_transcript=true`,
         {
           headers: {
-            'x-api-key': scrapeCreatorsApiKey,
-            'get_transcript': 'true'
+            'x-api-key': scrapeCreatorsApiKey
           },
           timeout: 30000, // 30 segundos de timeout
           validateStatus: (status) => status < 500 // No lanzar error para códigos 4xx
