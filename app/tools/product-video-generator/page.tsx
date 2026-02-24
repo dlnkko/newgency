@@ -38,6 +38,52 @@ export default function ProductVideoGenerator() {
     });
   };
 
+  // Compress image so large uploads stay under request size limit (~4.5 MB)
+  const compressImage = (file: File, maxWidth = 1920, maxHeight = 1920, quality = 0.82): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            } else {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to compress image'));
+                return;
+              }
+              resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+            },
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = (e.target?.result as string) || '';
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+    });
+  };
+
   const handleGenerate = async () => {
     if (!productImage || !actionDescription.trim()) {
       setError('Please upload a product image and describe what should happen in the video');
@@ -49,7 +95,15 @@ export default function ProductVideoGenerator() {
     setGeneratedPrompts(null);
 
     try {
-      const productBase64 = await fileToBase64(productImage);
+      // Compress when needed so request body stays under ~4.5 MB (base64 is ~33% larger than file)
+      const maxSizeBeforeCompress = 1.5 * 1024 * 1024; // 1.5 MB
+      let imageToSend = productImage;
+      if (productImage.size > maxSizeBeforeCompress) {
+        const targetMaxSize = productImage.size > 5 * 1024 * 1024 ? 1200 : 1920; // very large -> smaller max side
+        const targetQuality = productImage.size > 5 * 1024 * 1024 ? 0.72 : 0.82;
+        imageToSend = await compressImage(productImage, targetMaxSize, targetMaxSize, targetQuality);
+      }
+      const productBase64 = await fileToBase64(imageToSend);
 
       const response = await fetch('/api/generate-product-video', {
         method: 'POST',
