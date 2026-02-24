@@ -23,6 +23,7 @@ export default function ImagePromptGenerator() {
   const [productPreviews, setProductPreviews] = useState<string[]>([]);
   const [characterImages, setCharacterImages] = useState<File[]>([]);
   const [characterPreviews, setCharacterPreviews] = useState<string[]>([]);
+  const [forceSameCharacterRef, setForceSameCharacterRef] = useState<boolean>(false);
   const [elementImages, setElementImages] = useState<File[]>([]);
   const [elementPreviews, setElementPreviews] = useState<string[]>([]);
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
@@ -531,6 +532,7 @@ export default function ImagePromptGenerator() {
           copyLighting: copyLighting,
           productImages: productImagesBase64,
           characterImages: characterImagesBase64,
+          forceSameCharacterReference: forceSameCharacterRef,
           elementImages: elementImagesBase64,
           firstFrameFromVideo: veo3FirstFrame
         }),
@@ -1105,6 +1107,31 @@ export default function ImagePromptGenerator() {
                 </div>
               ))}
             </div>
+            {characterImages.filter(Boolean).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setForceSameCharacterRef((v) => !v)}
+                className={`mt-3 inline-flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+                  forceSameCharacterRef
+                    ? 'border-amber-500 bg-amber-500/20 text-amber-300'
+                    : 'border-zinc-600 bg-zinc-800/50 text-zinc-400 hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-400'
+                }`}
+              >
+                <span>SAME CHARACTER</span>
+                {forceSameCharacterRef && (
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            )}
+            {characterImages.filter(Boolean).length > 0 && (
+              <p className="mt-1.5 text-[11px] text-zinc-500">
+                {forceSameCharacterRef
+                  ? 'On: the prompt will always say the character is the same as in the attached image.'
+                  : 'Turn on to force the prompt to reference the character as in the attached image.'}
+              </p>
+            )}
           </div>
         )}
 

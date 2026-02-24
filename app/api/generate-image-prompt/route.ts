@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       copyLighting: body.copyLighting
     });
     
-    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, elementImages, firstFrameFromVideo } = body;
+    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
     
     // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages/elementImages)
     let mainReferenceImage: string | null = null;
@@ -1926,10 +1926,12 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
         );
       }
 
-      // When character images were provided, ensure the prompt explicitly references the attached image (model often omits it)
+      // When character images were provided, ensure the prompt explicitly references the attached image.
+      // If forceSameCharacterReference is true (user pressed "SAME CHARACTER"), always prepend the reference.
       if (characterImageFiles.length > 0) {
         const hasAttachedReference = /\battached\s+(character\s+)?image\b|the same person as in the attached|the person from the attached|as (shown )?in the attached image/i.test(generatedPrompt);
-        if (!hasAttachedReference) {
+        const mustInject = forceSameCharacterReference === true || !hasAttachedReference;
+        if (mustInject) {
           if (characterImageFiles.length === 1) {
             const firstChar = generatedPrompt.charAt(0);
             const rest = generatedPrompt.slice(1);
@@ -1940,7 +1942,7 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
               : `persons from the ${characterImageFiles.length} attached character images`;
             generatedPrompt = `The ${refs}. ` + generatedPrompt;
           }
-          console.log('Injected attached character image reference into prompt (was missing)');
+          console.log(forceSameCharacterReference ? 'Forced attached character image reference (SAME CHARACTER on)' : 'Injected attached character image reference into prompt (was missing)');
         }
       }
     } catch (err) {
