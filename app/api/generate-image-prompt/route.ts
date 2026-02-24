@@ -925,21 +925,24 @@ ${productImageFiles.map((_, idx) => {
           : characterImageFiles.map((_, idx) => `character from image ${idx + 1}`);
         characterInstructions = `
 
-**CHARACTER IMAGES (WILL BE ATTACHED):**
+**CHARACTER IMAGES (WILL BE ATTACHED) - MANDATORY REFERENCE:**
 ${characterImageFiles.map((_, idx) => {
           const imgNum = idx + 1;
           const prompt = validCharacterPrompts[idx] || '';
           const descriptor = descriptors[idx] || `character from image ${imgNum}`;
-          return `- **Character Image ${imgNum}** (distinguishing: "${descriptor}"): This character image will be attached to the prompt. ${prompt ? `The character looks like: "${prompt}"` : 'Use as character reference for appearance, pose, or styling.'} In the final prompt you MUST refer to this person as "the person as in the attached character image (${descriptor})" or "the same person as in the attached image with ${descriptor}".`;
+          return `- **Character Image ${imgNum}** (distinguishing: "${descriptor}"): This character image will be attached. ${prompt ? `The character looks like: "${prompt}"` : 'Use as character reference.'} You MUST refer to this person in the prompt using an explicit "attached" reference (see rules below).`;
         }).join('\n\n')}
 
-**CRITICAL - HOW TO REFERENCE CHARACTERS IN THE PROMPT:**
-When the user's description refers to characters by how they look (e.g. "el chico de polera azul", "el de camisa negra", "the guy with the blue jacket", "the one in the black shirt"), you MUST map each reference to the correct attached character image using the distinguishing descriptor and write the prompt in English like this:
-- Refer to each character as "the person as in the attached character image ([distinguishing descriptor])" or "the same person as in the attached image ([descriptor])".
-- Example: if the user says "el mismo chico de la imagen de polera azul que ahora esté en un estadio y el otro chico de camisa negra está sentado", output something like: "The man as in the attached character image (wearing the blue jacket) is now in a stadium; the other man as in the attached character image (wearing the black shirt) is seated."
-- Keep the distinguishing descriptors short and clear (e.g. "wearing blue jacket", "in black shirt") so the image model knows which attached image is which. Never describe a character from scratch when character images are provided—always reference "as in the attached character image" with the matching descriptor.
+**CRITICAL - YOU MUST ALWAYS REFERENCE THE ATTACHED CHARACTER IMAGE(S):**
+When character images are provided, your generated prompt MUST include an explicit reference to "the attached character image" or "the attached image" for every character. This is NON-NEGOTIABLE so the image model uses the attached reference(s).
 
-These character images will be attached in order; the prompt must identify each character unambiguously using the descriptors above.`;
+- **NEVER describe the character's face, body, or appearance from scratch** when character images exist. Always use a phrase that points to the attached image.
+- **With ONE character**: The prompt must say something like "the same person as in the attached character image", "the person from the attached character image", or "the man/woman as shown in the attached image", then add the new scenario. Example: user says "el mismo hombre pero ahora sentado en un jet privado relajado vistiendo una bata blanca" → output must include: "The same person as in the attached character image, now seated in a private jet, relaxed, wearing a white robe" (or "The man from the attached character image, now in a private jet, relaxed, wearing a white robe").
+- **With MULTIPLE characters**: Refer to each as "the person as in the attached character image ([descriptor])" or "the same person as in the attached image ([descriptor])". Example: "el chico de polera azul en un estadio y el de camisa negra sentado" → "The man as in the attached character image (wearing the blue jacket) is now in a stadium; the other man as in the attached character image (wearing the black shirt) is seated."
+- **Valid phrases** (use at least one for each character): "the same person as in the attached character image", "the person from the attached character image", "as in the attached character image", "the man/woman from the attached image", "matching the attached character image".
+- The prompt will be sent to an image model that receives these images in order; the model must know to use them, so the words "attached" and "character image" (or "attached image") must appear in your generated prompt for each character.
+
+These character images will be attached in order. Your output prompt MUST contain an explicit "attached character image" (or "attached image") reference for every character—never skip this.`;
       }
       
       return { productInstructions, characterInstructions };
