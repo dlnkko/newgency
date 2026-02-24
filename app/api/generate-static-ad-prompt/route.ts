@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenAI } from '@google/genai';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { getGoogleGenAI } from '@/lib/gemini';
-import { verifyAndConsumeCredit } from '@/lib/credit-check';
+
+// Helper function to get and validate API key at runtime
+function getGoogleGenAI() {
+  const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
+  
+  if (!googleApiKey) {
+    throw new Error('GOOGLE_GENAI_API_KEY is not set in environment variables. Please configure it in Vercel dashboard or .env.local file.');
+  }
+  
+  return new GoogleGenAI({ 
+    apiKey: googleApiKey 
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,17 +40,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check and consume user credit
-    const creditError = await verifyAndConsumeCredit(request);
-    if (creditError) {
-      return creditError;
-    }
-
-    // Initialize AI client at runtime (uses user's API key if configured)
-    const ai = await getGoogleGenAI(request);
+    // Initialize AI client at runtime
+    const ai = getGoogleGenAI();
     
     const body = await request.json();
-    const { staticAdImage, productImage, copywriting, isUrlScraped, generalInstructions } = body;
+    const { staticAdImage, productImage, copywriting, isUrlScraped } = body;
 
     // Log input data for debugging
     console.log('=== GENERATE STATIC AD PROMPT REQUEST ===');
@@ -371,20 +377,12 @@ Format your response EXACTLY as:
         .filter(Boolean)
         .join(', ');
 
-      brandingIntegration = `**Brand Integration (CRITICAL - FROM SCRAPED PRODUCT PAGE):**
-The following branding elements were scraped from the product page URL. You MUST use these in the prompt:
-${colorList ? `- **Product Brand Colors (SCRAPED)**: ${colorList} 
-  * These are the actual brand colors from the product page
-  * Integrate these colors into the design where appropriate, especially for product elements, accents, highlights, and brand-specific visual elements
-  * Use these colors strategically to maintain brand consistency while respecting the reference ad's overall design structure` : ''}
-${typographyInfo.fontFamilies || fontList ? `- **Product Brand Typography (SCRAPED)**: ${typographyInfo.fontFamilies || fontList}
-  * These are the actual fonts used on the product page
-  * Consider using these fonts for product text, headlines, or brand-specific text elements if they fit the design aesthetic
-  * Maintain brand typography consistency where appropriate` : ''}
-${typographyInfo.fontSizes ? `- **Brand Font Sizes (SCRAPED)**: ${JSON.stringify(typographyInfo.fontSizes)}
-  * Use these font sizes as reference for brand-consistent typography` : ''}
-
-**IMPORTANT**: These branding elements come directly from the scraped product page. Integrate them into the design while maintaining the reference ad's overall structure and composition. The brand colors and typography should be visible in the final prompt to ensure brand consistency.`;
+      brandingIntegration = `**Brand Integration:**
+Use the following branding elements from the product page:
+${colorList ? `- Product Brand Colors: ${colorList} (integrate these colors into the design where appropriate, especially for product elements and accents)` : ''}
+${typographyInfo.fontFamilies || fontList ? `- Product Brand Typography: ${typographyInfo.fontFamilies || fontList} (consider using these fonts for product text or headlines if they fit the design aesthetic)` : ''}
+${typographyInfo.fontSizes ? `- Brand Font Sizes: ${JSON.stringify(typographyInfo.fontSizes)}` : ''}
+Integrate these brand elements while maintaining the reference ad's overall design structure and composition.`;
       
       console.log('\n🎨 Branding integration instructions created');
     }
@@ -400,30 +398,16 @@ Using the EXACT scraped product page information below, create copywriting that:
 - Matches the same style: "${copywritingProfile.styleCategory || 'persuasive'}"
 - EXACT word count: ${copywritingProfile.wordCount || 10} words (target: ${copywritingProfile.wordCount ? copywritingProfile.wordCount - 2 : 8} to ${copywritingProfile.wordCount ? copywritingProfile.wordCount + 2 : 12} words)
 
-**CRITICAL RESTRICTIONS - DO NOT COPY FROM REFERENCE AD:**
-- **NEVER copy specific details from the reference ad** such as: discounts (e.g., "40% off", "50% discount"), prices, percentages, promotional offers, sale information, specific numbers, dates, or any product-specific information from the reference ad
-- **ONLY use information from the scraped product page data** provided below
-- **ONLY match the style, tone, and rhetorical figure** from the reference ad - NOT the actual content, numbers, or specific details
-- If the reference ad mentions discounts, prices, or percentages, DO NOT include those in the new copywriting
-- Base the copywriting SOLELY on the scraped product information below
-
 **Scraped Product Page Data (use this EXACT information - do not summarize):**
 ${scrapedSummary}
 
-Reformulate this product information into copywriting using the SAME rhetorical approach as the reference ad. Apply the same literary/rhetorical device (${rhetoricalFigures.primary || 'style'}) to create compelling copywriting about the product. Use ONLY the information from the scraped data above - do not copy any specific details (discounts, prices, percentages, offers) from the reference ad.`;
+Reformulate this product information into copywriting using the SAME rhetorical approach as the reference ad. Apply the same literary/rhetorical device (${rhetoricalFigures.primary || 'style'}) to create compelling copywriting about the product.`;
       
       console.log('\n📝 Creating copywriting from scraped data with rhetorical figure');
     } else if (copywriting && !isUrlScraped) {
       // Manual copywriting provided
       copywritingInstructions = `**Copywriting:**
-Use this exact copywriting in the prompt: "${copywriting}"
-
-**CRITICAL RESTRICTIONS - DO NOT COPY FROM REFERENCE AD:**
-- **NEVER copy specific details from the reference ad** such as: discounts (e.g., "40% off", "50% discount"), prices, percentages, promotional offers, sale information, specific numbers, dates, or any product-specific information from the reference ad
-- **ONLY use the copywriting provided above** by the user
-- **ONLY match the style, tone, and rhetorical figure** from the reference ad - NOT the actual content, numbers, or specific details
-- If the reference ad mentions discounts, prices, or percentages, DO NOT include those in the new copywriting
-- Base the copywriting SOLELY on the user-provided copywriting above`;
+Use this exact copywriting in the prompt: "${copywriting}"`;
       console.log('\n📝 Using manual copywriting');
     } else {
       copywritingInstructions = `**Copywriting:**
@@ -431,12 +415,7 @@ Create copywriting matching the reference style:
 - Rhetorical figure: ${rhetoricalFigures?.primary || 'match reference'}
 - Tone: ${copywritingProfile?.tone || 'professional'}
 - Style: ${copywritingProfile?.styleCategory || 'persuasive'}
-- Word count: ${copywritingProfile?.wordCount || 10} words
-
-**CRITICAL RESTRICTIONS - DO NOT COPY FROM REFERENCE AD:**
-- **NEVER copy specific details from the reference ad** such as: discounts (e.g., "40% off", "50% discount"), prices, percentages, promotional offers, sale information, specific numbers, dates, or any product-specific information from the reference ad
-- **ONLY match the style, tone, and rhetorical figure** from the reference ad - NOT the actual content, numbers, or specific details
-- If the reference ad mentions discounts, prices, or percentages, DO NOT include those in the new copywriting`;
+- Word count: ${copywritingProfile?.wordCount || 10} words`;
       console.log('\n📝 Creating copywriting from profile only');
     }
 
@@ -445,14 +424,9 @@ Create copywriting matching the reference style:
 1. A DETAILED prompt that recreates the reference static ad design
 2. An image of a NEW product that needs to replace the product in the reference ad
 ${isUrlScraped && scrapedSummary ? '3. Scraped product page information (summary and branding)' : ''}
-${generalInstructions ? '4. General instructions from the user about how they want the static ad to be' : ''}
 
 **Reference Ad Prompt (use this as the base structure - maintain ALL design elements):**
 ${referencePrompt}
-${generalInstructions ? `\n\n**USER'S GENERAL INSTRUCTIONS (CRITICAL - MUST BE INCORPORATED):**
-${generalInstructions}
-
-These instructions are additional requirements from the user. You MUST incorporate these instructions into the final prompt while maintaining the reference ad structure. Balance the user's specific requests with the design elements from the reference ad.` : ''}
 
 **Your Task:**
 Adapt the reference prompt above to create a NEW prompt for the product in the provided image. The new prompt must:
@@ -480,11 +454,10 @@ Adapt the reference prompt above to create a NEW prompt for the product in the p
 
 3. **Adapt Colors and Typography:**
 ${scrapedBranding ? brandingIntegration : '- Use reference colors and typography, but adapt product-specific elements'}
-${scrapedBranding ? '' : '- Maintain reference color palette for background and overall design'}
-${scrapedBranding ? '- **CRITICAL**: The branding information above was scraped from the product page URL. You MUST incorporate these brand colors and typography into the prompt to ensure brand consistency in the generated ad.' : ''}
-${scrapedBranding ? '- Use scraped brand colors strategically for product elements, accents, highlights, and brand-specific visual elements' : ''}
-${scrapedBranding ? '- Consider using scraped brand typography for product text, headlines, or brand-specific text elements' : ''}
-${scrapedBranding ? '- Maintain reference color palette for background and overall design structure, but integrate scraped brand colors where appropriate' : ''}
+${scrapedBranding ? '- Integrate product brand colors from branding data where appropriate (product elements, accents, highlights)' : ''}
+${scrapedBranding ? '- Consider using product brand typography if it fits the design aesthetic (for product text or headlines)' : ''}
+- Maintain reference color palette for background and overall design
+- Use brand colors strategically for product elements and accents
 
 4. **Replace/Adapt product references AND adapt people/actions to match product context (CRITICAL):**
    - Analyze the product image: type, category, purpose, colors, branding, shape, characteristics
@@ -512,7 +485,7 @@ Provide ONLY the final, complete, EXTREMELY DETAILED prompt ready for AI image g
 - Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the NEW product's actual use case and category appropriately
 - **CRITICAL**: Ensure the person in the image is performing actions or in poses that are coherent with how the NEW product is actually used (e.g., exercising for fitness products, applying for beauty products, using for tech products)
 - Feature the NEW product from the provided image in contextually appropriate use
-${scrapedBranding ? '- **CRITICAL**: Integrate the scraped product page branding (colors and typography) into the prompt. These branding elements were extracted from the product page URL and must be included to maintain brand consistency.' : ''}
+${scrapedBranding ? '- Integrate product brand colors and typography where appropriate' : ''}
 - Include the new copywriting (${copywritingProfile?.wordCount || 10} words)
 - Be ready to copy and paste into Nano Banana Pro or similar AI image generators
 - Do NOT include explanations, analysis, or additional text - ONLY the final detailed prompt`;
@@ -633,8 +606,6 @@ ${scrapedBranding ? '- **CRITICAL**: Integrate the scraped product page branding
     console.log('\n=== TOTAL COST SUMMARY ===');
     console.log(JSON.stringify(totalCost, null, 2));
     console.log('\n=== REQUEST COMPLETE ===\n');
-
-    // Credit already consumed in verifyAndConsumeCredit
 
     return NextResponse.json({
       success: true,

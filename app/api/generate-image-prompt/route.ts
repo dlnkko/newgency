@@ -612,6 +612,7 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
     // If product images are provided, generate detailed prompts for each
     const productImagePrompts: string[] = [];
     const characterImagePrompts: string[] = [];
+    const characterShortDescriptors: string[] = []; // short descriptor per character for "as in attached image" references
     let elementImagePrompts: string[] = [];
     
     if (productImageFiles.length > 0) {
@@ -720,7 +721,7 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
       }
     }
 
-    // If character images are provided, generate detailed prompts for each
+    // If character images are provided, generate detailed prompts and short descriptors for each
     if (characterImageFiles.length > 0) {
       console.log(`Processing ${characterImageFiles.length} character image(s)...`);
       
@@ -768,7 +769,8 @@ Create an extremely detailed prompt that describes ONLY what is actually visible
 - Describe the image as if you were going to generate this exact same image, but only based on what you can actually see
 
 **Output Format:**
-Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).`;
+1. First, provide the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text that would generate this exact image. Describe it as a photo/image unless you can clearly see it's something else (like a screenshot with visible borders/UI).
+2. Then on a NEW LINE, add exactly ONE short distinguishing descriptor in English that identifies this person for when there are multiple character images. Use visible clothing or a key visual trait (e.g. "man wearing blue jacket", "woman in black shirt", "person in red polo"). Format exactly: DISTINGUISHING: [your short phrase]`;
 
             const characterParts: any[] = [
               {
@@ -792,24 +794,38 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
               ]
             });
 
-            // Extract the character image prompt
-            let imagePrompt = '';
+            // Extract the character image prompt and short distinguishing descriptor
+            let fullText = '';
             if (characterResult.candidates && characterResult.candidates[0]?.content?.parts) {
-              imagePrompt = characterResult.candidates[0].content.parts
+              fullText = characterResult.candidates[0].content.parts
                 .map((part: any) => part.text || '')
                 .join('')
                 .trim();
             } else if ((characterResult as any).text) {
-              imagePrompt = (characterResult as any).text.trim();
+              fullText = (characterResult as any).text.trim();
+            }
+
+            let imagePrompt = '';
+            let shortDescriptor = '';
+            const distinguishingMatch = fullText.match(/\n?\s*DISTINGUISHING:\s*(.+?)(?:\n|$)/i);
+            if (distinguishingMatch) {
+              shortDescriptor = distinguishingMatch[1].trim();
+              imagePrompt = fullText.replace(/\n?\s*DISTINGUISHING:\s*.+$/i, '').trim();
+            } else {
+              imagePrompt = fullText;
+              // Fallback: use first visible trait from prompt or generic
+              const firstPart = (imagePrompt.split(/[.;]/)[0] || '').trim();
+              shortDescriptor = firstPart.length > 60 ? firstPart.substring(0, 57) + '...' : (firstPart || `character from image ${i + 1}`);
             }
 
             if (imagePrompt && imagePrompt.length > 0) {
-              console.log(`Character image ${i + 1} prompt generated, length:`, imagePrompt.length);
+              console.log(`Character image ${i + 1} prompt generated, length:`, imagePrompt.length, 'descriptor:', shortDescriptor || 'none');
               characterImagePrompts.push(imagePrompt);
             } else {
               console.warn(`Character image ${i + 1} prompt generation returned empty result`);
               characterImagePrompts.push('');
             }
+            characterShortDescriptors.push(shortDescriptor || `character from image ${i + 1}`);
           } catch (refError: any) {
             console.error(`Error generating character image ${i + 1} prompt:`, {
               message: refError.message,
@@ -823,6 +839,7 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
         } else {
           console.warn(`Character image ${i + 1} file URI is missing, skipping reference prompt generation`);
           characterImagePrompts.push('');
+          characterShortDescriptors.push(`character from image ${i + 1}`);
         }
       }
     }
@@ -903,16 +920,26 @@ ${productImageFiles.map((_, idx) => {
       }
       
       if (characterImageFiles.length > 0) {
+        const descriptors = characterShortDescriptors.length >= characterImageFiles.length
+          ? characterShortDescriptors
+          : characterImageFiles.map((_, idx) => `character from image ${idx + 1}`);
         characterInstructions = `
 
 **CHARACTER IMAGES (WILL BE ATTACHED):**
 ${characterImageFiles.map((_, idx) => {
           const imgNum = idx + 1;
           const prompt = validCharacterPrompts[idx] || '';
-          return `- **Character Image ${imgNum}**: This character image will be attached to the prompt. ${prompt ? `The character looks like: "${prompt}"` : 'Use as character reference for appearance, pose, or styling.'}`;
+          const descriptor = descriptors[idx] || `character from image ${imgNum}`;
+          return `- **Character Image ${imgNum}** (distinguishing: "${descriptor}"): This character image will be attached to the prompt. ${prompt ? `The character looks like: "${prompt}"` : 'Use as character reference for appearance, pose, or styling.'} In the final prompt you MUST refer to this person as "the person as in the attached character image (${descriptor})" or "the same person as in the attached image with ${descriptor}".`;
         }).join('\n\n')}
 
-These character images are additional references for character appearance, pose, or styling. They will be attached to the prompt when used in the AI model.`;
+**CRITICAL - HOW TO REFERENCE CHARACTERS IN THE PROMPT:**
+When the user's description refers to characters by how they look (e.g. "el chico de polera azul", "el de camisa negra", "the guy with the blue jacket", "the one in the black shirt"), you MUST map each reference to the correct attached character image using the distinguishing descriptor and write the prompt in English like this:
+- Refer to each character as "the person as in the attached character image ([distinguishing descriptor])" or "the same person as in the attached image ([descriptor])".
+- Example: if the user says "el mismo chico de la imagen de polera azul que ahora esté en un estadio y el otro chico de camisa negra está sentado", output something like: "The man as in the attached character image (wearing the blue jacket) is now in a stadium; the other man as in the attached character image (wearing the black shirt) is seated."
+- Keep the distinguishing descriptors short and clear (e.g. "wearing blue jacket", "in black shirt") so the image model knows which attached image is which. Never describe a character from scratch when character images are provided—always reference "as in the attached character image" with the matching descriptor.
+
+These character images will be attached in order; the prompt must identify each character unambiguously using the descriptors above.`;
       }
       
       return { productInstructions, characterInstructions };

@@ -1034,7 +1034,7 @@ export default function ImagePromptGenerator() {
               Characters (Optional - Up to 3)
             </label>
             <p className="mb-3 text-xs text-zinc-400">
-              Upload up to 3 character images. These will be attached to the prompt and used as character references.
+              Upload up to 3 character images. They will be attached to the prompt as character references. In your description you can refer to each person by how they look (e.g. &quot;el chico de polera azul en un estadio y el de camisa negra sentado&quot;) and the AI will reference them in the prompt as &quot;the person as in the attached character image (wearing the blue jacket)&quot; etc., so each character is clearly identified.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[0, 1, 2].map((index) => (

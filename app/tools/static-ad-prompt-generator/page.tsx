@@ -3,18 +3,15 @@
 import { useState } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
-import InsufficientCreditsError from '@/components/InsufficientCreditsError';
 
 export default function StaticAdPromptGenerator() {
   const [staticAdImage, setStaticAdImage] = useState<File | null>(null);
   const [productImage, setProductImage] = useState<File | null>(null);
   const [copywriting, setCopywriting] = useState<string>('');
-  const [generalInstructions, setGeneralInstructions] = useState<string>('');
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isScraping, setIsScraping] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
   const [staticAdPreview, setStaticAdPreview] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
   const [costInfo, setCostInfo] = useState<any>(null);
@@ -60,7 +57,6 @@ export default function StaticAdPromptGenerator() {
 
     setIsGenerating(true);
     setError(null);
-    setIsInsufficientCredits(false);
     setGeneratedPrompt('');
 
     try {
@@ -139,20 +135,12 @@ export default function StaticAdPromptGenerator() {
           productImage: productBase64,
           copywriting: copywritingInput || null,
           isUrlScraped: isUrl,
-          generalInstructions: generalInstructions.trim() || null,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 402) {
-          // Insufficient credits
-          setIsInsufficientCredits(true);
-          setError(null);
-          setIsGenerating(false);
-          return;
-        }
         throw new Error(data.error || 'Failed to generate prompt');
       }
 
@@ -291,7 +279,7 @@ export default function StaticAdPromptGenerator() {
         {/* Copywriting Input */}
         <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Product Page URL <span className="text-xs font-normal text-zinc-500">(Optional)</span>
+            Copywriting / Product Page URL <span className="text-xs font-normal text-zinc-500">(Optional)</span>
           </label>
           <textarea
             value={copywriting}
@@ -305,20 +293,6 @@ export default function StaticAdPromptGenerator() {
               🔗 URL detected - Product page will be scraped automatically
             </p>
           )}
-        </div>
-
-        {/* General Instructions Input */}
-        <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
-            Additional Notes <span className="text-xs font-normal text-zinc-500">(Optional)</span>
-          </label>
-          <textarea
-            value={generalInstructions}
-            onChange={(e) => setGeneralInstructions(e.target.value)}
-            placeholder="Add any specific requirements or preferences for your ad. For example: 'Make the background darker', 'Center the product more', 'Add more visual elements', etc. These will be incorporated along with the reference ad style."
-            rows={4}
-            className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all resize-none"
-          />
         </div>
 
         {/* Generate Button */}
@@ -344,15 +318,8 @@ export default function StaticAdPromptGenerator() {
           )}
         </button>
 
-        {/* Insufficient Credits Error */}
-        {isInsufficientCredits && (
-          <div className="mb-6">
-            <InsufficientCreditsError />
-          </div>
-        )}
-
         {/* Error Message */}
-        {error && !isInsufficientCredits && (
+        {error && (
           <div className="rounded-xl border-2 border-red-500/50 bg-red-500/10 p-4 text-sm text-red-300">
             {error}
           </div>
@@ -378,6 +345,36 @@ export default function StaticAdPromptGenerator() {
               </pre>
             </div>
 
+            {/* Cost Info */}
+            {costInfo && costInfo.total && (
+              <div className="rounded-2xl border border-purple-500/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
+                <h3 className="mb-4 text-lg font-bold text-purple-300">Cost Breakdown</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {costInfo.step1 && (
+                    <div className="rounded-xl border border-purple-800/50 bg-zinc-950/70 p-4">
+                      <h4 className="mb-2 text-sm font-semibold text-purple-400">Step 1: Static Ad Analysis</h4>
+                      <p className="text-xs text-zinc-300">
+                        <span className="text-zinc-500">Cost:</span> {costInfo.step1.totalCostFormatted}
+                      </p>
+                    </div>
+                  )}
+                  {costInfo.step2 && (
+                    <div className="rounded-xl border border-purple-800/50 bg-zinc-950/70 p-4">
+                      <h4 className="mb-2 text-sm font-semibold text-purple-400">Step 2: Product Adaptation</h4>
+                      <p className="text-xs text-zinc-300">
+                        <span className="text-zinc-500">Cost:</span> {costInfo.step2.totalCostFormatted}
+                      </p>
+                    </div>
+                  )}
+                  <div className="rounded-xl border-2 border-purple-500/70 bg-purple-500/10 p-4">
+                    <h4 className="mb-2 text-sm font-semibold text-purple-300">Total Cost</h4>
+                    <p className="text-lg font-bold text-purple-200">
+                      {costInfo.total.totalCostFormatted}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
