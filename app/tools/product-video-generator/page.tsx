@@ -62,10 +62,19 @@ export default function ProductVideoGenerator() {
         }),
       });
 
-      const data = await response.json();
+      const rawText = await response.text();
+      let data: { error?: string; details?: string; nanoBananaPrompt?: string; videoPrompt?: string } = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        if (!response.ok) {
+          throw new Error(rawText || `Error ${response.status}: ${response.statusText}`);
+        }
+        throw new Error('Invalid response from server. Please try again.');
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || data.details || 'Failed to generate prompts');
+        throw new Error(data.error || data.details || rawText || 'Failed to generate prompts');
       }
 
       setGeneratedPrompts({
@@ -74,7 +83,11 @@ export default function ProductVideoGenerator() {
       });
     } catch (error: any) {
       console.error('Error generating prompts:', error);
-      setError(error.message || 'Failed to generate prompts. Please try again.');
+      let message = error.message || 'Failed to generate prompts. Please try again.';
+      if (message.includes('Entity Too Large') || message.includes('413') || message.includes('Request En')) {
+        message = 'Image is too large. Please use a smaller image (e.g. under 2–3 MB) or compress it.';
+      }
+      setError(message);
     } finally {
       setIsGenerating(false);
     }
