@@ -1925,6 +1925,24 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
           { status: 500 }
         );
       }
+
+      // When character images were provided, ensure the prompt explicitly references the attached image (model often omits it)
+      if (characterImageFiles.length > 0) {
+        const hasAttachedReference = /\battached\s+(character\s+)?image\b|the same person as in the attached|the person from the attached|as (shown )?in the attached image/i.test(generatedPrompt);
+        if (!hasAttachedReference) {
+          if (characterImageFiles.length === 1) {
+            const firstChar = generatedPrompt.charAt(0);
+            const rest = generatedPrompt.slice(1);
+            generatedPrompt = 'The same person as in the attached character image, ' + firstChar.toLowerCase() + rest;
+          } else {
+            const refs = characterShortDescriptors.length >= characterImageFiles.length
+              ? characterImageFiles.map((_, i) => `person from attached character image ${i + 1} (${characterShortDescriptors[i]})`).join(', ')
+              : `persons from the ${characterImageFiles.length} attached character images`;
+            generatedPrompt = `The ${refs}. ` + generatedPrompt;
+          }
+          console.log('Injected attached character image reference into prompt (was missing)');
+        }
+      }
     } catch (err) {
       console.error('Error extracting prompt:', err);
       return NextResponse.json(
