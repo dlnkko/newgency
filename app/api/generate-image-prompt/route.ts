@@ -901,27 +901,20 @@ Before applying any style, you MUST analyze the user's description to determine 
       let characterInstructions = '';
       
       if (productImageFiles.length > 0) {
-        const refNum = mainReferenceImageFile ? 2 : 1; // if reference is attached first, product is 2nd image
-        const productRefPhrase = mainReferenceImageFile || mainReferenceImagePrompt
-          ? `"the product in the second attached image (the product image)" or "the product from the second attached image" (since the first attached image is the reference)`
-          : `"the product from the attached product image" or "the attached product image"`;
+        const useDescriptionBasedRef = mainReferenceImageFile || mainReferenceImagePrompt;
         productInstructions = `
 
 **CRITICAL - PRODUCT IMAGES (MANDATORY REFERENCE - WILL BE ATTACHED):**
 ${productImageFiles.map((_, idx) => {
           const imgNum = idx + 1;
           const prompt = validProductPrompts[idx] || '';
-          const attachOrder = (mainReferenceImageFile || mainReferenceImagePrompt) ? `This product image will be attached as image #${refNum + idx} (after the reference image which is #1). ` : '';
-          return `- **Product Image ${imgNum}**: This is a PRODUCT image that will be attached to the prompt. ${attachOrder}When referring to "the product" in your prompt, you MUST refer to it as ${mainReferenceImageFile || mainReferenceImagePrompt ? '"the product in the second attached image (the product image)" or "the product from the second attached image".' : `"the product from the attached product image ${imgNum}" or "the attached product image ${imgNum}".`} ${prompt ? `The product looks like: "${prompt.substring(0, 200)}..."` : 'Analyze the attached product image to see the exact product details.'} You MUST use this EXACT product from the attached image - do NOT invent or create a different product.`;
+          return `- **Product Image ${imgNum}**: This image will be attached. ${prompt ? `It shows: "${prompt.substring(0, 300)}..."` : 'Describe what this product image shows.'} When referring to this product in your prompt, identify it BY DESCRIPTION so the model knows which attachment it is: e.g. "the product shown in the attached image that depicts [product name and key visual: e.g. the HONEST Hydrogel Cream jar on a white background]" or "the attached image showing [specific product details]". Do NOT use "second attached image" or "product image" as a label.`;
         }).join('\n')}
 
 **MANDATORY PRODUCT REFERENCE RULES:**
-- When the user's description mentions "product", "the product", or any product reference, you MUST refer to it as ${productRefPhrase}
-- You MUST describe the product based on what you see in the attached product image(s) - use exact details (colors, materials, textures, design, text, branding)
-- NEVER invent product details - only use what is visible in the attached product image(s)
-- If the user's description mentions product text being clear, ensure you specify that ALL text on the product from the attached image must be perfectly clear, legible, and crisp
-- The product in the generated image MUST match the EXACT product from the attached product image(s)
-- These product images will be attached to the prompt when used in the AI model`;
+- Refer to the product by describing what its attached image shows (e.g. "the attached image that shows the [product name] jar on a white background with [visible details]"). The image model will match by content, not by order.
+- You MUST describe the product in full detail (colors, materials, textures, design, text, branding) so the prompt is extensive and the model can identify the product image.
+- NEVER invent product details - only use what is visible. The generated prompt must be detailed and extensive.`;
       }
       
       if (characterImageFiles.length > 0) {
@@ -1009,11 +1002,12 @@ A main reference image has been provided and analyzed. This image will be upload
 3. **Analyze the reference image** to understand its visual characteristics and include detailed descriptions in your prompt
 4. **Make explicit references** to the attached reference image throughout your prompt when describing style, angle, lighting, or other visual elements
 ${productImageFiles.length > 0 ? `
-**CRITICAL - TWO TYPES OF IMAGES (REFERENCE vs PRODUCT):**
-The user will attach MULTIPLE images to the model: the FIRST image is the REFERENCE (style, camera angle, lighting); the following image(s) are the PRODUCT(s) to depict. To avoid confusion, you MUST:
-- **For style, camera angle, and lighting**: Always refer to "the first attached image (the reference image)" or "as in the first attached image (the reference)". Do NOT say only "the attached image" or "the attached reference image" without specifying "first" when product images are also attached.
-- **For the product**: Refer to "the product in the second attached image" or "the second attached image (the product image)" or "the product from the second attached image". So the model knows: first image = reference, second image = product.
-- **Describe camera angle and lighting IN FULL in the prompt text**: Do not rely only on "copy from the reference". You MUST write out the specific camera angle (e.g. "slightly elevated straight-on medium product shot", "eye-level frontal composition", "three-quarter view from above") and the specific lighting (e.g. "soft diffused studio lighting from front-right with fill from the left, high-key and shadowless", "warm directional key light from the left, soft fill from the right") in your generated prompt, then add "as in the first attached image (the reference)" or "matching the first attached image (the reference)". This way the image model has explicit text instructions and clear attachment roles.` : ''}
+**CRITICAL - IDENTIFY IMAGES BY DESCRIPTION (NOT BY ORDER):**
+The user will attach TWO types of images; the image model has no idea which file is "first" or "reference" or "product". So you MUST identify each image BY DESCRIBING what it shows visually. Do NOT use "first attached image", "second attached image", "reference image", or "product image" as labels.
+
+- **For the image that defines setting, camera angle and lighting**: From the Main Reference Image Prompt above, build a DETAILED visual description (shot type, background, lighting, shadows, composition). In your output prompt write something like: "The setting, camera angle and lighting must match the attached image that shows [FULL description]: a [wide/medium/close-up] shot, [angle and framing], [background type and color], [lighting type, direction, and effect—e.g. soft diffused studio lighting from the upper right casting gentle shadows, high-key minimalist aesthetic]." Example: "…must match the attached image that shows a wide shot of products on a reflective surface with a seamless light grey background, soft diffused studio lighting from the upper right casting gentle shadows, frontal eye-level composition and high-key minimalist aesthetic." Be extensive so the image model can identify which attachment is the style reference.
+- **For the product to depict**: Refer to it by describing what that image shows: e.g. "the product shown in the attached image that depicts the [product name] [key visual: e.g. jar on a white background with black typography and butterfly logo]" so the model can identify which attachment is the product by content.
+- **Prompt must be detailed and extensive**: Write a long, rich prompt. Include full descriptions of camera angle, lighting, background and setting in the text. Use only "the attached image that shows [description]" so the model matches attachments by content, not by order.` : ''}
 
 **Your Task:**
 You MUST use the main reference image prompt above as the PRIMARY style reference. This image defines the EXACT visual style that must be replicated. Your generated prompt must explicitly reference the attached reference image and be EXTREMELY detailed.${copyInstructions}
@@ -1307,11 +1301,11 @@ ${!copyCameraAngle && !copyLighting ? `
 - **Match the overall aesthetic**: If the main reference is studio-quality, maintain studio quality; match the overall visual style and professional photography approach, explicitly referencing "the attached reference image"
 - **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
 - **Combine both**: The final prompt should describe the user's request but with the EXACT visual style, lighting, textures, and aesthetic of the main reference image${copyCameraAngle ? ' - **CRITICAL: Explicitly state "copy the EXACT camera angle and perspective from the attached reference image"' : ''}${copyLighting ? ' - **CRITICAL: Explicitly state "copy the EXACT lighting style from the attached reference image"' : ''}
-- **Make explicit references**: Throughout your prompt, explicitly mention "the attached reference image", "as shown in the attached reference image", or "matching the attached reference image"
+- **Make explicit references**: Throughout your prompt, identify the reference by what it shows; do NOT use "first/second" or "reference/product" as labels.
 ${productImageFiles.length > 0 ? `
-**CRITICAL - TWO TYPES OF IMAGES (REFERENCE vs PRODUCT):** The user will attach two types of images: the FIRST attached image is the REFERENCE (style, camera angle, lighting); the SECOND is the PRODUCT. In your prompt you MUST refer to style/angle/lighting as "the first attached image (the reference image)" and to the product as "the product in the second attached image (the product image)". Describe camera angle and lighting IN FULL in the prompt (e.g. "slightly elevated straight-on medium shot, soft diffused studio lighting from front-right with fill from the left") then add "as in the first attached image (the reference)".` : ''}
+**CRITICAL - IDENTIFY IMAGES BY DESCRIPTION:** The model will receive multiple attached images and cannot know which is "first" or "reference". Describe the reference image's content in detail (e.g. "the attached image that shows a wide shot of products on a reflective surface with soft shadows and artificial studio lighting, light grey background, high-key soft diffused light from the upper right"). Refer to the product as "the attached image that shows [product name and key visual details]". Your prompt must be detailed and extensive so the model can match each attachment by its description.` : ''}
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, AND will also be attached to the final image generation. The prompt must ensure 100% style replication with explicit references to the attached image.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST, AND WILL ALSO BE ATTACHED TO FINAL IMAGE GENERATION):**
+**CRITICAL**: The prompt must be detailed and extensive, with full description of camera angle, lighting and setting, and identify the reference image by its visual content.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST, AND WILL ALSO BE ATTACHED TO FINAL IMAGE GENERATION):**
 A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. **IMPORTANT**: This reference image will ALSO be attached to the final image generation model, so the model will have access to it.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' **CRITICAL: You MUST copy the EXACT camera angle and perspective from the attached reference image.**' : ''}${copyLighting ? ' **CRITICAL: You MUST copy the EXACT lighting style from the attached reference image.**' : ''}` : ''} You MUST:
 - **Analyze the attached main reference image** to understand its composition, colors, style, lighting, and aesthetic - THIS IS CRITICAL
 - **Base your prompt on the main reference image** - use it as the PRIMARY guide for composition, colors, lighting style, and overall aesthetic
@@ -1324,8 +1318,8 @@ ${!copyCameraAngle && !copyLighting ? `
 - **Enhance while preserving essence** - build upon the main reference image's aesthetic while applying professional studio photography quality
 - **Mention the main reference explicitly** - In your generated prompt, explicitly state that the image generation should follow the EXACT aesthetic, composition, colors, lighting, and style of the attached main reference image${copyCameraAngle ? ' - **CRITICAL: Explicitly state "copy the EXACT camera angle and perspective from the attached reference image"' : ''}${copyLighting ? ' - **CRITICAL: Explicitly state "copy the EXACT lighting style from the attached reference image"' : ''}
 - **Professional studio enhancement** - Apply professional studio photography principles (studio lighting, professional composition, controlled environment) while respecting the main reference image's visual language
-${productImageFiles.length > 0 ? '- **When product image is also attached**: Refer to the reference as "the first attached image (the reference)" and the product as "the second attached image (the product image)". Describe camera angle and lighting in full in the prompt text.' : ''}
-- **CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, AND will also be attached to the final image generation. The prompt must ensure 100% style replication with explicit references to the attached image` : '';
+${productImageFiles.length > 0 ? '- **When product is also attached**: Identify the reference by describing what that image shows (e.g. "the attached image that shows [wide shot, lighting, background description]"); identify the product by "the attached image that shows [product details]". Do not use first/second. Be detailed and extensive.' : ''}
+- **CRITICAL**: The prompt must be detailed and extensive; identify images by their visual content so the model can tell which attachment is which.` : '';
 
       styleInstructions = `**STUDIO QUALITY PHOTOGRAPHY STYLE REQUIREMENTS (CRITICAL):**
 You MUST generate a prompt that creates professional studio photography quality:
@@ -1375,9 +1369,9 @@ ${!copyCameraAngle && !copyLighting ? `
 - **Apply to user's description**: While using the main reference as PRIMARY style guide, create a prompt for what the user described: "${description}"
 - **Combine both**: The final prompt should describe the user's request but with the EXACT design style, colors, layout, typography, and aesthetic of the main reference image${productInstructions}${characterInstructions}
 ${productImageFiles.length > 0 ? `
-**CRITICAL - TWO TYPES OF IMAGES (REFERENCE vs PRODUCT):** The first attached image is the REFERENCE (style); the second is the PRODUCT. Refer to "the first attached image (the reference)" for style and "the second attached image (the product image)" for the product.` : ''}
+**CRITICAL - IDENTIFY IMAGES BY DESCRIPTION:** Do not use "first/second" or "reference/product". Describe the reference by what it shows (e.g. "the attached image that shows [design style, layout, colors described in detail]"); describe the product by "the attached image that shows [product details]". Be detailed and extensive.` : ''}
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+**CRITICAL**: The prompt must be detailed and extensive; identify each image by its visual content.` : mainReferenceImageFile ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective (or composition/viewpoint for design work).' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
 - **Analyze the attached main reference image** to understand its design style, layout, colors, typography, and visual elements - THIS IS CRITICAL
 - **Base your prompt on the main reference image** - use it as the PRIMARY guide for design style, composition, color palette, typography choices, and overall aesthetic
