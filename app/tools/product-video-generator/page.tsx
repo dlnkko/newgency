@@ -162,7 +162,7 @@ export default function ProductVideoGenerator() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-zinc-50 mb-2">Product Video Animator</h1>
             <p className="text-sm text-zinc-400">
-              Generate professional product video animation prompts for Nano Banana Pro and video generation
+              Generate professional product video animation prompts for video generation
             </p>
           </div>
 
@@ -241,54 +241,28 @@ export default function ProductVideoGenerator() {
           </div>
         </div>
 
-        {/* Generated Prompts */}
+        {/* Generated Video Animation Prompt */}
         {generatedPrompts && (
-          <div className="space-y-6">
-            {/* Nano Banana Prompt */}
-            <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/80 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-zinc-50">
-                  Nano Banana Pro Prompt
-                </h2>
-                <button
-                  onClick={() => copyToClipboard(generatedPrompts.nanoBananaPrompt, 'nano-banana')}
-                  className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30 transition-colors"
-                >
-                  {copiedId === 'nano-banana' ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-              <div className="rounded-xl border border-zinc-700/70 bg-zinc-950/50 p-4">
-                <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-                  {generatedPrompts.nanoBananaPrompt}
-                </p>
-              </div>
-              <p className="mt-3 text-xs text-zinc-500">
-                Use this prompt in Nano Banana Pro to generate a reference image that will be used for video animation
+          <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/80 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-zinc-50">
+                Video Animation Prompt
+              </h2>
+              <button
+                onClick={() => copyToClipboard(generatedPrompts.videoPrompt, 'video-prompt')}
+                className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30 transition-colors"
+              >
+                {copiedId === 'video-prompt' ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <div className="rounded-xl border border-zinc-700/70 bg-zinc-950/50 p-4">
+              <p className="text-sm text-zinc-300 whitespace-pre-wrap">
+                {generatedPrompts.videoPrompt}
               </p>
             </div>
-
-            {/* Video Prompt */}
-            <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/80 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-zinc-50">
-                  Video Animation Prompt
-                </h2>
-                <button
-                  onClick={() => copyToClipboard(generatedPrompts.videoPrompt, 'video-prompt')}
-                  className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30 transition-colors"
-                >
-                  {copiedId === 'video-prompt' ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-              <div className="rounded-xl border border-zinc-700/70 bg-zinc-950/50 p-4">
-                <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-                  {generatedPrompts.videoPrompt}
-                </p>
-              </div>
-              <p className="mt-3 text-xs text-zinc-500">
-                Use this detailed prompt for video generation. It includes all physical movements, cinematography, and studio-quality details.
-              </p>
-            </div>
+            <p className="mt-3 text-xs text-zinc-500">
+              Use this detailed prompt for video generation. It includes all physical movements, cinematography, and studio-quality details.
+            </p>
           </div>
         )}
       </div>
