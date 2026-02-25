@@ -4,6 +4,8 @@ import { getGoogleGenAI } from '@/lib/gemini';
 import { verifyAndConsumeCredit } from '@/lib/credit-check';
 import axios from 'axios';
 
+export const maxDuration = 60;
+
 function getScrapeCreatorsApiKey() {
   const apiKey = process.env.SCRAPECREATORS_API_KEY;
   
@@ -48,12 +50,38 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const scrapeCreatorsApiKey = getScrapeCreatorsApiKey();
-    
-    const body = await request.json();
-    const { videoUrl, metaAdUrl, video, productDescription, creativeAngle, duration } = body;
+
+    const contentType = request.headers.get('content-type') || '';
+    let videoUrl: string | null = null;
+    let metaAdUrl: string | null = null;
+    let video: string | null = null;
+    let videoFile: File | null = null;
+    let productDescription = '';
+    let creativeAngle: string | null = null;
+    let duration: number | null = null;
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      videoFile = formData.get('video') as File | null;
+      if (videoFile && !(videoFile instanceof File)) videoFile = null;
+      productDescription = (formData.get('productDescription') as string) || '';
+      creativeAngle = (formData.get('creativeAngle') as string) || null;
+      const durationVal = formData.get('duration');
+      duration = durationVal !== null && durationVal !== '' ? Number(durationVal) : null;
+      videoUrl = (formData.get('videoUrl') as string) || null;
+      metaAdUrl = (formData.get('metaAdUrl') as string) || null;
+    } else {
+      const body = await request.json();
+      videoUrl = body.videoUrl ?? null;
+      metaAdUrl = body.metaAdUrl ?? null;
+      video = body.video ?? null;
+      productDescription = body.productDescription ?? '';
+      creativeAngle = body.creativeAngle ?? null;
+      duration = body.duration ?? null;
+    }
 
     // Either videoUrl, metaAdUrl, or uploaded video must be provided
-    if ((!videoUrl || !videoUrl.trim()) && (!metaAdUrl || !metaAdUrl.trim()) && !video) {
+    if ((!videoUrl || !String(videoUrl).trim()) && (!metaAdUrl || !String(metaAdUrl).trim()) && !video && !videoFile) {
       return NextResponse.json(
         { error: 'Either Video URL, Meta Ad URL, or uploaded video is required' },
         { status: 400 }
@@ -256,19 +284,31 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-    } else if (video) {
-      // Handle uploaded video
+    } else if (video || videoFile) {
+      // Handle uploaded video (from FormData or base64 JSON)
       try {
         console.log('Processing uploaded video for transcript extraction...');
-        const videoBuffer = Buffer.from(video.split(',')[1], 'base64');
-        const videoUint8Array = new Uint8Array(videoBuffer);
-        const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
-        
+        let blobToUpload: Blob;
+        let mimeType = 'video/mp4';
+        if (videoFile && videoFile instanceof File) {
+          blobToUpload = videoFile as unknown as Blob;
+          mimeType = videoFile.type || 'video/mp4';
+        } else if (video && typeof video === 'string') {
+          const videoBuffer = Buffer.from(video.split(',')[1], 'base64');
+          const videoUint8Array = new Uint8Array(videoBuffer);
+          blobToUpload = new Blob([videoUint8Array], { type: 'video/mp4' });
+        } else {
+          return NextResponse.json(
+            { error: 'Invalid video data' },
+            { status: 400 }
+          );
+        }
+
         // Upload video to Gemini Files
         console.log('Uploading video to Gemini Files...');
         let myfile = await ai.files.upload({
-          file: videoBlob,
-          config: { mimeType: 'video/mp4' }
+          file: blobToUpload,
+          config: { mimeType }
         });
         
         console.log('Video uploaded to Gemini:', myfile.uri);
