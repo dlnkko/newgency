@@ -72,36 +72,23 @@ export default function ViralScriptGenerator() {
     setGeneratedScript('');
 
     try {
-      let response: Response;
+      // Same flow as Reverse Engineer: send video as base64 in JSON when uploaded
+      let videoBase64: string | null = null;
       if (uploadedVideo) {
-        // Send video as FormData to avoid body size limit in production (base64 in JSON exceeds ~4.5 MB)
-        const formData = new FormData();
-        formData.append('video', uploadedVideo);
-        formData.append('productDescription', productDescription);
-        formData.append('creativeAngle', creativeAngle.trim() || '');
-        formData.append('duration', duration !== null ? String(duration) : '');
-        formData.append('videoUrl', '');
-        formData.append('metaAdUrl', '');
-        response = await fetch('/api/generate-viral-script', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        response = await fetch('/api/generate-viral-script', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            videoUrl: videoUrl.trim() || null,
-            metaAdUrl: metaAdUrl.trim() || null,
-            video: null,
-            productDescription,
-            creativeAngle: creativeAngle.trim() || null,
-            duration: duration,
-          }),
-        });
+        videoBase64 = await fileToBase64(uploadedVideo);
       }
+      const response = await fetch('/api/generate-viral-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: videoUrl.trim() || null,
+          metaAdUrl: metaAdUrl.trim() || null,
+          video: videoBase64,
+          productDescription,
+          creativeAngle: creativeAngle.trim() || null,
+          duration: duration,
+        }),
+      });
 
       const rawText = await response.text();
       let data: { script?: string; error?: string; details?: string } = {};
@@ -125,7 +112,7 @@ export default function ViralScriptGenerator() {
           setIsInsufficientCredits(false);
         } else {
           const msg = data.error || rawText || 'Failed to generate viral script';
-          setError(msg.includes('Entity Too Large') || msg.includes('413') ? 'Video is too large. Try a shorter or smaller video (e.g. under 4 MB).' : msg);
+          setError(msg);
           setIsInsufficientCredits(false);
         }
         return;

@@ -11,11 +11,18 @@ interface GeneratedPrompts {
 export default function ProductVideoGenerator() {
   const [productImage, setProductImage] = useState<File | null>(null);
   const [actionDescription, setActionDescription] = useState<string>('');
+  const [script, setScript] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
   const [generatedPrompts, setGeneratedPrompts] = useState<GeneratedPrompts | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Last frame and animation flow (first frame → last frame prompt → user uploads last frame → animation prompt)
+  const [lastFrameImage, setLastFrameImage] = useState<File | null>(null);
+  const [lastFramePreview, setLastFramePreview] = useState<string | null>(null);
+  const [lastFrameNanoBananaPrompt, setLastFrameNanoBananaPrompt] = useState<string | null>(null);
+  const [isGeneratingLastFramePrompt, setIsGeneratingLastFramePrompt] = useState<boolean>(false);
+  const [isGeneratingAnimationFromFrames, setIsGeneratingAnimationFromFrames] = useState<boolean>(false);
 
   const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -27,6 +34,23 @@ export default function ProductVideoGenerator() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleLastFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLastFrameImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLastFramePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeLastFrame = () => {
+    setLastFrameImage(null);
+    setLastFramePreview(null);
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -113,6 +137,7 @@ export default function ProductVideoGenerator() {
         body: JSON.stringify({
           productImage: productBase64,
           actionDescription: actionDescription.trim(),
+          script: script.trim() || null,
         }),
       });
 
@@ -147,6 +172,99 @@ export default function ProductVideoGenerator() {
     }
   };
 
+  const handleGenerateLastFramePrompt = async () => {
+    if (!productImage || !actionDescription.trim()) {
+      setError('Please upload the first frame image and describe the animation');
+      return;
+    }
+    setIsGeneratingLastFramePrompt(true);
+    setError(null);
+    setLastFrameNanoBananaPrompt(null);
+    try {
+      const maxSizeBeforeCompress = 1.5 * 1024 * 1024;
+      let imageToSend = productImage;
+      if (productImage.size > maxSizeBeforeCompress) {
+        imageToSend = await compressImage(productImage, 1920, 1920, 0.82);
+      }
+      const productBase64 = await fileToBase64(imageToSend);
+      const response = await fetch('/api/generate-product-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productImage: productBase64,
+          actionDescription: actionDescription.trim(),
+          script: script.trim() || null,
+          lastFrameNanoBananaOnly: true,
+        }),
+      });
+      const rawText = await response.text();
+      let data: { error?: string; details?: string; nanoBananaPrompt?: string } = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        if (!response.ok) throw new Error(rawText || `Error ${response.status}`);
+        throw new Error('Invalid response from server.');
+      }
+      if (!response.ok) throw new Error(data.error || data.details || rawText || 'Failed to generate last frame prompt');
+      setLastFrameNanoBananaPrompt(data.nanoBananaPrompt || '');
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate last frame prompt.');
+    } finally {
+      setIsGeneratingLastFramePrompt(false);
+    }
+  };
+
+  const handleGenerateAnimationFromFrames = async () => {
+    if (!productImage || !lastFrameImage || !actionDescription.trim()) {
+      setError('Please upload both first frame and last frame images');
+      return;
+    }
+    setIsGeneratingAnimationFromFrames(true);
+    setError(null);
+    setGeneratedPrompts(null);
+    try {
+      const maxSize = 1.5 * 1024 * 1024;
+      let firstToSend = productImage;
+      let lastToSend = lastFrameImage;
+      if (productImage.size > maxSize) {
+        firstToSend = await compressImage(productImage, 1920, 1920, 0.82);
+      }
+      if (lastFrameImage.size > maxSize) {
+        lastToSend = await compressImage(lastFrameImage, 1920, 1920, 0.82);
+      }
+      const productBase64 = await fileToBase64(firstToSend);
+      const lastFrameBase64 = await fileToBase64(lastToSend);
+      const response = await fetch('/api/generate-product-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productImage: productBase64,
+          lastFrameImage: lastFrameBase64,
+          actionDescription: actionDescription.trim(),
+          script: script.trim() || null,
+          firstAndLastFrameAnimation: true,
+        }),
+      });
+      const rawText = await response.text();
+      let data: { error?: string; details?: string; videoPrompt?: string } = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        if (!response.ok) throw new Error(rawText || `Error ${response.status}`);
+        throw new Error('Invalid response from server.');
+      }
+      if (!response.ok) throw new Error(data.error || data.details || rawText || 'Failed to generate animation prompt');
+      setGeneratedPrompts({
+        nanoBananaPrompt: lastFrameNanoBananaPrompt || '',
+        videoPrompt: data.videoPrompt || '',
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate animation prompt.');
+    } finally {
+      setIsGeneratingAnimationFromFrames(false);
+    }
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -167,11 +285,14 @@ export default function ProductVideoGenerator() {
           </div>
 
           <div className="space-y-6">
-            {/* Product Image Upload */}
+            {/* Product / First Frame Image Upload */}
             <div>
               <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Product Image (as clean as possible)
+                Product image / First frame (as clean as possible)
               </label>
+              <p className="text-xs text-zinc-500 mb-2">
+                For &quot;Generate last frame and animation&quot;, this image is the start of the animation.
+              </p>
               <div className="flex items-center gap-4">
                 <label className="flex-1 cursor-pointer">
                   <div className="rounded-xl border-2 border-dashed border-zinc-700/70 bg-zinc-950/50 p-6 text-center hover:border-amber-500/40 transition-colors">
@@ -224,14 +345,91 @@ export default function ProductVideoGenerator() {
               />
             </div>
 
-            {/* Generate Button */}
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || !productImage || !actionDescription.trim()}
-              className="w-full rounded-xl bg-gradient-to-r from-amber-500/90 to-amber-600/90 px-6 py-3.5 font-semibold text-zinc-900 shadow-lg shadow-amber-500/20 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {isGenerating ? 'Generating Prompts...' : 'Generate Prompts'}
-            </button>
+            {/* Script (dialogue a character must say – 100% included in final prompt) */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                Script (optional)
+              </label>
+              <textarea
+                value={script}
+                onChange={(e) => setScript(e.target.value)}
+                placeholder="Exact words a character must say in the video (voiceover or on-screen). This text will be 100% included in the final animation prompt."
+                className="w-full rounded-xl border border-zinc-700/70 bg-zinc-950/50 px-4 py-3 text-zinc-50 placeholder-zinc-500 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                rows={3}
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                If you fill this in, the final prompt will state that a character must say this script verbatim.
+              </p>
+            </div>
+
+            {/* Generate Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating || isGeneratingLastFramePrompt || isGeneratingAnimationFromFrames || !productImage || !actionDescription.trim()}
+                className="flex-1 rounded-xl bg-gradient-to-r from-amber-500/90 to-amber-600/90 px-6 py-3.5 font-semibold text-zinc-900 shadow-lg shadow-amber-500/20 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {isGenerating ? 'Generating...' : 'Generate Prompts'}
+              </button>
+              <button
+                onClick={handleGenerateLastFramePrompt}
+                disabled={isGenerating || isGeneratingLastFramePrompt || isGeneratingAnimationFromFrames || !productImage || !actionDescription.trim()}
+                className="flex-1 rounded-xl border-2 border-amber-500/60 bg-amber-500/10 px-6 py-3.5 font-semibold text-amber-300 shadow-lg border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {isGeneratingLastFramePrompt ? 'Generating...' : 'Generate last frame and animation'}
+              </button>
+            </div>
+
+            {/* Step 1 result: Last frame Nano Banana prompt + upload last frame + step 2 button */}
+            {lastFrameNanoBananaPrompt && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 space-y-4">
+                <p className="text-sm font-medium text-amber-200">
+                  Step 1 done. Use the prompt below in Nano Banana to generate the <strong>last frame</strong>. Then upload that image here and click &quot;Generate animation (first → last)&quot;.
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Nano Banana prompt (last frame)</span>
+                  <button
+                    onClick={() => copyToClipboard(lastFrameNanoBananaPrompt, 'last-frame-nano')}
+                    className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/30"
+                  >
+                    {copiedId === 'last-frame-nano' ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <div className="rounded-lg border border-zinc-700/70 bg-zinc-950/50 p-3">
+                  <p className="text-sm text-zinc-300 whitespace-pre-wrap">{lastFrameNanoBananaPrompt}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Last frame (upload the image you generated with the prompt above)
+                  </label>
+                  {!lastFramePreview ? (
+                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-600 bg-zinc-900/50 p-6 text-center hover:border-amber-500/50 transition-colors">
+                      <span className="text-sm text-zinc-400">Click to upload last frame image</span>
+                      <input type="file" accept="image/*" onChange={handleLastFrameUpload} className="hidden" />
+                    </label>
+                  ) : (
+                    <div className="relative inline-block">
+                      <img src={lastFramePreview} alt="Last frame" className="max-h-40 rounded-lg border border-zinc-700" />
+                      <button
+                        type="button"
+                        onClick={removeLastFrame}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/90 p-1.5 text-white hover:bg-red-500"
+                        title="Remove last frame"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleGenerateAnimationFromFrames}
+                  disabled={isGeneratingAnimationFromFrames || !lastFrameImage}
+                  className="w-full rounded-xl bg-gradient-to-r from-amber-500/90 to-amber-600/90 px-6 py-3 font-semibold text-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingAnimationFromFrames ? 'Generating animation...' : 'Generate animation (first → last)'}
+                </button>
+              </div>
+            )}
 
             {error && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">

@@ -39,11 +39,18 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC } = body;
+    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC, lastFrameNanoBananaOnly, firstAndLastFrameAnimation, lastFrameImage, script } = body;
+    const scriptTrimmed = typeof script === 'string' ? script.trim() : '';
 
     if (!productImage || !actionDescription) {
       return NextResponse.json(
         { error: 'Product image and action description are required' },
+        { status: 400 }
+      );
+    }
+    if (firstAndLastFrameAnimation && !lastFrameImage) {
+      return NextResponse.json(
+        { error: 'Last frame image is required for first-and-last-frame animation' },
         { status: 400 }
       );
     }
@@ -221,6 +228,171 @@ Provide your response EXACTLY in this format:
       }
     }
 
+    // Last-frame mode: first frame image is provided; generate Nano Banana prompt for the END/LAST frame of the animation (consistent with first frame)
+    if (lastFrameNanoBananaOnly) {
+      const lastFramePromptRequest = `You are an expert AI prompt engineer for Nano Banana Pro. The user has provided the FIRST FRAME of an animation (attached image) and this description of the animation: "${actionDescription}"
+
+**Your task:**
+Create a detailed Nano Banana Pro prompt that will generate the LAST/END FRAME of this same animation. The generated image must:
+1. **Match the same product/subject** as in the first frame – same object, same style, same quality
+2. **Show the end state** of the animation described – e.g. if the animation is "product rotates and lands on table", the last frame should show the product after it has landed on the table, in the same style as the first frame
+3. **Maintain visual consistency** – same lighting style, same environment, same camera angle/style, same color grading and aesthetic as the first frame
+4. **Be the natural end state** – exactly how the scene would look when the animation finishes
+
+Do NOT describe the motion or the animation – only describe the final still image (last frame) so that Nano Banana can generate it. The prompt must be a single, detailed image description ready for Nano Banana Pro.
+
+**Output Format:**
+**NANO_BANANA_PROMPT:**
+[Your detailed Nano Banana Pro prompt for the LAST FRAME image only – same consistency as first frame, end state of: "${actionDescription}"]`;
+
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { fileData: { fileUri: productFile.uri, mimeType: productFile.mimeType } },
+                { text: lastFramePromptRequest }
+              ]
+            }
+          ]
+        });
+
+        let nanoBananaPrompt = '';
+        if (result.candidates && result.candidates[0]?.content?.parts) {
+          const responseText = result.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('')
+            .trim();
+          const match = responseText.match(/\*\*NANO_BANANA_PROMPT:\*\*\s*([\s\S]*?)$/i);
+          nanoBananaPrompt = match ? match[1].trim() : responseText;
+        }
+        if (!nanoBananaPrompt) {
+          return NextResponse.json(
+            { error: 'Failed to generate last frame Nano Banana prompt' },
+            { status: 500 }
+          );
+        }
+        return NextResponse.json({
+          success: true,
+          nanoBananaPrompt: nanoBananaPrompt
+        });
+      } catch (error: any) {
+        console.error('Error generating last frame Nano Banana prompt:', error);
+        return NextResponse.json(
+          { error: 'Error generating last frame prompt', details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // First + last frame animation: both images provided; generate only the video animation prompt from first to last frame
+    if (firstAndLastFrameAnimation && lastFrameImage) {
+      const lastFrameBuffer = Buffer.from(lastFrameImage.split(',')[1], 'base64');
+      const lastFrameMime = lastFrameImage.split(';')[0].split(':')[1] || 'image/png';
+      let lastFrameFile;
+      try {
+        const lastFrameUint8 = new Uint8Array(lastFrameBuffer);
+        const lastFrameBlob = new Blob([lastFrameUint8], { type: lastFrameMime });
+        lastFrameFile = await ai.files.upload({
+          file: lastFrameBlob,
+          config: { mimeType: lastFrameMime }
+        });
+        console.log('Last frame image uploaded:', lastFrameFile.uri);
+      } catch (uploadError: any) {
+        console.error('Error uploading last frame image:', uploadError);
+        return NextResponse.json(
+          { error: 'Error uploading last frame image', details: uploadError.message },
+          { status: 500 }
+        );
+      }
+      const lastFrameFileName = lastFrameFile.name || lastFrameFile.uri?.split('/').pop() || '';
+      if (lastFrameFileName) {
+        try {
+          lastFrameFile = await waitForFile(lastFrameFile, lastFrameFileName);
+        } catch (waitError: any) {
+          return NextResponse.json(
+            { error: 'Error waiting for last frame file', details: waitError.message },
+            { status: 500 }
+          );
+        }
+      }
+
+      const firstLastAnimationRequest = `You are an expert AI prompt engineer for video animation. The user has provided TWO images:
+- **First image (attached)**: The START/FIRST FRAME of the animation
+- **Second image (attached)**: The END/LAST FRAME of the animation
+
+Animation description: "${actionDescription}"${scriptTrimmed ? `
+
+**CRITICAL - SCRIPT (100% INCLUDED):** A character must say this script verbatim in the video. The prompt MUST include that the following is spoken: "${scriptTrimmed.replace(/"/g, '\\"')}"` : ''}
+
+**Your task:**
+Generate ONE detailed video animation prompt that describes the motion from the first frame to the last frame. The prompt will be used by a video AI that can animate between two keyframes. You must:
+1. Describe the transition/motion from the first frame to the last frame
+2. Keep the same style, lighting, and environment as both images
+3. Match the user's description: "${actionDescription}"
+4. **MUST be EXACTLY ONE continuous paragraph**, UNDER 999 characters
+5. No text overlays, captions, or on-screen text
+6. Be precise about movement, timing, and cinematography so the video goes smoothly from first to last frame${scriptTrimmed ? '\n7. State that a character says the user script verbatim' : ''}
+
+**Output Format:**
+**VIDEO_ANIMATION_PROMPT:**
+[One paragraph, under 999 characters, describing the animation from first frame to last frame${scriptTrimmed ? '; include that a character says the script verbatim' : ''}]`;
+
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { fileData: { fileUri: productFile.uri, mimeType: productFile.mimeType } },
+                { fileData: { fileUri: lastFrameFile.uri, mimeType: lastFrameFile.mimeType } },
+                { text: firstLastAnimationRequest }
+              ]
+            }
+          ]
+        });
+
+        let videoPrompt = '';
+        if (result.candidates && result.candidates[0]?.content?.parts) {
+          const responseText = result.candidates[0].content.parts
+            .map((part: any) => part.text || '')
+            .join('')
+            .trim();
+          const match = responseText.match(/\*\*VIDEO_ANIMATION_PROMPT:\*\*\s*([\s\S]*?)$/i);
+          videoPrompt = match ? match[1].trim() : responseText;
+        }
+        if (!videoPrompt) {
+          return NextResponse.json(
+            { error: 'Failed to generate first-to-last animation prompt' },
+            { status: 500 }
+          );
+        }
+        videoPrompt = videoPrompt.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (scriptTrimmed) {
+          videoPrompt = (videoPrompt + ' A character says exactly: "' + scriptTrimmed.replace(/"/g, '\\"') + '"').trim();
+        }
+        if (videoPrompt.length > 999) {
+          videoPrompt = videoPrompt.substring(0, 996).trim();
+          const lastSpace = videoPrompt.lastIndexOf(' ');
+          if (lastSpace > 0) videoPrompt = videoPrompt.substring(0, lastSpace).trim();
+        }
+        await recordGeneration(request);
+        return NextResponse.json({
+          success: true,
+          videoPrompt: videoPrompt
+        });
+      } catch (error: any) {
+        console.error('Error generating first-to-last animation prompt:', error);
+        return NextResponse.json(
+          { error: 'Error generating animation prompt', details: error.message },
+          { status: 500 }
+        );
+      }
+    }
+
     // If animateOnly is true, generate only the video animation prompt based on the uploaded image
     if (animateOnly) {
       const ugcInstructions = isUGC ? `\n\n**CRITICAL - UGC HYPERREALISTIC ANIMATION (IMAGE IS A HYPERREALISTIC PERSON):**
@@ -287,13 +459,15 @@ Generate ONE extremely detailed video animation prompt that:
 - Follow the sequence the user described
 - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
 - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
-- **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n- **CRITICAL - NO CAMERA MOVEMENT**: You MUST NOT include ANY camera movements (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requested camera movements in their description. The camera must remain static and fixed.' : ''}
+- **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n- **CRITICAL - NO CAMERA MOVEMENT**: You MUST NOT include ANY camera movements (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requested camera movements in their description. The camera must remain static and fixed.' : ''}${scriptTrimmed ? `
+
+**CRITICAL - SCRIPT/DIALOGUE (100% INCLUDED):** The user provided this script. The VIDEO_ANIMATION_PROMPT MUST state that a character (person or voiceover) says this script verbatim. You must include in your prompt that the following exact dialogue is spoken: "${scriptTrimmed.replace(/"/g, '\\"')}"` : ''}
 
 **Output Format:**
 Provide your response EXACTLY in this format:
 
 **VIDEO_ANIMATION_PROMPT:**
-[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. The prompt MUST explicitly mention that the animation should be based on the attached product image. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.]`;
+[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. The prompt MUST explicitly mention that the animation should be based on the attached product image. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' MUST include that a character says the user script verbatim.' : ''}]`;
 
       try {
         const result = await ai.models.generateContent({
@@ -338,6 +512,9 @@ Provide your response EXACTLY in this format:
             { error: 'Failed to generate animation prompt' },
             { status: 500 }
           );
+        }
+        if (scriptTrimmed) {
+          videoPrompt = (videoPrompt.trim() + ' A character says exactly: "' + scriptTrimmed.replace(/"/g, '\\"') + '"').trim();
         }
 
         // Record generation after successful completion
@@ -409,7 +586,8 @@ Generate TWO extremely detailed, professional prompts:
    - Follow the sequence the user described
    - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
    - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
-   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.
+   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${scriptTrimmed ? `
+   - **CRITICAL - SCRIPT (100% INCLUDED)**: The user provided this script. The VIDEO_ANIMATION_PROMPT MUST state that a character says this script verbatim: "${scriptTrimmed.replace(/"/g, '\\"')}"` : ''}
 
 **Critical Requirements:**
 - Both prompts must be optimized for professional product advertising
@@ -430,7 +608,7 @@ Provide your response EXACTLY in this format:
 [Your detailed Nano Banana Pro prompt here - create an asset that helps complete the video the user requested]
 
 **VIDEO_ANIMATION_PROMPT:**
-[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.]`;
+[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' MUST include that a character says the user script verbatim.' : ''}]`;
 
     try {
       const result = await ai.models.generateContent({
@@ -547,6 +725,9 @@ Provide ONLY the optimized prompt as a single continuous paragraph, under 999 ch
           }
         }
         
+        if (scriptTrimmed) {
+          videoPrompt = (videoPrompt + ' A character says exactly: "' + scriptTrimmed.replace(/"/g, '\\"') + '"').trim();
+        }
         console.log(`Final video prompt length: ${videoPrompt.length} characters`);
       }
 

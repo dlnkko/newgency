@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       duration = body.duration ?? null;
     }
 
-    // Either videoUrl, metaAdUrl, or uploaded video must be provided
+    // Either videoUrl, metaAdUrl, or uploaded video (base64 or FormData) must be provided
     if ((!videoUrl || !String(videoUrl).trim()) && (!metaAdUrl || !String(metaAdUrl).trim()) && !video && !videoFile) {
       return NextResponse.json(
         { error: 'Either Video URL, Meta Ad URL, or uploaded video is required' },
@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (video || videoFile) {
-      // Handle uploaded video (from FormData or base64 JSON)
+      // Handle uploaded video (same logic as Reverse Engineer: base64 in JSON or FormData)
       try {
         console.log('Processing uploaded video for transcript extraction...');
         let blobToUpload: Blob;
