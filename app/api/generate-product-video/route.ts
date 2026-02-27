@@ -325,7 +325,7 @@ Do NOT describe the motion or the animation – only describe the final still im
 
 Animation description: "${actionDescription}"${scriptTrimmed ? `
 
-**CRITICAL - SCRIPT (100% INCLUDED):** A character must say this script verbatim in the video. The prompt MUST include that the following is spoken: "${scriptTrimmed.replace(/"/g, '\\"')}"` : ''}
+**CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's description indicates. Do NOT add "a character says" or similar – integrate the script where the user said it goes.` : ''}
 
 **Your task:**
 Generate ONE detailed video animation prompt that describes the motion from the first frame to the last frame. The prompt will be used by a video AI that can animate between two keyframes. You must:
@@ -334,11 +334,11 @@ Generate ONE detailed video animation prompt that describes the motion from the 
 3. Match the user's description: "${actionDescription}"
 4. **MUST be EXACTLY ONE continuous paragraph**, UNDER 999 characters
 5. No text overlays, captions, or on-screen text
-6. Be precise about movement, timing, and cinematography so the video goes smoothly from first to last frame${scriptTrimmed ? '\n7. State that a character says the user script verbatim' : ''}
+6. Be precise about movement, timing, and cinematography so the video goes smoothly from first to last frame${scriptTrimmed ? '\n7. Include the script text where the user\'s description indicates; never add "a character says"' : ''}
 
 **Output Format:**
 **VIDEO_ANIMATION_PROMPT:**
-[One paragraph, under 999 characters, describing the animation from first frame to last frame${scriptTrimmed ? '; include that a character says the script verbatim' : ''}]`;
+[One paragraph, under 999 characters, describing the animation from first frame to last frame.${scriptTrimmed ? ' Include the script where the user indicated; do not add "a character says".' : ''}]`;
 
       try {
         const result = await ai.models.generateContent({
@@ -371,9 +371,6 @@ Generate ONE detailed video animation prompt that describes the motion from the 
           );
         }
         videoPrompt = videoPrompt.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-        if (scriptTrimmed) {
-          videoPrompt = (videoPrompt + ' A character says exactly: "' + scriptTrimmed.replace(/"/g, '\\"') + '"').trim();
-        }
         if (videoPrompt.length > 999) {
           videoPrompt = videoPrompt.substring(0, 996).trim();
           const lastSpace = videoPrompt.lastIndexOf(' ');
@@ -461,13 +458,13 @@ Generate ONE extremely detailed video animation prompt that:
 - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
 - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n- **CRITICAL - NO CAMERA MOVEMENT**: You MUST NOT include ANY camera movements (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requested camera movements in their description. The camera must remain static and fixed.' : ''}${scriptTrimmed ? `
 
-**CRITICAL - SCRIPT/DIALOGUE (100% INCLUDED):** The user provided this script. The VIDEO_ANIMATION_PROMPT MUST state that a character (person or voiceover) says this script verbatim. You must include in your prompt that the following exact dialogue is spoken: "${scriptTrimmed.replace(/"/g, '\\"')}"` : ''}
+**CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** The user provided this script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact script text in the prompt at the moment/place the user's action description indicates (e.g. at the start, as voiceover, when the product lands). Do NOT add phrases like "a character says" or "A character says exactly" – integrate the script text where the user said it goes.` : ''}
 
 **Output Format:**
 Provide your response EXACTLY in this format:
 
 **VIDEO_ANIMATION_PROMPT:**
-[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. The prompt MUST explicitly mention that the animation should be based on the attached product image. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' MUST include that a character says the user script verbatim.' : ''}]`;
+[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. The prompt MUST explicitly mention that the animation should be based on the attached product image. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' Include the user script text where their description indicates; never add "a character says" or similar.' : ''}]`;
 
       try {
         const result = await ai.models.generateContent({
@@ -513,10 +510,6 @@ Provide your response EXACTLY in this format:
             { status: 500 }
           );
         }
-        if (scriptTrimmed) {
-          videoPrompt = (videoPrompt.trim() + ' A character says exactly: "' + scriptTrimmed.replace(/"/g, '\\"') + '"').trim();
-        }
-
         // Record generation after successful completion
         await recordGeneration(request);
 
@@ -587,7 +580,7 @@ Generate TWO extremely detailed, professional prompts:
    - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
    - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
    - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${scriptTrimmed ? `
-   - **CRITICAL - SCRIPT (100% INCLUDED)**: The user provided this script. The VIDEO_ANIMATION_PROMPT MUST state that a character says this script verbatim: "${scriptTrimmed.replace(/"/g, '\\"')}"` : ''}
+   - **CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES)**: User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's action description indicates. Do NOT add "a character says" or "A character says exactly" – integrate the script where the user said it goes.` : ''}
 
 **Critical Requirements:**
 - Both prompts must be optimized for professional product advertising
@@ -608,7 +601,7 @@ Provide your response EXACTLY in this format:
 [Your detailed Nano Banana Pro prompt here - create an asset that helps complete the video the user requested]
 
 **VIDEO_ANIMATION_PROMPT:**
-[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' MUST include that a character says the user script verbatim.' : ''}]`;
+[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' Include the user script text where their description indicates; never add "a character says" or similar.' : ''}]`;
 
     try {
       const result = await ai.models.generateContent({
@@ -725,9 +718,6 @@ Provide ONLY the optimized prompt as a single continuous paragraph, under 999 ch
           }
         }
         
-        if (scriptTrimmed) {
-          videoPrompt = (videoPrompt + ' A character says exactly: "' + scriptTrimmed.replace(/"/g, '\\"') + '"').trim();
-        }
         console.log(`Final video prompt length: ${videoPrompt.length} characters`);
       }
 

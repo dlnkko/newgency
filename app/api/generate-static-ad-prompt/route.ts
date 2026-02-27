@@ -44,7 +44,8 @@ export async function POST(request: NextRequest) {
     const ai = getGoogleGenAI();
     
     const body = await request.json();
-    const { staticAdImage, productImage, copywriting, isUrlScraped } = body;
+    const { staticAdImage, productImage, copywriting, isUrlScraped, guidelines } = body;
+    const guidelinesTrimmed = typeof guidelines === 'string' ? guidelines.trim() : '';
 
     // Log input data for debugging
     console.log('=== GENERATE STATIC AD PROMPT REQUEST ===');
@@ -478,6 +479,10 @@ ${scrapedBranding ? '- Consider using product brand typography if it fits the de
 
 5. **Create Copywriting:**
 ${copywritingInstructions}
+${guidelinesTrimmed ? `
+6. **Guidelines from the user (apply these changes):**
+${guidelinesTrimmed}
+You MUST take these instructions into account when generating the final prompt.` : ''}
 
 **Output:**
 Provide ONLY the final, complete, EXTREMELY DETAILED prompt ready for AI image generation. The prompt should:

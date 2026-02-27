@@ -353,12 +353,12 @@ export default function ProductVideoGenerator() {
               <textarea
                 value={script}
                 onChange={(e) => setScript(e.target.value)}
-                placeholder="Exact words a character must say in the video (voiceover or on-screen). This text will be 100% included in the final animation prompt."
+                placeholder="Exact words to be said in the video. Indicate in the action description above when/where this script is spoken (e.g. at the start, as voiceover, when the product lands)."
                 className="w-full rounded-xl border border-zinc-700/70 bg-zinc-950/50 px-4 py-3 text-zinc-50 placeholder-zinc-500 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
                 rows={3}
               />
               <p className="mt-1 text-xs text-zinc-500">
-                If you fill this in, the final prompt will state that a character must say this script verbatim.
+                Script is included 100% in the prompt where you indicate in the action description. No extra phrasing is added.
               </p>
             </div>
 

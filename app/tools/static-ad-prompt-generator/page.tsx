@@ -8,6 +8,7 @@ export default function StaticAdPromptGenerator() {
   const [staticAdImage, setStaticAdImage] = useState<File | null>(null);
   const [productImage, setProductImage] = useState<File | null>(null);
   const [copywriting, setCopywriting] = useState<string>('');
+  const [guidelines, setGeneralInstructions] = useState<string>('');
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isScraping, setIsScraping] = useState<boolean>(false);
@@ -135,6 +136,7 @@ export default function StaticAdPromptGenerator() {
           productImage: productBase64,
           copywriting: copywritingInput || null,
           isUrlScraped: isUrl,
+          guidelines: guidelines.trim() || null,
         }),
       });
 
@@ -293,6 +295,20 @@ export default function StaticAdPromptGenerator() {
               🔗 URL detected - Product page will be scraped automatically
             </p>
           )}
+        </div>
+
+        {/* Guidelines */}
+        <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+            Guidelines <span className="text-xs font-normal text-zinc-500">(Optional)</span>
+          </label>
+          <textarea
+            value={guidelines}
+            onChange={(e) => setGeneralInstructions(e.target.value)}
+            placeholder="Any changes or details to keep in mind for the static ad (e.g. different background, no text overlay, specific mood, color tweaks...)"
+            rows={3}
+            className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all resize-none"
+          />
         </div>
 
         {/* Generate Button */}
