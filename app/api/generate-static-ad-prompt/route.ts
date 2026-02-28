@@ -189,10 +189,13 @@ Your task:
     - Note the tone (friendly, professional, playful, serious, etc.)
     - Note the style category (corto y persuasivo, humor, irónico, directo, emocional, etc.)
 
-2. **Generate a DETAILED Prompt** that recreates EVERY visual element:
+2. **Extract Typography from Reference Ad (CRITICAL for replication):**
+    - Describe the typography in a dedicated section: font style/type (e.g. sans-serif bold, serif, display, script), approximate sizes (headline vs body), weights (light, regular, bold, black), text placement (top, center, overlay), alignment (left, center, right), and any effects (shadows, outlines, gradients on text, letter-spacing). This will be used to COPY the same typography in the final ad.
+
+3. **Generate a DETAILED Prompt** that recreates EVERY visual element:
     - EXACT composition and layout (where every element is positioned: person, product, text, buttons, etc.)
     - EXACT colors (background, foreground, text, accents - specific shades, gradients, hex codes if visible)
-    - EXACT typography (font styles, sizes, weights, exact text placement, alignment, effects like shadows/outlines)
+    - EXACT typography (font styles, sizes, weights, exact text placement, alignment, effects like shadows/outlines) — describe so the same look can be replicated
     - EXACT background (style, colors, gradients, visual elements like silhouettes, blur effects, particles)
     - EXACT product/subject presentation (positioning, angles, lighting, shadows, number of products)
     - EXACT person/character (if present: pose, expression, clothing, placement, interaction with product)
@@ -203,6 +206,14 @@ Your task:
 The prompt must be so detailed that it would generate an IDENTICAL image to the reference ad.
 
 Format your response EXACTLY as:
+**TYPOGRAPHY (REFERENCE AD):**
+- Font style/type: [e.g. bold sans-serif, display, serif]
+- Sizes and hierarchy: [headline size, body/copy size, any small text]
+- Weights: [e.g. bold headline, regular body]
+- Placement and alignment: [where text sits, alignment]
+- Effects: [shadows, outlines, gradients on text, letter-spacing if visible]
+(Describe everything needed to replicate the exact same typography in another ad.)
+
 **COPYWRITING ANALYSIS:**
 - Word Count: [exact number]
 - Rhetorical Figure: [primary figure: metaphor/personification/hyperbole/analogy/slogan/motivational/aspirational/other]
@@ -241,9 +252,10 @@ Format your response EXACTLY as:
       );
     }
 
-        // Extract reference prompt and copywriting analysis
+        // Extract reference prompt, typography, and copywriting analysis
     let analysisText = '';
     let referencePrompt = '';
+    let referenceTypography = '';
     let copywritingProfile = null;
     let rhetoricalFigures = null;
     let step1Usage = null;
@@ -256,6 +268,14 @@ Format your response EXACTLY as:
 
         console.log('\n=== STEP 1 OUTPUT: REFERENCE AD PROMPT GENERATED ===');
         console.log('Full analysis:', analysisText);
+
+        // Extract typography from reference ad
+        const typographyMatch = analysisText.match(/\*\*TYPOGRAPHY \(REFERENCE AD\):\*\*\s*([\s\S]*?)(?=\*\*COPYWRITING ANALYSIS:\*\*|\*\*REFERENCE AD PROMPT:\*\*|$)/i);
+        if (typographyMatch) {
+          referenceTypography = typographyMatch[1].trim();
+          console.log('\n=== REFERENCE AD TYPOGRAPHY EXTRACTED ===');
+          console.log('Typography:', referenceTypography.substring(0, 300) + (referenceTypography.length > 300 ? '...' : ''));
+        }
 
         // Extract copywriting analysis
         const copywritingAnalysisMatch = analysisText.match(/\*\*COPYWRITING ANALYSIS:\*\*\s*([\s\S]*?)(?=\*\*REFERENCE AD PROMPT:\*\*|$)/i);
@@ -343,6 +363,7 @@ Format your response EXACTLY as:
     console.log('- Rhetorical figure:', rhetoricalFigures?.primary);
     console.log('- Tone:', copywritingProfile?.tone);
     console.log('- Style:', copywritingProfile?.styleCategory);
+    console.log('- Reference typography extracted:', !!referenceTypography);
     
     if (scrapedBranding) {
       console.log('- Branding colors available:', scrapedBranding.colors ? Object.keys(scrapedBranding.colors).join(', ') : 'none');
@@ -428,6 +449,10 @@ ${isUrlScraped && scrapedSummary ? '3. Scraped product page information (summary
 
 **Reference Ad Prompt (use this as the base structure - maintain ALL design elements):**
 ${referencePrompt}
+${referenceTypography ? `
+**Typography from Reference Ad (COPY this typography into the final prompt):**
+${referenceTypography}
+You MUST replicate the same typography style, font appearance, sizes, weights, placement and text effects from the reference ad in your output.` : ''}
 
 **Your Task:**
 Adapt the reference prompt above to create a NEW prompt for the product in the provided image. The new prompt must:
@@ -451,12 +476,13 @@ Adapt the reference prompt above to create a NEW prompt for the product in the p
    - Keep the EXACT same visual effects (lighting style, shadows, effects)
    - **Person/Character**: Maintain the same visual style and presentation approach, BUT adapt the person's pose, expression, clothing, and actions to be coherent with the NEW product's actual use case (see section 4 for details)
    - Keep the EXACT same buttons/CTAs design and placement (if applicable)
-   - Keep the EXACT same typography placement and text positioning
+   - **Typography: COPY the typography from the reference ad** — same font style/type, sizes, weights, text placement, alignment and text effects (shadows, outlines). The headline and copy must look like the reference ad's typography.
 
 3. **Adapt Colors and Typography:**
 ${scrapedBranding ? brandingIntegration : '- Use reference colors and typography, but adapt product-specific elements'}
 ${scrapedBranding ? '- Integrate product brand colors from branding data where appropriate (product elements, accents, highlights)' : ''}
-${scrapedBranding ? '- Consider using product brand typography if it fits the design aesthetic (for product text or headlines)' : ''}
+${scrapedBranding ? '- Prefer REFERENCE AD typography for headline and main copy; use product brand typography only for small product labels if needed' : ''}
+- **Always preserve the reference ad typography** (font style, sizes, weights, placement, effects) so the new ad looks like the reference.
 - Maintain reference color palette for background and overall design
 - Use brand colors strategically for product elements and accents
 
@@ -619,6 +645,7 @@ ${scrapedBranding ? '- Integrate product brand colors and typography where appro
       debug: {
         copywritingProfile: copywritingProfile,
         rhetoricalFigures: rhetoricalFigures,
+        referenceTypography: referenceTypography ? referenceTypography.substring(0, 500) + '...' : null,
         referencePrompt: referencePrompt.substring(0, 1000) + '...',
         scrapedSummary: scrapedSummary ? scrapedSummary.substring(0, 500) + '...' : null,
         scrapedBranding: scrapedBranding ? {
