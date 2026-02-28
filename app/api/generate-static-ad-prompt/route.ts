@@ -193,7 +193,13 @@ Your task:
 2. **Extract Typography from Reference Ad (CRITICAL for replication):**
     - Describe the typography in a dedicated section: font style/type (e.g. sans-serif bold, serif, display, script), approximate sizes (headline vs body), weights (light, regular, bold, black), text placement (top, center, overlay), alignment (left, center, right), and any effects (shadows, outlines, gradients on text, letter-spacing). This will be used to COPY the same typography in the final ad.
 
-3. **Generate a DETAILED Prompt** that recreates EVERY visual element:
+3. **Identify VISUAL STYLE / DESIGN TYPE** (CRITICAL — do not add people or gym if reference has none):
+    - Does the reference ad show ANY person, athlete, or human? (yes/no)
+    - Does the reference ad show ANY environment like gym, sport setting, or location? (yes/no)
+    - If NO person and NO gym/environment: the ad is "graphic/product-only" (product + background/graphics only). The adaptation must STAY graphic — do not insert people or gym.
+    - If it HAS a person or environment: we may adapt that to the new product context (e.g. creatine → gym) or per user guidelines.
+
+4. **Generate a DETAILED Prompt** that recreates EVERY visual element:
     - EXACT composition and layout (where every element is positioned: person, product, text, buttons, etc.)
     - EXACT colors (background, foreground, text, accents - specific shades, gradients, hex codes if visible)
     - EXACT typography (font styles, sizes, weights, exact text placement, alignment, effects like shadows/outlines) — describe so the same look can be replicated
@@ -214,6 +220,12 @@ Format your response EXACTLY as:
 - Placement and alignment: [where text sits, alignment]
 - Effects: [shadows, outlines, gradients on text, letter-spacing if visible]
 (Describe everything needed to replicate the exact same typography in another ad.)
+
+**VISUAL STYLE (REFERENCE AD):**
+- Has person/character: [yes/no]
+- Has gym, sport setting, or location environment: [yes/no]
+- Design type: [graphic-product-only OR has-person OR has-environment]
+If "graphic-product-only": the ad is purely product + background/graphics (no people, no gym). The generated prompt must NOT add people or gym/sport imagery — only adapt product and keep the same graphic style. Only add person/gym if the user explicitly requests it in Guidelines.
 
 **COPYWRITING ANALYSIS:**
 - Text Structure: [e.g. "Two lines: tagline (X words) + main slogan (Y words)" — describe how many lines and word count per line]
@@ -256,10 +268,11 @@ Format your response EXACTLY as:
       );
     }
 
-        // Extract reference prompt, typography, and copywriting analysis
+        // Extract reference prompt, typography, visual style, and copywriting analysis
     let analysisText = '';
     let referencePrompt = '';
     let referenceTypography = '';
+    let referenceVisualStyle: { hasPerson: boolean; hasEnvironment: boolean; designType: string } | null = null;
     let copywritingProfile = null;
     let rhetoricalFigures = null;
     let step1Usage = null;
@@ -274,11 +287,26 @@ Format your response EXACTLY as:
         console.log('Full analysis:', analysisText);
 
         // Extract typography from reference ad
-        const typographyMatch = analysisText.match(/\*\*TYPOGRAPHY \(REFERENCE AD\):\*\*\s*([\s\S]*?)(?=\*\*COPYWRITING ANALYSIS:\*\*|\*\*REFERENCE AD PROMPT:\*\*|$)/i);
+        const typographyMatch = analysisText.match(/\*\*TYPOGRAPHY \(REFERENCE AD\):\*\*\s*([\s\S]*?)(?=\*\*COPYWRITING ANALYSIS:\*\*|\*\*VISUAL STYLE|\*\*REFERENCE AD PROMPT:\*\*|$)/i);
         if (typographyMatch) {
           referenceTypography = typographyMatch[1].trim();
           console.log('\n=== REFERENCE AD TYPOGRAPHY EXTRACTED ===');
           console.log('Typography:', referenceTypography.substring(0, 300) + (referenceTypography.length > 300 ? '...' : ''));
+        }
+
+        // Extract visual style (graphic vs person/environment) — do not add gym/person if reference is graphic-only
+        const visualStyleMatch = analysisText.match(/\*\*VISUAL STYLE \(REFERENCE AD\):\*\*\s*([\s\S]*?)(?=\*\*COPYWRITING ANALYSIS:\*\*|\*\*REFERENCE AD PROMPT:\*\*|$)/i);
+        if (visualStyleMatch) {
+          const vsText = visualStyleMatch[1];
+          const hasPerson = /Has person\/character:\s*yes/i.test(vsText);
+          const hasEnv = /Has gym, sport setting, or location environment:\s*yes/i.test(vsText);
+          const designMatch = vsText.match(/Design type:\s*(graphic-product-only|has-person|has-environment)/i);
+          referenceVisualStyle = {
+            hasPerson,
+            hasEnvironment: hasEnv,
+            designType: designMatch ? designMatch[1].toLowerCase() : (hasPerson || hasEnv ? 'has-person-or-environment' : 'graphic-product-only'),
+          };
+          console.log('\n=== REFERENCE VISUAL STYLE EXTRACTED ===', referenceVisualStyle);
         }
 
         // Extract copywriting analysis
@@ -377,7 +405,9 @@ Format your response EXACTLY as:
     console.log('- Tone:', copywritingProfile?.tone);
     console.log('- Style:', copywritingProfile?.styleCategory);
     console.log('- Reference typography extracted:', !!referenceTypography);
-    
+    const isGraphicOnly = referenceVisualStyle?.designType === 'graphic-product-only';
+    console.log('- Reference is graphic/product-only (no person, no gym):', isGraphicOnly);
+
     if (scrapedBranding) {
       console.log('- Branding colors available:', scrapedBranding.colors ? Object.keys(scrapedBranding.colors).join(', ') : 'none');
       console.log('- Branding typography available:', scrapedBranding.typography ? 'yes' : 'no');
@@ -472,24 +502,24 @@ You MUST replicate the same typography style, font appearance, sizes, weights, p
 **Your Task:**
 Adapt the reference prompt above to create a NEW prompt for the product in the provided image. The new prompt must:
 
+${isGraphicOnly ? `**CRITICAL — REFERENCE AD IS GRAPHIC/PRODUCT-ONLY (no people, no gym):**
+The reference ad has NO person and NO gym/sport environment — it is purely product + background/graphics (e.g. product, liquid splashes, fruits, gradients). You MUST keep the same style: do NOT add any person, athlete, gym, or sport environment. Do NOT insert "gym in background", "athletic couple", "person training", etc. Only product, background, and graphic elements. The ONLY exception: if the user explicitly asks for it in the Guidelines section below, then follow their request. Otherwise keep it graphic/product-only.` : `**Person/Environment (reference has person or setting):** You may adapt the person/action or environment to match the new product context (e.g. creatine → gym) or follow user Guidelines.`}
+
 1. **Analyze Product Context (CRITICAL):**
-   - Analyze the product image to understand: product type, category, purpose, target audience, industry, and what actions/activities are typically associated with using this product
-   - Determine what the product is actually used for and what kind of person/action would naturally use it
-   - **CRITICAL: Person and Action Adaptation:**
+   - Analyze the product image to understand: product type, category, purpose, target audience, industry
+   ${isGraphicOnly ? '- Keep the ad GRAPHIC: product + background/graphics only. Do NOT add people or gym/sport imagery unless the user requested it in Guidelines.' : `- **Person and Action Adaptation (reference had person/environment):**
      * The person in the image MUST be performing actions or in poses that are coherent with how the NEW product is actually used
-     * Example: If product is creatina (supplement for exercise): person should be exercising, working out, in gym setting with athletic clothing, NOT just smiling with glasses
-     * Example: If product is headphones: person could be listening to music, in casual setting enjoying audio
-     * Example: If product is beauty cream: person should be in beauty/self-care context, applying product or showing results
-     * **Do NOT copy the person's pose/action from reference if it doesn't match the NEW product's actual use case**
+     * Example: If product is creatine: person could be in gym/sport setting. If reference showed another sport: you may adapt to gym for creatine, or follow Guidelines
+     * **Do NOT copy the person's pose/action from reference if it doesn't match the NEW product's actual use case**`}
    - Always maintain the EXACT same design structure, composition, and layout from reference
-   - Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the product category and actual use case appropriately
+   ${isGraphicOnly ? '- Keep background and effects graphic only (e.g. liquid splashes, fruits, gradients) — no gym, no people.' : '- Adapt contextual elements (background setting, person styling, actions/pose) to match the product category and use case, or per Guidelines.'}
    - Keep all visual design principles, effects, and aesthetics consistent
 
 2. **Maintain ALL design elements** from the reference prompt:
    - Keep the EXACT same composition structure
    - Keep the EXACT same layout and positioning of all elements
    - Keep the EXACT same visual effects (lighting style, shadows, effects)
-   - **Person/Character**: Maintain the same visual style and presentation approach, BUT adapt the person's pose, expression, clothing, and actions to be coherent with the NEW product's actual use case (see section 4 for details)
+   ${isGraphicOnly ? '- Do NOT add any person/character or gym — reference ad is product + graphics only.' : '- **Person/Character**: Maintain the same visual style and presentation approach, BUT adapt the person\'s pose, expression, clothing, and actions to be coherent with the NEW product\'s actual use case (see section 4 for details).'}
    - Keep the EXACT same buttons/CTAs design and placement (if applicable)
    - **Typography: COPY the typography from the reference ad** — same font style/type, sizes, weights, text placement, alignment and text effects (shadows, outlines). The headline and copy must look like the reference ad's typography.
 
@@ -501,22 +531,18 @@ ${scrapedBranding ? '- Prefer REFERENCE AD typography for headline and main copy
 - Maintain reference color palette for background and overall design
 - Use brand colors strategically for product elements and accents
 
-4. **Replace/Adapt product references AND adapt people/actions to match product context (CRITICAL):**
+4. **Replace/Adapt product references**${isGraphicOnly ? '' : ' AND adapt people/actions to match product context (CRITICAL):'}
    - Analyze the product image: type, category, purpose, colors, branding, shape, characteristics
    - Replace product descriptions with the NEW product from the provided image
-   - **ADAPT PEOPLE AND ACTIONS TO MATCH PRODUCT CONTEXT:**
-     * Analyze what the NEW product is used for and what actions/activities are associated with it
-     * If product is fitness/sports (e.g., creatine, protein, gym equipment): show person doing exercise, working out, in gym/sports setting, with appropriate athletic clothing and active pose
-     * If product is beauty/cosmetics (e.g., makeup, skincare): show person in beauty/photography context, applying product or in elegant beauty-focused pose
-     * If product is tech/gadgets: show person using/interacting with product in tech context
-     * If product is food/beverage: show person consuming or preparing food in kitchen/dining context
-     * If product is fashion/clothing: show person wearing fashion items in fashion-forward context
-     * If product is health/wellness: show person in health/wellness activity relevant to product
-     * **CRITICAL**: Do NOT keep the same person pose/action from reference if it doesn't match the NEW product. Adapt the person's pose, expression, clothing, setting, and action to be coherent with what the NEW product is actually used for.
-   - If reference shows person holding product: adapt to show person using/interacting with NEW product in contextually appropriate way
+   ${isGraphicOnly ? '- Keep the ad graphic: only product(s), background, and graphic elements (splashes, fruits, etc.). No people, no gym, no sport environment.' : `- **ADAPT PEOPLE AND ACTIONS TO MATCH PRODUCT CONTEXT:**
+     * If product is fitness/sports (e.g., creatine, protein): show person in gym/sports setting, working out, athletic clothing and active pose
+     * If product is beauty/cosmetics: show person in beauty context, applying product or beauty-focused pose
+     * If product is tech/gadgets: show person using product in tech context
+     * **CRITICAL**: Adapt the person's pose, expression, clothing, setting, and action to the NEW product's actual use case.
+   - If reference shows person holding product: adapt to show person using NEW product in contextually appropriate way
+   - Adapt ALL visual context (background, setting, person styling, person actions/pose) to match the NEW product's actual use case and category`}
    - If reference shows multiple products: show multiple instances of NEW product in SAME arrangement
    - Maintain same angles, lighting, shadows as reference but for NEW product
-   - Adapt ALL visual context (background, setting, person styling, person actions/pose) to match the NEW product's actual use case and category
 
 5. **Create Copywriting (SAME BREVITY AS REFERENCE — CRITICAL):**
 ${copywritingInstructions}
@@ -530,8 +556,7 @@ You MUST take these instructions into account when generating the final prompt.`
 Provide ONLY the final, complete, EXTREMELY DETAILED prompt ready for AI image generation. The prompt should:
 - Maintain ALL visual design elements from the reference prompt (composition, layout, typography placement, background style, effects)
 - **Copy length:** Describe the exact SHORT phrases to appear (tagline + main line, each ${headlineWords} and ${mainCopyWords} words or fewer). Never one long sentence as the headline.
-- Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the NEW product's actual use case and category appropriately
-- **CRITICAL**: Ensure the person in the image is performing actions or in poses that are coherent with how the NEW product is actually used (e.g., exercising for fitness products, applying for beauty products, using for tech products)
+${isGraphicOnly ? '- Keep the ad GRAPHIC: product + background/graphics only. No person, no gym, no sport environment (unless user requested it in Guidelines).' : "- Adapt contextual elements (person styling, actions/pose, setting) to match the NEW product's use case. Ensure the person is in coherent pose/action (e.g. exercising for fitness products)."}
 - Feature the NEW product from the provided image in contextually appropriate use
 ${scrapedBranding ? '- Integrate product brand colors and typography where appropriate' : ''}
 - Be ready to copy and paste into Nano Banana Pro or similar AI image generators
@@ -661,6 +686,7 @@ ${scrapedBranding ? '- Integrate product brand colors and typography where appro
       debug: {
         copywritingProfile: copywritingProfile,
         rhetoricalFigures: rhetoricalFigures,
+        referenceVisualStyle: referenceVisualStyle,
         referenceTypography: referenceTypography ? referenceTypography.substring(0, 500) + '...' : null,
         referencePrompt: referencePrompt.substring(0, 1000) + '...',
         scrapedSummary: scrapedSummary ? scrapedSummary.substring(0, 500) + '...' : null,
