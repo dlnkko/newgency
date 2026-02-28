@@ -183,8 +183,9 @@ export async function POST(request: NextRequest) {
 
 Your task:
 
-1. **Identify Copywriting Characteristics** (for later adaptation):
-    - Count the EXACT number of words in the main headline/copywriting text
+1. **Identify Copywriting Characteristics and BREVITY** (for later adaptation):
+    - **Text structure**: How many lines of text? (e.g. one tagline + one main line). Count words PER LINE: tagline/headline = X words, main copy/slogan = Y words. The reference ad uses SHORT, punchy text — capture this exactly.
+    - Count the EXACT number of words in the main headline/tagline (first line) and in the main copy/slogan (second line or main block) separately.
     - Identify the rhetorical figure used (metaphor, personification, hyperbole, analogy, slogan, motivational, aspirational, etc.)
     - Note the tone (friendly, professional, playful, serious, etc.)
     - Note the style category (corto y persuasivo, humor, irónico, directo, emocional, etc.)
@@ -215,7 +216,10 @@ Format your response EXACTLY as:
 (Describe everything needed to replicate the exact same typography in another ad.)
 
 **COPYWRITING ANALYSIS:**
-- Word Count: [exact number]
+- Text Structure: [e.g. "Two lines: tagline (X words) + main slogan (Y words)" — describe how many lines and word count per line]
+- Headline/Tagline Word Count: [exact number of words in the first/short line, e.g. 3]
+- Main Copy Word Count: [exact number of words in the main slogan/second line, e.g. 5]
+- Word Count: [total or main line word count]
 - Rhetorical Figure: [primary figure: metaphor/personification/hyperbole/analogy/slogan/motivational/aspirational/other]
 - Tone: [tone]
 - Style: [style category]
@@ -282,12 +286,18 @@ Format your response EXACTLY as:
         if (copywritingAnalysisMatch) {
           const analysisText2 = copywritingAnalysisMatch[1];
           const wordCountMatch = analysisText2.match(/Word Count:\s*(\d+)/i);
+          const headlineWordsMatch = analysisText2.match(/Headline\/Tagline Word Count:\s*(\d+)/i);
+          const mainCopyWordsMatch = analysisText2.match(/Main Copy Word Count:\s*(\d+)/i);
+          const textStructureMatch = analysisText2.match(/Text Structure:\s*([\s\S]+?)(?=\n-|\n\*\*|$)/i);
           const rhetoricalMatch = analysisText2.match(/Rhetorical Figure:\s*(.+)/i);
           const toneMatch = analysisText2.match(/Tone:\s*(.+)/i);
           const styleMatch = analysisText2.match(/Style:\s*(.+)/i);
 
           copywritingProfile = {
             wordCount: wordCountMatch ? parseInt(wordCountMatch[1]) : null,
+            headlineWordCount: headlineWordsMatch ? parseInt(headlineWordsMatch[1]) : null,
+            mainCopyWordCount: mainCopyWordsMatch ? parseInt(mainCopyWordsMatch[1]) : null,
+            textStructure: textStructureMatch ? textStructureMatch[1].trim() : null,
             tone: toneMatch ? toneMatch[1].trim() : null,
             styleCategory: styleMatch ? styleMatch[1].trim() : null,
           };
@@ -298,6 +308,9 @@ Format your response EXACTLY as:
 
           console.log('\n=== COPYWRITING ANALYSIS EXTRACTED ===');
           console.log('Word Count:', copywritingProfile.wordCount);
+          console.log('Headline Word Count:', copywritingProfile.headlineWordCount);
+          console.log('Main Copy Word Count:', copywritingProfile.mainCopyWordCount);
+          console.log('Text Structure:', copywritingProfile.textStructure);
           console.log('Rhetorical Figure:', rhetoricalFigures.primary);
           console.log('Tone:', copywritingProfile.tone);
           console.log('Style:', copywritingProfile.styleCategory);
@@ -409,23 +422,25 @@ Integrate these brand elements while maintaining the reference ad's overall desi
       console.log('\n🎨 Branding integration instructions created');
     }
 
-    // Build copywriting creation instructions
+    // Build copywriting creation instructions — enforce same brevity as reference (short tagline + short main line)
+    const headlineWords = copywritingProfile?.headlineWordCount ?? (copywritingProfile?.wordCount != null ? Math.min(5, Math.max(2, Math.floor((copywritingProfile.wordCount || 8) / 2))) : 4);
+    const mainCopyWords = copywritingProfile?.mainCopyWordCount ?? (copywritingProfile?.wordCount != null ? Math.min(8, Math.max(3, copywritingProfile.wordCount || 8)) : 6);
+
     let copywritingInstructions = '';
     if (isUrlScraped && scrapedSummary && copywritingProfile && rhetoricalFigures) {
-      // Use scraped data to create copywriting with same rhetorical figure
-      copywritingInstructions = `**Copywriting Creation (CRITICAL):**
-Using the EXACT scraped product page information below, create copywriting that:
-- Uses the same rhetorical figure: "${rhetoricalFigures.primary || 'match style'}"
-- Maintains the same tone: "${copywritingProfile.tone || 'professional'}"
-- Matches the same style: "${copywritingProfile.styleCategory || 'persuasive'}"
-- EXACT word count: ${copywritingProfile.wordCount || 10} words (target: ${copywritingProfile.wordCount ? copywritingProfile.wordCount - 2 : 8} to ${copywritingProfile.wordCount ? copywritingProfile.wordCount + 2 : 12} words)
+      // Use scraped data to create copywriting with same rhetorical figure AND same brevity as reference
+      copywritingInstructions = `**Copywriting Creation (CRITICAL — SAME BREVITY AS REFERENCE AD):**
+The reference ad uses SHORT, punchy text — your prompt MUST describe copy with the SAME brevity:
+- **Line 1 (tagline/headline):** MAX ${headlineWords} words. Short phrase like "VALENTINE'S DAY EXCLUSIVE" (3 words). Do NOT use a long sentence.
+- **Line 2 (main copy/slogan):** MAX ${mainCopyWords} words. Short offer/slogan like "39% OFF BUNDLES FOR TWO" (5 words). Do NOT use a long sentence like "UNLOCK YOUR PEAK PERFORMANCE WITH THESE STRONGER TOGETHER GUMMY BUNDLES".
+Using the scraped product page information below, DISTILL the key concepts (offer, product benefit, occasion) into these two SHORT lines. Same rhetorical figure: "${rhetoricalFigures.primary || 'match style'}", tone: "${copywritingProfile.tone || 'professional'}", style: "${copywritingProfile.styleCategory || 'persuasive'}".
 
-**Scraped Product Page Data (use this EXACT information - do not summarize):**
+**Scraped Product Page Data (distill into brief copy — do not paste long text):**
 ${scrapedSummary}
 
-Reformulate this product information into copywriting using the SAME rhetorical approach as the reference ad. Apply the same literary/rhetorical device (${rhetoricalFigures.primary || 'style'}) to create compelling copywriting about the product.`;
+Create two short phrases: (1) a brief tagline (${headlineWords} words or fewer), (2) a brief main line (${mainCopyWords} words or fewer). In your final prompt, specify the exact short text to appear, e.g. centered text: "[TAGLINE]" and below "[MAIN COPY]".`;
       
-      console.log('\n📝 Creating copywriting from scraped data with rhetorical figure');
+      console.log('\n📝 Creating copywriting from scraped data with brevity:', { headlineWords, mainCopyWords });
     } else if (copywriting && !isUrlScraped) {
       // Manual copywriting provided
       copywritingInstructions = `**Copywriting:**
@@ -433,11 +448,11 @@ Use this exact copywriting in the prompt: "${copywriting}"`;
       console.log('\n📝 Using manual copywriting');
     } else {
       copywritingInstructions = `**Copywriting:**
-Create copywriting matching the reference style:
+Create copywriting matching the reference style and BREVITY:
+- Line 1 (tagline): max ${headlineWords} words. Line 2 (main copy): max ${mainCopyWords} words. Do NOT use one long headline.
 - Rhetorical figure: ${rhetoricalFigures?.primary || 'match reference'}
 - Tone: ${copywritingProfile?.tone || 'professional'}
-- Style: ${copywritingProfile?.styleCategory || 'persuasive'}
-- Word count: ${copywritingProfile?.wordCount || 10} words`;
+- Style: ${copywritingProfile?.styleCategory || 'persuasive'}`;
       console.log('\n📝 Creating copywriting from profile only');
     }
 
@@ -503,8 +518,9 @@ ${scrapedBranding ? '- Prefer REFERENCE AD typography for headline and main copy
    - Maintain same angles, lighting, shadows as reference but for NEW product
    - Adapt ALL visual context (background, setting, person styling, person actions/pose) to match the NEW product's actual use case and category
 
-5. **Create Copywriting:**
+5. **Create Copywriting (SAME BREVITY AS REFERENCE — CRITICAL):**
 ${copywritingInstructions}
+**The reference ad has SHORT text.** In your prompt you MUST specify copy with the same brevity: a short tagline (${headlineWords} words or fewer) and a short main line (${mainCopyWords} words or fewer). Do NOT describe one long headline like "UNLOCK YOUR PEAK PERFORMANCE WITH THESE STRONGER TOGETHER GUMMY BUNDLES". Instead describe two short phrases, e.g. first line: "[occasion/tagline]" (${headlineWords} words), second line: "[offer/slogan]" (${mainCopyWords} words). Use the scraped product info to derive the concepts but condense into these short lines.
 ${guidelinesTrimmed ? `
 6. **Guidelines from the user (apply these changes):**
 ${guidelinesTrimmed}
@@ -513,11 +529,11 @@ You MUST take these instructions into account when generating the final prompt.`
 **Output:**
 Provide ONLY the final, complete, EXTREMELY DETAILED prompt ready for AI image generation. The prompt should:
 - Maintain ALL visual design elements from the reference prompt (composition, layout, typography placement, background style, effects)
+- **Copy length:** Describe the exact SHORT phrases to appear (tagline + main line, each ${headlineWords} and ${mainCopyWords} words or fewer). Never one long sentence as the headline.
 - Adapt ALL contextual elements (background setting, person styling, person actions/pose, visual theme) to match the NEW product's actual use case and category appropriately
 - **CRITICAL**: Ensure the person in the image is performing actions or in poses that are coherent with how the NEW product is actually used (e.g., exercising for fitness products, applying for beauty products, using for tech products)
 - Feature the NEW product from the provided image in contextually appropriate use
 ${scrapedBranding ? '- Integrate product brand colors and typography where appropriate' : ''}
-- Include the new copywriting (${copywritingProfile?.wordCount || 10} words)
 - Be ready to copy and paste into Nano Banana Pro or similar AI image generators
 - Do NOT include explanations, analysis, or additional text - ONLY the final detailed prompt`;
 
