@@ -307,12 +307,19 @@ ${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script:
 
     // Credit already consumed in verifyAndConsumeCredit
 
+    // Strip markdown code blocks so we can parse JSON (model often returns ```json\n{...}\n```)
+    let jsonStr = generatedText.trim();
+    const codeBlockStart = /^\s*```(?:json)?\s*\n?/i;
+    const codeBlockEnd = /\n?\s*```\s*$/;
+    if (codeBlockStart.test(jsonStr)) jsonStr = jsonStr.replace(codeBlockStart, '');
+    if (codeBlockEnd.test(jsonStr)) jsonStr = jsonStr.replace(codeBlockEnd, '').trim();
+
     // Try to parse as JSON if it looks like JSON, otherwise return as text
     let parsed = null;
     let scenesArray: Array<{ action?: string; script?: string | null; composition?: string[]; cameraAngle?: string[]; lighting?: string; duration?: number; lipSync?: boolean; voiceover?: boolean; noDialogue?: boolean }> | null = null;
-    if (generatedText.includes('{') && generatedText.includes('}')) {
+    if (jsonStr.includes('{') && jsonStr.includes('}')) {
       try {
-        parsed = JSON.parse(generatedText);
+        parsed = JSON.parse(jsonStr);
         // API returns { scenes: [ ... ] } so extract the array
         scenesArray = parsed?.scenes && Array.isArray(parsed.scenes) ? parsed.scenes : null;
       } catch (e) {
@@ -321,7 +328,7 @@ ${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script:
       }
     }
 
-    // Build single paragraph for output (redactado): join all scene actions
+    // Build single paragraph for output (redactado): join all scene actions, like manual UGC generator
     const paragraphPrompt = scenesArray && scenesArray.length > 0
       ? scenesArray.map((s: any) => (s.action || '').trim()).filter(Boolean).join(' ')
       : generatedText;
