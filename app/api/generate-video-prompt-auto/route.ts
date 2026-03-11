@@ -308,20 +308,28 @@ ${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script:
     // Credit already consumed in verifyAndConsumeCredit
 
     // Try to parse as JSON if it looks like JSON, otherwise return as text
-    let scenes = null;
+    let parsed = null;
+    let scenesArray: Array<{ action?: string; script?: string | null; composition?: string[]; cameraAngle?: string[]; lighting?: string; duration?: number; lipSync?: boolean; voiceover?: boolean; noDialogue?: boolean }> | null = null;
     if (generatedText.includes('{') && generatedText.includes('}')) {
       try {
-        scenes = JSON.parse(generatedText);
+        parsed = JSON.parse(generatedText);
+        // API returns { scenes: [ ... ] } so extract the array
+        scenesArray = parsed?.scenes && Array.isArray(parsed.scenes) ? parsed.scenes : null;
       } catch (e) {
         // Not valid JSON, that's okay - return as text prompt
         console.log('Response is not valid JSON, returning as text prompt');
       }
     }
 
+    // Build single paragraph for output (redactado): join all scene actions
+    const paragraphPrompt = scenesArray && scenesArray.length > 0
+      ? scenesArray.map((s: any) => (s.action || '').trim()).filter(Boolean).join(' ')
+      : generatedText;
+
     return NextResponse.json({
       success: true,
-      prompt: generatedText,
-      scenes: scenes
+      prompt: paragraphPrompt,
+      scenes: scenesArray
     });
   } catch (error: any) {
     console.error('Error generating automatic video prompt:', error);

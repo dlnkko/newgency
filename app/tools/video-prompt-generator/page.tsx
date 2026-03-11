@@ -907,12 +907,8 @@ export default function VideoPromptGenerator() {
         // Update scenes state
         setScenes(updatedScenes);
 
-        // Output as single paragraph: join all scene actions into one continuous paragraph
-        const paragraphPrompt = updatedScenes
-          .map((s: { action?: string }) => s.action?.trim() || '')
-          .filter(Boolean)
-          .join(' ');
-        setGeneratedPrompt(paragraphPrompt || data.prompt || '');
+        // Output: API already returns prompt as single paragraph (all actions joined)
+        setGeneratedPrompt(data.prompt || '');
 
         // Show success message
         setError(null);
