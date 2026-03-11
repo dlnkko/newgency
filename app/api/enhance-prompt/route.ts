@@ -1054,6 +1054,23 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
     }
 
     // Extraer el texto mejorado con múltiples métodos
+    // Antes de intentar extraer texto, revisar si Gemini bloqueó el contenido a nivel de promptFeedback
+    const promptFeedback = (result as any)?.promptFeedback;
+    if (promptFeedback?.blockReason) {
+      console.error('Gemini blocked request at prompt level:', promptFeedback.blockReason, promptFeedback);
+      return NextResponse.json(
+        {
+          error: 'Content was blocked by AI safety filters',
+          details:
+            promptFeedback.blockReason === 'PROHIBITED_CONTENT'
+              ? 'Gemini bloqueó este contenido por incumplir sus políticas (por ejemplo, contenido sexual, violento o de odio). Ajusta el texto para que sea más neutro/seguro y vuelve a intentarlo.'
+              : 'Gemini bloqueó este contenido por motivos de seguridad. Ajusta el texto y vuelve a intentarlo.',
+          blockReason: promptFeedback.blockReason,
+        },
+        { status: 400 }
+      );
+    }
+
     let enhancedText = null;
     try {
       // Método 1: Estructura estándar con candidates

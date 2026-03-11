@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { description, productImage, isUGC = true } = body;
+    const { description, productImage, isUGC = true, bRollAnimation = false } = body;
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -137,12 +137,23 @@ The goal is absolute photorealism - the video should be impossible to distinguis
 **PROFESSIONAL VIDEO MODE:**
 Generate a professional video prompt with high production quality. Focus on clear storytelling, good composition, and professional aesthetics.`;
 
+    // B-roll animation mode: action-only, no script, hyperrealistic visuals
+    const bRollInstructions = bRollAnimation ? `
+**CRITICAL - B-ROLL ANIMATION MODE (ACTIVE):**
+The user's description is the ACTION only. Generate pure B-roll style scenes:
+- **NO SCRIPT**: Every scene MUST have script: null. There is no dialogue, no voiceover, no narration.
+- **NO DIALOGUE**: For EVERY scene set noDialogue: true, lipSync: false, voiceover: false.
+- **ACTION FOCUS**: The description describes only what we SEE: movements, close-ups, product shots, transitions. Interpret it as visual/action only.
+- **HYPERREALISTIC**: Each scene must be hyperrealistic UGC-style, focused entirely on the action and visuals (lighting, textures, camera movement, composition). No spoken content.
+- **B-ROLL STYLE**: Think cinematic B-roll: cuts, close-ups, product in use, hands, details. Pure visual storytelling.` : '';
+
     const generationPrompt = `You are an expert AI prompt engineer specializing in ${isUGC ? 'hyperrealistic UGC (User-Generated Content)' : 'professional'} video prompts. Your task is to create a complete, ready-to-use video prompt based on the user's description.
 
 **User's Request:**
 ${description}
 
 ${productImageFile ? '**Product Image:** You have access to a product image. Analyze it carefully and incorporate its visual details (colors, materials, textures, design, branding) into the prompt.' : ''}
+${bRollInstructions}
 
 ${ugcInstructions}
 
@@ -152,8 +163,8 @@ Deconstruct the user's description into structured scenes with ALL parameters au
 **CRITICAL REQUIREMENTS:**
 1. **Analyze the description** and identify ALL distinct scenes, actions, or moments
 2. **For EACH scene, determine ALL parameters:**
-   - **Action**: Detailed action description ${isUGC ? 'with hyperrealistic UGC details' : 'with professional quality'}
-   - **Script** (if dialogue/narration is needed): Generate appropriate script/dialogue for the scene, or null if no dialogue
+   - **Action**: Detailed action description ${isUGC ? 'with hyperrealistic UGC details' : 'with professional quality'}${bRollAnimation ? ' (B-roll mode: action/visual only, no dialogue)' : ''}
+   - **Script** (if dialogue/narration is needed): Generate appropriate script/dialogue for the scene, or null if no dialogue${bRollAnimation ? '. **B-roll mode: ALWAYS null**' : ''}
    - **Composition**: Choose 1-2 from: "UGC Close-up", "Product in Real Use", "Everyday Life", "Authentic Unboxing" - select what best fits the scene
    - **Camera Angle**: Choose 1-2 from: "Selfie Camera", "Frontal Camera", "Steady" - select what best fits the action (use "Frontal Camera" if POV is mentioned)
    - **Lighting**: Choose ONE from: "Night Outside", "Day Outside", "Artificial Light Inside", "Natural Light Inside" - select what best fits the scene
@@ -209,6 +220,7 @@ You MUST respond with a valid JSON object in this EXACT format:
 - **MANDATORY**: Generate 1-5 scenes based on the description complexity
 - **MANDATORY**: All content must be in English
 ${isUGC ? '- **MANDATORY**: All scenes must maintain hyperrealistic UGC characteristics' : ''}
+${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script: null, noDialogue: true, lipSync: false, voiceover: false. Action-only, no spoken content.' : ''}
 
 **Important:**
 - If a hook is mentioned, make the first scene extremely attention-grabbing

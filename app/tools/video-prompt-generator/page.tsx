@@ -179,6 +179,7 @@ export default function VideoPromptGenerator() {
   const [autoMode, setAutoMode] = useState<'describe' | 'script'>('describe');
   const [autoDescription, setAutoDescription] = useState<string>('');
   const [autoScript, setAutoScript] = useState<string>('');
+  const [bRollAnimation, setBRollAnimation] = useState<boolean>(false); // B-roll: action only, no script, hyperrealistic
   const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
   
   // Copy Video mode state
@@ -842,7 +843,8 @@ export default function VideoPromptGenerator() {
         body: JSON.stringify({
           description: autoDescription.trim(),
           productImage: productImageBase64,
-          isUGC: isUGC
+          isUGC: isUGC,
+          bRollAnimation: bRollAnimation
         }),
       });
 
@@ -1978,6 +1980,7 @@ export default function VideoPromptGenerator() {
                   onClick={() => {
                     setAutoMode('script');
                     setAutoDescription('');
+                    setBRollAnimation(false);
                   }}
                   disabled={isGenerating}
                   className={`rounded-xl border-2 px-6 py-4 text-left transition-all relative ${
@@ -2032,6 +2035,27 @@ export default function VideoPromptGenerator() {
                   </span>
                 </div>
               </div>
+              {/* B-roll animation button - only for Describe Video */}
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBRollAnimation(!bRollAnimation)}
+                  disabled={isGenerating}
+                  className={`inline-flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    bRollAnimation
+                      ? 'border-amber-500/80 bg-amber-500/20 text-amber-300 shadow-[0_0_16px_rgba(250,204,21,0.2)]'
+                      : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-400 hover:border-amber-500/50 hover:bg-zinc-800/50 hover:text-amber-300/90'
+                  }`}
+                >
+                  <span className="text-base" aria-hidden>🎬</span>
+                  B-roll animation
+                </button>
+                {bRollAnimation && (
+                  <span className="text-xs text-zinc-500">
+                    Action-only, no dialogue. Hyperrealistic visuals focused on the action.
+                  </span>
+                )}
+              </div>
               {isUGC && (
                 <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
                   <p className="text-xs text-amber-300">
@@ -2042,7 +2066,7 @@ export default function VideoPromptGenerator() {
               <textarea
                 value={autoDescription}
                 onChange={(e) => setAutoDescription(e.target.value)}
-                placeholder="Example: 'Hook: Do you know what's living inside your old pillow? Concept: Focus on the Freshness Built-In story. Explain that while most pillows only have a treated cover, this one protects the foam core too, preventing old pillow smells and moisture buildup. Key Benefit: A cleaner, fresher sleep surface for the whole family'"
+                placeholder={bRollAnimation ? "Example: 'Close-up of hands opening product box, pulling out the item. Cut to product on table with soft light. Hands applying or using the product in real use. Smooth transitions, no voiceover.'" : "Example: 'Hook: Do you know what's living inside your old pillow? Concept: Focus on the Freshness Built-In story. Explain that while most pillows only have a treated cover, this one protects the foam core too, preventing old pillow smells and moisture buildup. Key Benefit: A cleaner, fresher sleep surface for the whole family'"}
                 rows={8}
                 disabled={isGenerating}
                 className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"

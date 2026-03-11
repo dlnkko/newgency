@@ -145,14 +145,34 @@ Create a 10-second extended video prompt that:
       ]
     });
 
+    // Si Gemini bloqueó por políticas (PROHIBITED_CONTENT, etc.), devolver error claro
+    const promptFeedback = (result as any)?.promptFeedback;
+    if (promptFeedback?.blockReason) {
+      console.error('Gemini blocked extend-prompt at prompt level:', promptFeedback.blockReason);
+      return NextResponse.json(
+        {
+          error: 'Content was blocked by AI safety filters',
+          details:
+            promptFeedback.blockReason === 'PROHIBITED_CONTENT'
+              ? 'Gemini bloqueó este contenido por sus políticas. Suaviza el texto del script o las acciones (evita contenido sexual, violento o de odio) y vuelve a intentar.'
+              : 'Gemini bloqueó este contenido. Ajusta el texto y vuelve a intentar.',
+          blockReason: promptFeedback.blockReason,
+        },
+        { status: 400 }
+      );
+    }
+
     // Extract the generated text from the response
     let extendPrompt = '';
-    
-    if (result.candidates && result.candidates[0]?.content?.parts) {
-      extendPrompt = result.candidates[0].content.parts
+    const candidate = result.candidates?.[0];
+
+    if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
+      extendPrompt = candidate.content.parts
         .map((part: any) => part.text || '')
         .join('')
         .trim();
+    } else if ((candidate?.content as any)?.text) {
+      extendPrompt = ((candidate?.content as any)?.text ?? '').trim();
     } else if ((result as any).text) {
       extendPrompt = (result as any).text.trim();
     }
@@ -186,8 +206,14 @@ Create a 10-second extended video prompt that:
     }
 
     if (!extendPrompt || extendPrompt.length === 0) {
+      const noCandidates = !result.candidates?.length;
       return NextResponse.json(
-        { error: 'Failed to generate extend prompt' },
+        {
+          error: 'Failed to generate extend prompt',
+          details: noCandidates
+            ? 'Gemini no devolvió texto (puede ser bloqueo por contenido). Prueba con un script o acciones más neutros.'
+            : 'No se pudo extraer el prompt de la respuesta. Vuelve a intentar.',
+        },
         { status: 500 }
       );
     }
