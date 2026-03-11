@@ -907,12 +907,19 @@ export default function VideoPromptGenerator() {
         // Update scenes state
         setScenes(updatedScenes);
 
+        // Output as single paragraph: join all scene actions into one continuous paragraph
+        const paragraphPrompt = updatedScenes
+          .map((s: { action?: string }) => s.action?.trim() || '')
+          .filter(Boolean)
+          .join(' ');
+        setGeneratedPrompt(paragraphPrompt || data.prompt || '');
+
         // Show success message
         setError(null);
         setIsInsufficientCredits(false);
         
         // Optionally show a message that scenes were auto-filled
-        alert(`¡Éxito! Se generaron ${data.scenes.length} escena(s) con todos los parámetros. Revisa las escenas y genera el prompt cuando estés listo.`);
+        alert(`¡Éxito! Se generaron ${data.scenes.length} escena(s). El prompt está en un solo párrafo listo para copiar.`);
       } else {
         // Fallback to old format if prompt is returned
         setGeneratedPrompt(data.prompt || '');
