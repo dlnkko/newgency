@@ -180,6 +180,7 @@ export default function VideoPromptGenerator() {
   const [autoDescription, setAutoDescription] = useState<string>('');
   const [autoScript, setAutoScript] = useState<string>('');
   const [bRollAnimation, setBRollAnimation] = useState<boolean>(false); // B-roll: action only, no script, hyperrealistic
+  const [bRollSceneCount, setBRollSceneCount] = useState<1 | 2>(2); // B-roll: 1 or 2 scenes
   const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
   
   // Copy Video mode state
@@ -844,7 +845,8 @@ export default function VideoPromptGenerator() {
           description: autoDescription.trim(),
           productImage: productImageBase64,
           isUGC: isUGC,
-          bRollAnimation: bRollAnimation
+          bRollAnimation: bRollAnimation,
+          bRollSceneCount: bRollAnimation ? bRollSceneCount : null
         }),
       });
 
@@ -2038,7 +2040,7 @@ export default function VideoPromptGenerator() {
                   </span>
                 </div>
               </div>
-              {/* B-roll animation button - only for Describe Video */}
+              {/* B-roll animation controls - only for Describe Video */}
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
@@ -2054,9 +2056,39 @@ export default function VideoPromptGenerator() {
                   B-roll animation
                 </button>
                 {bRollAnimation && (
-                  <span className="text-xs text-zinc-500">
-                    Action-only, no dialogue. Hyperrealistic visuals focused on the action.
-                  </span>
+                  <>
+                    <span className="text-xs text-zinc-500">
+                      Action-only, no dialogue. Hyperrealistic visuals focused on the action.
+                    </span>
+                    {/* Scene count selector for B-roll */}
+                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                      <span>Scenes:</span>
+                      <button
+                        type="button"
+                        onClick={() => setBRollSceneCount(1)}
+                        disabled={isGenerating}
+                        className={`rounded-full px-3 py-1 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                          bRollSceneCount === 1
+                            ? 'bg-amber-500/80 text-zinc-900 shadow-[0_0_12px_rgba(250,204,21,0.4)]'
+                            : 'bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/70'
+                        }`}
+                      >
+                        1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBRollSceneCount(2)}
+                        disabled={isGenerating}
+                        className={`rounded-full px-3 py-1 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                          bRollSceneCount === 2
+                            ? 'bg-amber-500/80 text-zinc-900 shadow-[0_0_12px_rgba(250,204,21,0.4)]'
+                            : 'bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/70'
+                        }`}
+                      >
+                        2
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
               {isUGC && (

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { description, productImage, isUGC = true, bRollAnimation = false } = body;
+    const { description, productImage, isUGC = true, bRollAnimation = false, bRollSceneCount = 2 } = body;
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -145,7 +145,10 @@ The user's description is the ACTION only. Generate pure B-roll style scenes:
 - **NO DIALOGUE**: For EVERY scene set noDialogue: true, lipSync: false, voiceover: false.
 - **ACTION FOCUS**: The description describes only what we SEE: movements, close-ups, product shots, transitions. Interpret it as visual/action only.
 - **HYPERREALISTIC**: Each scene must be hyperrealistic UGC-style, focused entirely on the action and visuals (lighting, textures, camera movement, composition). No spoken content.
-- **B-ROLL STYLE**: Think cinematic B-roll: cuts, close-ups, product in use, hands, details. Pure visual storytelling.` : '';
+- **B-ROLL STYLE**: Think cinematic B-roll: cuts, close-ups, product in use, hands, details. Pure visual storytelling.
+- **SCENE COUNT (MANDATORY)**: Generate EXACTLY ${bRollSceneCount === 1 ? 'ONE (1) SCENE' : 'TWO (2) SCENES'} in total, no more and no less.
+  - If 1 scene: Describe ONE continuous, coherent action without many changes or jumps; keep it simple and focused in a single flow.
+  - If 2 scenes: Describe EXACTLY TWO distinct actions/scenes that flow naturally; do NOT create a third scene.` : '';
 
     const generationPrompt = `You are an expert AI prompt engineer specializing in ${isUGC ? 'hyperrealistic UGC (User-Generated Content)' : 'professional'} video prompts. Your task is to create a complete, ready-to-use video prompt based on the user's description.
 
@@ -328,15 +331,22 @@ ${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script:
       }
     }
 
+    // If B-roll has a fixed scene count, enforce it by slicing the array
+    let effectiveScenes = scenesArray;
+    if (bRollAnimation && scenesArray && scenesArray.length > 0) {
+      const targetCount = bRollSceneCount === 1 ? 1 : 2;
+      effectiveScenes = scenesArray.slice(0, targetCount);
+    }
+
     // Build single paragraph for output (redactado): join all scene actions, like manual UGC generator
-    const paragraphPrompt = scenesArray && scenesArray.length > 0
-      ? scenesArray.map((s: any) => (s.action || '').trim()).filter(Boolean).join(' ')
+    const paragraphPrompt = effectiveScenes && effectiveScenes.length > 0
+      ? effectiveScenes.map((s: any) => (s.action || '').trim()).filter(Boolean).join(' ')
       : generatedText;
 
     return NextResponse.json({
       success: true,
       prompt: paragraphPrompt,
-      scenes: scenesArray
+      scenes: effectiveScenes
     });
   } catch (error: any) {
     console.error('Error generating automatic video prompt:', error);
