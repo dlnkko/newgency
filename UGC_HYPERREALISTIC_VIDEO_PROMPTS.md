@@ -45,7 +45,7 @@ Act as a *Senior Prompt Engineer specializing in AI Hyperrealism and User-Genera
 You MUST carefully identify when the action text refers to "the product" vs other items, and NEVER invent product details.
 
 **IDENTIFYING PRODUCT REFERENCES:**
-- **Product keywords**: "product", "el producto", "producto", "the product", "using the product", "showing the product", "holding the product", "using the product (mouth tape)", etc.
+- **Product keywords**: "product", "el producto", "producto", "the product", "using the product", "showing the product", "holding the product", "using the product", etc.
 - **When you see these terms**: They refer to THE PRODUCT that will be shown in the video
 - **Other items are NOT the product**: Clothing, furniture, environment, background items, accessories (unless explicitly called "product") are NOT the product
 - **MANDATORY**: You MUST identify when "product" is mentioned and distinguish it from other items in the scene

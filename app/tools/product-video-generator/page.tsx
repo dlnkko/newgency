@@ -23,6 +23,7 @@ export default function ProductVideoGenerator() {
   const [lastFrameNanoBananaPrompt, setLastFrameNanoBananaPrompt] = useState<string | null>(null);
   const [isGeneratingLastFramePrompt, setIsGeneratingLastFramePrompt] = useState<boolean>(false);
   const [isGeneratingAnimationFromFrames, setIsGeneratingAnimationFromFrames] = useState<boolean>(false);
+  const [ugcMode, setUgcMode] = useState<boolean>(false);
 
   const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -138,6 +139,7 @@ export default function ProductVideoGenerator() {
           productImage: productBase64,
           actionDescription: actionDescription.trim(),
           script: script.trim() || null,
+          isUGC: ugcMode,
         }),
       });
 
@@ -195,6 +197,7 @@ export default function ProductVideoGenerator() {
           actionDescription: actionDescription.trim(),
           script: script.trim() || null,
           lastFrameNanoBananaOnly: true,
+          isUGC: ugcMode,
         }),
       });
       const rawText = await response.text();
@@ -243,6 +246,7 @@ export default function ProductVideoGenerator() {
           actionDescription: actionDescription.trim(),
           script: script.trim() || null,
           firstAndLastFrameAnimation: true,
+          isUGC: ugcMode,
         }),
       });
       const rawText = await response.text();
@@ -279,9 +283,27 @@ export default function ProductVideoGenerator() {
         <div className="rounded-3xl border border-zinc-800/70 bg-zinc-900/80 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-zinc-50 mb-2">Product Video Animator</h1>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-zinc-400 mb-4">
               Generate professional product video animation prompts for video generation
             </p>
+            <button
+              type="button"
+              onClick={() => setUgcMode(!ugcMode)}
+              disabled={isGenerating}
+              className={`rounded-xl border-2 px-4 py-2.5 text-sm font-medium transition-all disabled:opacity-50 ${
+                ugcMode
+                  ? 'border-amber-500/80 bg-amber-500/20 text-amber-300'
+                  : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-amber-500/50'
+              }`}
+              title="Estilo UGC: cámara shaky si sostiene iPhone, movimientos naturales, hiperrealista"
+            >
+              UGC
+            </button>
+            {ugcMode && (
+              <p className="mt-2 text-xs text-zinc-500">
+                Prompts adaptados a UGC: si la imagen es tipo selfie/sosteniendo iPhone, cámara shaky, movimientos naturales y realistas.
+              </p>
+            )}
           </div>
 
           <div className="space-y-6">

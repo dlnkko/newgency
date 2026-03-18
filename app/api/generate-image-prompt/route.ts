@@ -66,7 +66,10 @@ export async function POST(request: NextRequest) {
       copyLighting: body.copyLighting
     });
     
-    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
+    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, attachReferenceAsReferenceOnly, cameraAngle, lighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
+
+    const hasUserCameraAngleSelection =
+      Array.isArray(cameraAngle) && cameraAngle.length > 0;
     
     // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages/elementImages)
     let mainReferenceImage: string | null = null;
@@ -207,8 +210,12 @@ export async function POST(request: NextRequest) {
           stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
         });
         
-        // Check for API key errors
-        if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+        // If Gemini is temporarily unavailable (503), gracefully continue WITHOUT reference image
+        if (uploadError.status === 503 || uploadError.message?.includes('Service Unavailable')) {
+          console.warn('Gemini Files service unavailable (503). Continuing without main reference image.');
+          mainReferenceImageFile = null;
+        } else if (uploadError.message?.includes('API key') || uploadError.message?.includes('API_KEY') || uploadError.status === 401) {
+          // API key / auth problems should still surface clearly
           return NextResponse.json(
             { 
               error: 'Google Gemini API key is not valid', 
@@ -216,19 +223,11 @@ export async function POST(request: NextRequest) {
             },
             { status: 401 }
           );
+        } else {
+          // Other unexpected errors: log and continue without reference image instead of failing the whole request
+          console.warn('Non-fatal error uploading main reference image. Continuing without reference image.');
+          mainReferenceImageFile = null;
         }
-        
-        return NextResponse.json(
-          { 
-            error: 'Error uploading main reference image', 
-            details: uploadError.message || 'Could not upload main reference image to Gemini Files',
-            ...(process.env.NODE_ENV === 'development' && {
-              fullError: uploadError.toString(),
-              stack: uploadError.stack
-            })
-          },
-          { status: 500 }
-        );
       }
     }
 
@@ -950,8 +949,19 @@ These character images will be attached in order. Your output prompt MUST contai
     // Build reference image note - MAIN REFERENCE IMAGE is the primary style reference
     let referenceImageNote = '';
     if (style === 'hyperrealistic-ugc' || style === 'hyperrealistic-cinematic') {
-      if (mainReferenceImageFile && mainReferenceImagePrompt) {
-        // Main reference image with prompt - this is the PRIMARY style reference
+      if (mainReferenceImageFile && mainReferenceImagePrompt && attachReferenceAsReferenceOnly) {
+        // User selected "Se adjuntará reference image" → use as reference only, do NOT replicate identity
+        referenceImageNote = `
+
+**REFERENCE IMAGE - USO SOLO COMO BASE DE SETTING (NO COPIAR IDENTIDAD):**
+The user will attach a reference image to the final image generation. This image is for **REFERENCE ONLY** and must be treated as the **base setting and camera setup**: same lighting, same camera angle/perspective, same general composition and background mood.
+
+**YOUR GENERATED PROMPT MUST:**
+1. **State clearly**: "The attached image is for reference only. Use it ONLY as the base for lighting, camera angle, composition, background mood, texture, and hyperrealism level. Do not copy the exact face or identity from the reference – the subject/avatar must be different, but with the same lighting, camera angle, and overall setting as the reference."
+2. **Start from that reference image**: Describe a new image that clearly **starts from the same scene/setting** (same type of background, same light direction and intensity, same framing and lens feel) but with a different avatar/person and the user's requested changes.
+3. The result MUST feel like a **variation of that reference photo**: similar environment, angle, and light, but NOT a 1:1 copy of the person. Do NOT replicate the identity; only keep lighting, camera angle, composition and setting as the base.`;
+      } else if (mainReferenceImageFile && mainReferenceImagePrompt) {
+        // Main reference image with prompt - this is the PRIMARY style reference (replicate)
         const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
         
         // Extract camera angle and lighting descriptions from the reference image prompt
@@ -1045,6 +1055,17 @@ ${copyLighting ? `
   - **DO NOT add any characteristics** (device frames, borders, etc.) that were not in the main reference image prompt
 
 - **CRITICAL**: The generated prompt must specify that the result must match the EXACT style, angle, lighting, and hyperrealism from the main reference image. This image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication.`;
+      } else if (mainReferenceImageFile && attachReferenceAsReferenceOnly) {
+        // Reference image will be attached but user wants "reference only" (no prompt was generated or same mode)
+        referenceImageNote = `
+
+**REFERENCE IMAGE - USO SOLO COMO REFERENCIA (NO REPLICAR):**
+The user will attach a reference image. It is for **REFERENCE ONLY** - use it ONLY as the base for **lighting, texture, and hyperrealism**. The face/person can be different (any other avatar).
+
+**YOUR GENERATED PROMPT MUST:**
+1. **State clearly**: "The attached image is for reference only. Use it ONLY for lighting, texture, and hyperrealism level. Do not copy the face or person - the subject can be a different avatar, with the same lighting, texture, and hyperrealistic look as the reference."
+2. **Then** describe the scene from the user's description (can be a different person/avatar). Use the reference ONLY for lighting, texture, hyperrealism - NOT for the face/identity.
+3. Do NOT replicate the person/face from the reference. Only: lighting, texture, hyperrealistic quality as base.`;
       } else if (mainReferenceImageFile) {
         // Main reference image provided but no prompt generated - use image directly
         const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
@@ -1149,13 +1170,14 @@ You MUST analyze the attached main reference image to understand EXACTLY how it 
 - **Extract ALL visual details** from the reference image and include them in your prompt with EXTREME detail - be comprehensive
 - **Be EXTREMELY specific** about camera angle, lighting, composition, colors, textures, background, and aesthetic - include every detail
 - **Include the user's description** ("${description}") while maintaining the EXACT style from the reference
-- **Ensure the result looks IDENTICAL** to the reference image in terms of style, angle, lighting, composition, colors, textures, and aesthetic, but with the content/subject from the user's description
+- **Ensure the result looks IDENTICAL** to the reference image in terms of style, lighting, composition, colors, textures, and aesthetic, but with the content/subject from the user's description.${!copyCameraAngle && hasUserCameraAngleSelection ? ' For CAMERA ANGLE, you must FOLLOW the user-selected camera angle (Selfie Camera / Frontal Camera / Steady) instead of copying the camera angle from the reference image.' : ' For CAMERA ANGLE, you may copy the camera angle from the reference image as appropriate.'}
 - **Make explicit references to the attached image**: When describing style elements, explicitly mention "as shown in the attached reference image" or "matching the attached reference image"${copyCameraAngle ? ' - **CRITICAL**: Explicitly state "copy the EXACT camera angle and perspective from the attached reference image"' : ''}${copyLighting ? ' - **CRITICAL**: Explicitly state "copy the EXACT lighting style from the attached reference image"' : ''}
 - **Remember**: The reference image WILL be attached to the final generation, so make explicit references to it in your prompt
 
 **CRITICAL REQUIREMENTS:**
-${!copyCameraAngle && !copyLighting ? `
-  - **EXACT camera angle and perspective** - Extract ALL details from the reference and include them in your prompt with maximum specificity, explicitly referencing "the attached reference image"
+${!copyCameraAngle && !copyLighting && !hasUserCameraAngleSelection ? `
+  - **EXACT camera angle and perspective** - Extract ALL details from the reference and include them in your prompt with maximum specificity, explicitly referencing "the attached reference image"` : ''}
+${!copyLighting ? `
   - **EXACT composition and framing** - Extract ALL details from the reference and include them in your prompt, explicitly referencing "the attached reference image"
   - **EXACT lighting style** - Extract ALL details from the reference and include them in your prompt with maximum specificity - THIS IS CRITICAL, explicitly referencing "the attached reference image"` : ''}
   - **EXACT texture quality** - Extract and include ALL texture details from the reference, explicitly referencing "the attached reference image"
@@ -1163,7 +1185,7 @@ ${!copyCameraAngle && !copyLighting ? `
   - **EXACT overall aesthetic** - Extract and include ALL aesthetic details from the reference, explicitly referencing "the attached reference image"
   - **EXACT background** - Extract and include ALL background details from the reference, explicitly referencing "the attached reference image"
   - **Explicitly reference the attached reference image** throughout your prompt when describing style elements
-  - Keep the EXACT same camera angle, composition, lighting, textures, and aesthetic from the main reference (reference = STYLE ONLY, not for product appearance).${copyCameraAngle ? ' - **CRITICAL: The camera angle MUST be copied exactly from the attached reference image with ALL details. Explicitly state "copy the EXACT camera angle and perspective from the attached reference image"' : ''}${copyLighting ? ' - **CRITICAL: The lighting MUST be copied exactly from the attached reference image with ALL details. Explicitly state "copy the EXACT lighting style from the attached reference image"' : ''}
+  - Keep the EXACT same composition, lighting, textures, and aesthetic from the main reference (reference = STYLE ONLY, not for product appearance).${copyCameraAngle || !hasUserCameraAngleSelection ? ' The camera angle may be copied from the attached reference image when appropriate.' : ' For camera angle, follow the user-selected camera angle (Selfie Camera / Frontal Camera / Steady) as primary and treat the reference only as style/setting guidance.'}${copyCameraAngle ? ' - **CRITICAL: The camera angle MUST be copied exactly from the attached reference image with ALL details. Explicitly state "copy the EXACT camera angle and perspective from the attached reference image"' : ''}${copyLighting ? ' - **CRITICAL: The lighting MUST be copied exactly from the attached reference image with ALL details. Explicitly state "copy the EXACT lighting style from the attached reference image"' : ''}
   - **PRODUCT = ONLY from the attached PRODUCT image(s)**. The product must look exactly as in the product image(s)—same packaging (pouch, bottle, jar, etc.), same shape and design. Do NOT copy the product form from the reference image (e.g. if reference shows a bottle and product image shows a pouch, result MUST show the pouch).
   - Change only the CONTENT/SUBJECT to match the user's description (e.g. person holding the product); the product itself must always match the attached product image(s).
   - The result should look IDENTICAL to the main reference image in terms of style, angle, lighting, and hyperrealism, but the PRODUCT must look exactly as in the attached product image(s).
@@ -1178,33 +1200,191 @@ ${!copyCameraAngle && !copyLighting ? `
       referenceImageNote = '';
     }
 
+    // Camera Angle + Lighting (same system prompts as video UGC, adapted for image)
+    const cameraAngleArray = cameraAngle && Array.isArray(cameraAngle) ? cameraAngle : [];
+    const descriptionLower = (description || '').toLowerCase();
+    const mentionsProduct = /\b(product|producto|produto)\b/i.test(description || '');
+
+    // Camera angle block: same logic as enhance-prompt, adapted for single still image
+    const imageCameraAngleBlock = (() => {
+      // Default: if no cameraAngle selected and style is hyperrealistic-ugc, assume Frontal Camera from a natural distance
+      if (cameraAngleArray.length === 0 && style === 'hyperrealistic-ugc') {
+        const angle = 'Frontal Camera';
+        if (angle === 'Frontal Camera') {
+          return `
+
+**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA (DEFAULT FOR UGC):**
+The image MUST look like a casual iPhone photo taken by another person (NOT selfie). This means:
+- Frontal view from a natural distance, chest-up or medium shot, as if a friend is holding the iPhone in front of the subject.
+- Camera at or slightly above eye level, natural everyday framing (no extreme wide-angle, no dramatic perspective).
+- The scene must feel spontaneous and unposed, like a real moment captured in everyday life, with the same hyperrealistic lighting and texture standards described for UGC.`;
+        }
+        return '';
+      }
+      if (cameraAngleArray.length === 0) return '';
+      const hasPOV = descriptionLower.includes('pov') || descriptionLower.includes('point of view');
+      let effectiveAngles = cameraAngleArray;
+      if (hasPOV && !cameraAngleArray.includes('Frontal Camera')) {
+        effectiveAngles = ['Frontal Camera', ...cameraAngleArray];
+      } else if (hasPOV && cameraAngleArray.includes('Frontal Camera')) {
+        effectiveAngles = ['Frontal Camera', ...cameraAngleArray.filter((a: string) => a !== 'Frontal Camera')];
+      }
+      const uniqueAngles = [...new Set(effectiveAngles)];
+      const angle = uniqueAngles.length === 1 ? uniqueAngles[0] : uniqueAngles[0]; // For image use first if multiple
+      if (angle === 'Selfie Camera') {
+        return `
+
+**CRITICAL - CAMERA ANGLE: SELFIE CAMERA (MANDATORY):**
+The image MUST look as if taken by the person holding the phone (selfie-style). This means:
+- The framing is as if the character is holding their phone in front of them, showing themselves${mentionsProduct ? ' and the product' : ''}
+- Natural selfie-style composition: intimate, close-up or chest-up, slight low angle typical of selfie hold
+- Authentic iPhone selfie aesthetic: natural color science, realistic skin tones, genuine mobile capture
+- The image should feel like an authentic selfie photo - hyperrealistic, as if taken with an iPhone in selfie mode.`;
+      }
+      if (angle === 'Frontal Camera') {
+        return `
+
+**CRITICAL - CAMERA ANGLE: FRONTAL CAMERA / POV (MANDATORY):**
+The image MUST be a frontal view as if recorded with an iPhone by another person (friend-with-iPhone style) OR a POV (Point of View) where only what the person sees is visible. This means:
+- **Frontal from a natural distance**: Chest-up or medium shot, camera at or slightly above eye level, framing the subject naturally in the center, like a casual iPhone photo from a friend – NOT selfie.
+- **POV option**: The viewer sees what the person sees (hands, product, environment) without showing the photographer; only hands may appear when relevant.
+- In both cases the image MUST maintain the SAME lighting quality, natural textures and hyperrealistic look: authentic iPhone color science, soft natural daylight, minimal soft shadows with proper falloff, natural material response to light, and realistic highlight rolloff.
+- The result must look grabado de iPhone: clean, natural, hyperrealistic, and indistinguishable from a real iPhone capture (no device frames or UI).`;
+      }
+      if (angle === 'Steady') {
+        return `
+
+**CRITICAL - CAMERA ANGLE: STEADY (MANDATORY):**
+The image MUST look as if the phone was placed in a fixed position (e.g., on a table, shelf, tripod) capturing the scene in third person. This means:
+- Stationary camera position; no handheld feel - stable, composed frame
+- As if someone set the phone down to capture the scene; characters may look at the camera but the phone is not held
+- Authentic UGC aesthetic with minimal shake; clear, sharp, hyperrealistic still photo.`;
+      }
+      return '';
+    })();
+
+    // Lighting block: same full hyperrealistic UGC text as enhance-prompt, adapted for image (video → image/photo)
+    const imageLightingBlock = (() => {
+      if (!lighting || typeof lighting !== 'string') return '';
+      const lightingLower = String(lighting).toLowerCase();
+      const hyperrealismBase = `
+
+**CRITICAL - PHONE CAMERA PHOTOREALISM (PHYSICAL SIMULATION, NOT ARTISTIC FILTER):**
+The image MUST look like it was captured with a real smartphone in a real-world setting. Prioritize physical simulation over stylization. **NO** professional studio, **NO** cinematic grading, **NO** beauty filters.
+
+**1. PHYSICALLY BASED LIGHTING AND SURFACE REFLECTION (MANDATORY):**
+- **Single-source directional light:** Use complex, single-source, directional lighting (e.g. direct low sun, harsh golden hour, single window light). The light MUST create distinct shadows and bright, sharp specular highlights. Avoid soft/even/all-encompassing studio light or flat diffuse ambient.
+- **Micro-texture & surface roughness:** All surfaces (skin, fabric, metal) must have realistic non-uniform micro-textures and physically accurate roughness. Render visible, non-smoothed skin pore structure, micro-imperfections, and fine vello facial (peach fuzz). Skin must show visible natural specular glossiness (oils/sweat) to define volumetric form and prevent a flat matte look.
+- **Global illumination (radiosity):** Objects must affect the lighting of their neighbors. The background's ambient light must physically influence the subject; the subject must cast subtle colored light onto nearby surfaces (light bounce).
+
+**2. LENS AND CAMERA MECHANICS (MANDATORY):**
+- **Smartphone lens distortion:** Simulate natural wide-angle lens distortion (16mm–20mm) and foreshortening typical of handheld selfies, where the subject's arm/hand is closer to the lens.
+- **Optical depth of field:** Do NOT use Gaussian blur. Simulate physically accurate shallow depth of field with a defined focal point. Background blur must be organic and complex, preserving light points (bokeh) and atmospheric texture.
+- **Camera noise & artefacts:** Include a subtle, organic layer of digital noise (grain) and minor chromatic aberration toward the edges of the frame to break perfect rendering and simulate a real sensor.
+- **Dynamic contrast:** Do NOT compress the dynamic range. Ensure rich, deep shadows and bright, detailed highlights without over-processing.
+
+**NEGATIVE PROMPTS (ABSOLUTE PROHIBITIONS):**
+NO over-smoothed or beauty-filtered skin. NO glamour-shot post-processing. NO uniform fabric patterns (must show imperfections and minor pilling). NO perfectly even flat lighting (no filler lights). NO synthetic-looking post-render sharpening. NO device frames or UI elements.`;
+
+      if (lightingLower.includes('night outside')) {
+        return `${hyperrealismBase}
+
+**LIGHTING: NIGHT OUTSIDE (SMARTPHONE CAPTURE):**
+Real nighttime outdoor captured on iPhone — NOT cinematic night. Single directional light sources: streetlights, car headlights, neon signs — each with realistic falloff, creating distinct pools of light and deep unlit areas. Do NOT compress dynamic range: rich deep shadows with bright isolated highlights from each light source. Organic digital noise (grain) and lower exposure typical of a real iPhone at night. Skin and fabric textures physically present under available light (pore structure, fabric weave visible under light sources). Authentic iPhone color science — warm/cool depending on light source temperature. No film-style grading, no filler lights filling the shadows.`;
+      }
+      if (lightingLower.includes('day outside')) {
+        return `${hyperrealismBase}
+
+**LIGHTING: DAY OUTSIDE (SMARTPHONE CAPTURE - REFERENCE STANDARD):**
+Apply this exact structure to ALL Day Outside prompts. Single-source natural directional light from outdoors (soft overcast diffusion or low sun from front-upper direction). In your prompt include:
+
+- **Light**: Directional natural daylight from a defined angle (e.g. "soft natural daylight from front-upper, slight left"); creates visible illuminated side and subtly shadowed side. Neutral to warm color temperature with authentic iPhone light diffusion.
+- **Shadows**: Soft with proper natural falloff from the light direction — subtle but present and physically accurate. Do NOT use flat shadowless lighting.
+- **Highlights**: Visible specular highlights on skin (forehead, nose, cheekbones) with authentic iPhone sensor rolloff. Skin shows natural specular glossiness from natural oils.
+- **Skin texture**: Visible pore structure, natural imperfections, natural skin tone variation, peach fuzz in backlit zones. NO beauty filter, NO smooth skin.
+- **Dynamic range**: Rich, full dynamic range — detailed highlights and deep-enough shadows without over-processing.
+- **Framing**: Intimate chest-up or medium shot, slight upward angle for selfie-style; or as the user describes. Spontaneous and unposed.
+- **Fabric/material**: Threads, weave imperfections, realistic folds. Clear material differentiation.
+- **Depth of field**: Physically accurate shallow DoF with organic complex bokeh (light points, atmospheric texture) — NOT Gaussian blur.
+- **Noise/aberration**: Subtle organic digital grain, minor chromatic aberration at frame edges.
+- **End**: Clean hyperrealistic photo, no device frames, no UI elements, indistinguishable from a genuine unposed smartphone capture.`;
+      }
+      if (lightingLower.includes('artificial light inside')) {
+        return `${hyperrealismBase}
+
+**LIGHTING: ARTIFICIAL LIGHT INSIDE (SMARTPHONE CAPTURE):**
+Indoor artificial lighting as real iPhone capture — NOT cinematic. Single dominant light source (LED ceiling, warm lamp, overhead light) from above and slightly frontal; creates visible directional illumination with soft but present shadows underneath and to the sides. Do NOT use flat even filler lights. Dynamic range: warm or neutral light temperature with bright illuminated areas and genuine shadow depth. Skin textures: visible pore structure, natural imperfections, specular glossiness from skin oils under indoor light. Fabric: threads, weave imperfections, realistic folds. Products: material-accurate reflections (plastic gloss, matte surfaces differentiated). Organic digital noise typical of indoor iPhone capture. Authentic iPhone color science. No cinematic polish.`;
+      }
+      if (lightingLower.includes('natural light inside')) {
+        return `${hyperrealismBase}
+
+**LIGHTING: NATURAL LIGHT INSIDE (SMARTPHONE CAPTURE):**
+Indoor natural light from a window — single directional source creating a defined lit side and a softer shadow side. Light falls from the window direction with natural falloff across the scene. Skin: visible pore structure, natural imperfections, natural skin tone variation, peach fuzz in backlit areas, natural specular glossiness from skin oils on illuminated side. Fabric: threads, weave, minor pilling, realistic folds. Dynamic range: bright window-lit areas and genuine shadow depth — do NOT flatten. Organic digital noise from smartphone sensor in indoor light. Authentic iPhone color science and white balance. No cinematic polish, no studio filler lights.`;
+      }
+      return '';
+    })();
+
+    const imageCameraAngleAndLightingBlock = (imageCameraAngleBlock + imageLightingBlock).trim() ? (imageCameraAngleBlock + imageLightingBlock) : '';
+
     // Build style instructions based on style type
     if (style === 'hyperrealistic-ugc') {
       // UGC style - iPhone photography hyperrealism
       styleInstructions = `
+**CRITICAL - GRABADO DE IPHONE (ALL UGC IMAGE PROMPTS):**
+The image MUST look like a **real casual iPhone photo** - natural, unposed, NOT professional studio. **NO** cinematic lighting, NO cinematic shadows, NO studio look.
+
+**OUTPUT PROMPT RULES (what to write in the final prompt, what NOT to write):**
+- **Do NOT include** the words "homemade", "casero", or "spontaneous and homemade casero style" in the generated prompt - they don't make sense for the image model. **Instead DESCRIBE the look**: e.g. "like a casual iPhone photo", "as if taken with an iPhone in a real moment", "natural and unposed, as iPhone captures in everyday life", "grabado de iPhone" (this one is OK - it describes the look).
+- **DO request realistic skin texture**: visible pore structure, natural skin imperfections, natural skin tone variation, very fine facial hair (peach fuzz) in backlit areas. Do NOT beauty-filter or over-smooth skin — this creates the "plastic/airbrushed" look. Instead describe "realistic pore structure", "natural skin texture", "subtle imperfections", "peach fuzz in backlit areas".
+- **DO request fabric realism**: individual threads, minor pilling, weave imperfections, realistic folds from posture.
+- **Do request**: directional natural light (specify type and source), surface-specific specularity, bounce light, shallow depth of field with complex bokeh, subtle chromatic aberration, physical lens simulation, chiaroscuro facial volumetrics.
+- **Avoid in the prompt**: "studio lighting", "perfect symmetry", "glamour processing", "over-smoothed skin", "cinematic shadows", device frames.
+
 **HYPERREALISTIC UGC STYLE REQUIREMENTS (iPhone Photography Hyperrealism):**
 
-You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo:
+You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo. **Use the SAME standards as UGC video prompts for lighting, shadows, tonalities and color** - but always NATURAL and iPhone-like, never cinematic.
 
-- **iPhone photography aesthetic**: The image must look exactly like it was captured with an iPhone camera - authentic iPhone color science, iPhone's characteristic depth of field, iPhone's natural image processing, iPhone's realistic skin tones and color reproduction
+**LIGHTING, SHADOWS AND TONALITY (MANDATORY - PHYSICAL SIMULATION):**
+- **Single-source directional light (always specify):** Use complex, single-source, directional lighting — e.g. "direct low sun from front-left", "single window light from the left", "warm overhead LED from above-right". The light MUST create distinct shadows and bright sharp specular highlights. **Never** "soft even studio light", "filler lights", "all-encompassing ambient". Specify type, direction, and intensity.
+- **Dynamic contrast (MANDATORY):** Do NOT compress the dynamic range. Ensure rich, deep shadows and bright, detailed highlights without over-processing. The image must have genuine tonal range.
+- **Surface-specific specularity (MANDATORY):** Skin must show visible natural specular glossiness (oils/sweat) to define volumetric form — prevents matte/airbrushed look. Metal, plastic, and fabric reflect light according to their physical properties. State this explicitly in the prompt.
+- **Global illumination / radiosity (MANDATORY):** The background's ambient light must physically influence the subject; the subject must cast subtle colored light onto nearby surfaces (light bounce). e.g. "warm bounce light from nearby warm-toned surface coloring the shadow side softly".
+- **Shadows:** Physically accurate shadows from the single light source — present and directional, with proper falloff. Use shadow/highlight contrast (chiaroscuro) to define facial features and 3D volumetric depth. **Never** flat shadowless lighting.
+- **Highlights:** Bright, sharp specular highlights on skin (forehead, nose, cheekbones), glass, plastic — authentic iPhone sensor rolloff. Not clamped or over-processed.
+- **Tonalities and color:** "iPhone's authentic color science and white balance", "realistic color temperature", natural color cast from light source (e.g. warm golden cast, neutral daylight, cool window light). Authentic dynamic range as iPhone captures.
+- **Camera noise & artefacts (MANDATORY):** Include subtle organic digital noise (grain) and minor chromatic aberration toward the frame edges to break perfect rendering and simulate a real sensor.
+
+- **Lighting (CRITICAL - real-world single source, NOT studio):**
+  - Single-source natural or artificial light — e.g. window light from one side, overhead warm lamp, outdoor low sun — slightly uneven as in real casual photos.
+  - **No filler lights**: Do NOT add secondary lights to fill shadows evenly. Preserve natural shadow depth from the single source.
+  - Describe "single directional light source", "directional natural/artificial light as in real life" — **never** "studio lighting", "perfectly balanced", "even illumination", "refined portrait lighting".
+  - Always tie shadows, tonalities, and color cast to the specific light source: "warm color cast from [source]", "cool shadow fill from ambient sky", "directional shadows from single overhead light".
+- **Angle and composition (CRITICAL):**
+  - **Close-up portrait framing**: Chest-up or intimate close-up; subject fills the frame; avoid wide-angle that "captures more of the room"
+  - **Slightly low / slight upward angle** when it fits (e.g. selfie-style but refined); clear, focused framing on the subject
+  - Do NOT default to "wide-angle lens characteristic of handheld mobile" or "purposefully amateur composition"; prefer "close-up portrait", "intimate framing", "chest-up with sharp focus on subject"
+- **Texture (CRITICAL - physical simulation, NOT beauty-filtered):**
+  - **Skin**: Render visible, realistic pore structure, subtle natural imperfections, natural skin tone variation, and very fine facial hair (peach fuzz) in backlit areas. Do NOT over-smooth skin — "plastic skin" / "airbrushed skin" is FORBIDDEN. Use: "realistic pore structure", "natural imperfections", "natural skin tone variation", "peach fuzz in backlit areas", "no beauty filter".
+  - **Fabric**: Must show individual threads, minor pilling, weave imperfections, and realistic folds determined by posture. No perfectly uniform patterns.
+  - **Material differentiation**: Clear visual separation between different surfaces (e.g. plastic gloss vs matte rubber vs soft hair).
+  - **Avoid in prompt**: "over-smoothed skin", "plastic skin", "glamour processing", "perfectly uniform patterns", "studio", "cinematic".
+- **iPhone photography aesthetic**: The image must look exactly like it was captured with an iPhone - authentic iPhone color science, realistic skin tones, natural image processing
 - **First-person or third-person perspective**: The image can be taken by the same person (first-person POV) or by someone else (third-person), but it must always look like an iPhone photo - natural, authentic, and realistic
-- **iPhone camera characteristics**: 
-  - Natural iPhone depth of field (slight background blur when appropriate)
-  - iPhone's authentic color science and white balance
-  - iPhone's realistic skin tone rendering
-  - iPhone's natural sharpness and detail capture
-  - iPhone's characteristic dynamic range
-- **Flash photography when contextually appropriate**: If the scene requires it (low light, night scenes, indoor dark environments), include iPhone flash photography - the characteristic iPhone flash look with proper flash shadows, flash highlights, and flash color temperature
-- **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source (natural light or iPhone flash)
-- **Hyperrealistic lighting**: Natural light behavior or iPhone flash lighting, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights
-- **Photorealistic textures**: Every surface must show realistic material properties - skin texture with pores and natural imperfections (as captured by iPhone), fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real
-- **Human facial features (CRITICAL)**: If the image includes human faces, facial features MUST be:
-  - **Soft and realistic**: Facial features must look soft and natural, exactly as real human faces appear - not harsh, not overly sharp, not artificial
-  - **Natural skin texture**: Skin must have soft, natural texture - smooth but not uniform, with subtle variations, natural pores, and realistic skin quality as seen in real people
-  - **Realistic facial structure**: Facial features (eyes, nose, mouth, cheeks, jawline) must have the natural softness and subtlety of real human faces - not overly defined, not plastic-looking, not uniform
-  - **Natural variations**: Skin texture must be non-uniform with natural variations in tone, texture, and detail - exactly as real human skin appears
-  - **Hyperrealistic but natural**: Maximum realism while maintaining the natural softness and organic quality of real human faces
-  - **Avoid artificial sharpness**: Facial features should NOT be overly sharp or uniform - they must look like real human faces with natural softness and realistic texture variations
+- **iPhone camera characteristics (PHYSICAL LENS SIMULATION):**
+  - **Lens**: Simulate a specific real-world iPhone lens — e.g. "wide-angle iPhone lens with natural perspective distortion for selfies" or "iPhone 26mm equivalent with natural foreshortening".
+  - **Depth of field**: Physically accurate shallow depth of field with natural, complex bokeh — NOT a simple Gaussian blur. Focus point is sharp; bokeh has natural texture and variation.
+  - **Chromatic aberration & noise**: Include subtle realistic digital camera noise and minor chromatic aberration toward the edges of the frame to break perfect rendering. e.g. "subtle digital sensor noise", "minor chromatic aberration at frame edges".
+  - **Color science**: iPhone's authentic color science and white balance — natural, not cinematic grading.
+  - **Dynamic range**: iPhone's characteristic dynamic range — as in real phone photos.
+- **Flash photography when contextually appropriate**: If the scene requires it (low light, night scenes), include iPhone flash with proper flash shadows and color temperature
+- **Shadows (GRABADO DE IPHONE)**: Soft, natural shadows only - proper falloff, no harsh edges. **Never** cinematic or dramatic shadows.
+- **Lighting**: Soft diffused light, realistic diffusion, gentle highlights - as iPhone captures. **Never** cinematic or film-style lighting.
+- **Textures (PHYSICAL SIMULATION)**: Skin: visible pore structure, micro-imperfections, natural skin tone variation, peach fuzz in backlit areas, specular glossiness from natural oils — NO beauty filter, NO over-smoothed skin. Fabric: individual threads, minor pilling, weave imperfections, realistic folds. Material differentiation: clear visual separation between different surface types.
+- **Human facial features (CRITICAL - NO BEAUTY FILTER)**: If the image includes human faces:
+  - **Physical volumetrics**: Lighting must define facial features through shadows and highlights (chiaroscuro) to create 3D depth and volume — NOT flat or layered.
+  - **Realistic skin texture**: Request "visible pore structure", "natural skin imperfections", "natural skin tone variation", "peach fuzz in backlit areas". Do NOT smooth or beauty-filter skin. Do NOT use "plastic skin", "perfect skin", "smooth complexion".
+  - **Specularity**: Skin must show microscopic specularity (natural oils/moisture) — subtle glossiness on nose, forehead, cheekbones. This prevents the matte/airbrushed AI look.
+  - **Dynamic posture**: Encourage realistic unposed body postures (e.g. hand extended for selfie) that introduce natural foreshortening and lens interaction.
 - **Authentic colors**: iPhone's natural color science, realistic color temperature, genuine color reproduction as seen in real iPhone photos
 - **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field (iPhone-style)
 - **Maximum realism**: If the description mentions a person, environment, object, or anything - it must look 100% real, as if photographed with an iPhone in real life
@@ -1222,43 +1402,35 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
   - Example: "meal prep in kitchen" → Photo of meal prep in kitchen, taken by someone (third-person), but no people visible in the frame
   - Example: "product on table" → Photo of product on table, taken by someone (third-person), but no people visible
   - The perspective should feel natural, as if someone is documenting or photographing the subject
-  - **CRITICAL - MUST MAINTAIN ALL HYPERREALISTIC REQUIREMENTS**:
-    - **Ultra-realistic shadows**: Natural, soft shadows with proper falloff, realistic shadow edges, authentic shadow density and color that matches the light source (natural light or iPhone flash)
-    - **Hyperrealistic lighting**: Natural light behavior or iPhone flash lighting, realistic light diffusion, authentic light temperature and color casts, genuine light reflections and highlights - exactly as an iPhone would capture it
-    - **Photorealistic textures**: Every surface must show realistic material properties - fabric textures with visible weave, product surfaces with authentic material details, all textures must look completely real and hyperrealistic
-    - **iPhone camera characteristics**: 
-      - Natural iPhone depth of field (slight background blur when appropriate)
-      - iPhone's authentic color science and white balance
-      - iPhone's natural sharpness and detail capture
-      - iPhone's characteristic dynamic range
-    - **Authentic colors**: iPhone's natural color science, realistic color temperature, genuine color reproduction as seen in real iPhone photos
-    - **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field (iPhone-style)
-    - **Maximum realism**: Everything must look 100% real, as if photographed with an iPhone in real life - indistinguishable from a real iPhone photo
-    - **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone
-  - iPhone camera quality and characteristics - the image must look exactly like it was taken with an iPhone, with all the hyperrealistic qualities of iPhone photography
+  - **CRITICAL - MUST MAINTAIN ALL HYPERREALISTIC REQUIREMENTS (same as UGC video prompts):**
+    - **Lighting (explicit in prompt):** Specify light type and direction (e.g. natural window light from left, warm LED from above), "realistic color temperature", "authentic light diffusion", "genuine light falloff". Same standards as UGC video.
+    - **Ultra-realistic shadows:** "Natural shadows with proper falloff", "realistic shadow edges", "authentic shadow density and color that matches the light source". Warm/cool shadow tone matching the light. Same language as UGC video prompts.
+    - **Tonalities and color:** "iPhone's authentic color science and white balance", "realistic color temperature", "genuine color reproduction", "characteristic dynamic range". Describe color cast from the light (e.g. warm/cool) and how it affects surfaces.
+    - **Hyperrealistic lighting:** Natural or artificial light behavior, realistic diffusion, authentic temperature and color casts, genuine light reflections and highlights - exactly as an iPhone would capture it
+    - **Photorealistic textures:** Every surface with realistic material properties - natural fabric texture with threads/weave/pilling, product with authentic details. For people: visible pore structure, natural imperfections, peach fuzz in backlit areas, natural specular glossiness from skin oils. No beauty filter.
+    - **iPhone camera characteristics:** Natural depth of field, authentic color science, natural sharpness, characteristic dynamic range
+    - **Authentic colors:** Natural color science, realistic color temperature, genuine color reproduction
+    - **Real-world details:** Natural imperfections, authentic material response to lighting, genuine atmospheric perspective
+    - **Maximum realism:** Everything 100% real, as if photographed with an iPhone - indistinguishable from a real iPhone photo
+    - **No artificial elements:** Everything natural and authentic, as if captured with an iPhone in the real world
+  - iPhone camera quality and characteristics - the image must look exactly like it was taken with an iPhone, with all the hyperrealistic qualities of iPhone photography (lights, shadows, tonalities as in UGC video prompts)
 
-- **CASUAL/AMATEUR STYLE (PEOPLE MENTIONED)**: If the description DOES mention people/persons:
-  - **IMPORTANT**: The image should look like a casual, amateur, homemade photo taken with an iPhone - NOT always frontal/selfie style
-  - **Camera angles**: Can be ANY angle or perspective that feels natural and casual:
-    - Can be frontal (selfie style) if it fits naturally
-    - Can be side view, profile, three-quarter view, from behind, from above, from below, or any other natural angle
-    - Can be close-up, medium shot, wide shot, or any framing that feels natural
-    - The angle should feel spontaneous and casual, like someone casually taking a photo with their iPhone
-  - **Natural, casual aesthetic**: 
-    - Should look like a real, casual photo taken by someone with their iPhone
-    - Not overly posed or professional-looking
-    - Natural, authentic, amateur/homemade quality
-    - As if someone is casually documenting or capturing a moment
-  - **User description priority**: Follow the user's description for the specific scene/action, and choose the most natural camera angle and framing that fits that scene
-  - **No forced frontal**: Do NOT default to frontal/selfie style unless it naturally fits the description or the user explicitly requests it
-  - **Reference image priority**: ${mainReferenceImageFile ? (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the main reference image. The main reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.') : 'Choose the most natural camera angle and framing that fits the scene described.'}
+- **PORTRAIT / PEOPLE (PEOPLE MENTIONED)**: If the description DOES mention people/persons:
+  - **Describe as "like a casual iPhone photo"** - directional natural light (window, room, daylight) with specified source, close-up or chest-up, selfie-style angle. Do NOT write "homemade" or "casero" in the prompt; describe the look (e.g. "as if taken with iPhone", "like a casual iPhone selfie"). Request realistic skin texture: "visible pore structure", "natural imperfections", "peach fuzz in backlit areas", "microscopic skin specularity" — do NOT beauty-filter or over-smooth.
+  - **Camera angles**: Natural framing - close-up, chest-up, selfie-style (slightly from below when it fits). As if taken with phone in hand.
+  - **Lighting**: Natural - window light, room light, daylight. Soft, no harsh shadows. No studio.
+  - **User description priority**: Follow the user's description; output should read like a description of a casual iPhone photo — natural, not studio — and must NOT include "homemade" or "casero" literally (describe the look instead).
+  - **Reference image priority**: ${mainReferenceImageFile ? (attachReferenceAsReferenceOnly ? 'A reference image will be attached for REFERENCE ONLY. Use it as the base for lighting, camera angle/perspective, composition, background mood, texture, and hyperrealism level. The face/person MUST change (different avatar), and the new image must clearly feel like a variation of that same scene and setting, not a 1:1 copy.' : (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, you MUST respect the EXACT camera angle, composition, and visual style from the main reference image. The main reference image prompt describes exactly how the reference looks - match that EXACTLY in terms of angle, composition, lighting, and aesthetic, but adapt the content to the user\'s description. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.')) : 'Choose the most natural camera angle and framing that fits the scene described.'}
   - iPhone camera quality and characteristics - must look like a real iPhone photo taken casually
 
-**iPhone Photography Quality Requirements:**
-- Always specify "iPhone photography", "taken with iPhone", or "iPhone camera quality" in the prompt
-- Include iPhone's characteristic image processing look
-- Maintain iPhone's natural color science and white balance
-- If flash is needed, specify "iPhone flash" or "iPhone camera flash"
+**iPhone Photography Quality Requirements (Physical Simulation):**
+- In the prompt write: "iPhone photography", "taken with iPhone", "grabado de iPhone", or "like a casual iPhone photo" / "as if taken with an iPhone" — **do NOT write "homemade" or "casero"** (describe the look instead).
+- **Physical skin realism (MANDATORY)**: "visible pore structure", "natural skin imperfections", "natural skin tone variation", "peach fuzz in backlit areas", "visible natural specular glossiness from skin oils". Do NOT smooth or beauty-filter — "plastic skin" / "airbrushed skin" is FORBIDDEN.
+- **Physical lighting (MANDATORY)**: Single-source directional light with type and direction specified; surface-specific specularity; global illumination / radiosity; chiaroscuro facial volumetrics; full dynamic range (rich shadows + bright highlights).
+- **Lens mechanics (MANDATORY)**: 16mm–20mm wide-angle lens simulation with natural perspective distortion and foreshortening; physically accurate shallow DoF with organic complex bokeh (NOT Gaussian blur); subtle organic digital grain; minor chromatic aberration at frame edges.
+- **ABSOLUTE NEGATIVE PROMPTS** (must appear as prohibitions in or alongside the generated prompt): NO over-smoothed / beauty-filtered skin. NO glamour-shot processing. NO uniform fabric patterns. NO flat even lighting / no filler lights. NO synthetic post-render sharpening. NO cinematic grading. NO device frames or UI elements.
+- Include iPhone's characteristic color science — natural color, natural exposure.
+- If flash is needed, specify "iPhone flash" or "iPhone camera flash".
 - **CRITICAL - NO DEVICE FRAMES OR BORDERS**: 
   - **ABSOLUTE PROHIBITION**: You MUST NOT mention, include, or suggest iPhone frames, iPhone borders, iPhone margins, device frames, screen borders, or any UI elements in the prompt UNLESS the user explicitly requests them
   - **ONLY describe the photo/image itself**: Describe the image as a photo taken with an iPhone, but WITHOUT any device frames, borders, or margins
@@ -1266,11 +1438,11 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
   - **NO UI elements**: Do NOT include any UI elements, status bars, navigation bars, or device interface elements
   - **Just the photo**: The prompt should describe a clean photo/image without any device framing or borders
 - **Perspective clarification**:
-  - If description mentions people: The image should look like a casual, amateur photo taken with an iPhone - can be ANY angle (frontal, side, three-quarter, from above, from below, etc.) that feels natural and casual. NOT always frontal/selfie style. Should feel like someone casually taking a photo with their iPhone.
+  - If description mentions people: Describe as **like a casual iPhone photo** — directional natural light (single source), close-up or chest-up, selfie-style angle; request visible pore structure, natural imperfections, peach fuzz in backlit areas, skin specularity; soft natural shadows from light direction; iPhone color science; shallow DoF with organic bokeh; organic digital noise. Do NOT write "homemade" or "casero" in the prompt text.
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
-  - **Reference image priority**: ${mainReferenceImageFile ? (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.') : 'Choose the most natural camera angle that fits the scene.'}
+  - **Reference image priority**: ${mainReferenceImageFile ? (attachReferenceAsReferenceOnly ? 'A reference image will be attached for REFERENCE ONLY. Use it ONLY for lighting, texture, and hyperrealism. The face/person can be a different avatar. Do NOT copy the person; same lighting, texture, hyperrealistic look.' : (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.')) : 'Choose the most natural camera angle that fits the scene.'}
 
-The goal is absolute photorealism with iPhone photography quality - the image should be impossible to distinguish from a real iPhone photograph. Every shadow, light, texture, color, and detail must be hyperrealistic and photorealistic, exactly as an iPhone would capture it. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**${referenceImageNote}`;
+The goal: image like a **real casual iPhone photo** (grabado de iPhone). Natural light, natural skin and texture (as iPhone captures - **not** "visible pores" or ultra-defined), soft shadows, no cinematic. **In the final prompt:** describe the look as "like a casual iPhone photo" / "as if taken with iPhone" - do NOT write "homemade" or "casero". Do NOT ask for "visible pores" or "subtle fine lines". **CRITICAL:** Result must look like real UGC on iPhone - natural, not over-defined, NOT studio, NOT cinematic. Clean photo, no device frames. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**${imageCameraAngleAndLightingBlock}${referenceImageNote}`;
     } else if (style === 'studio-quality') {
       // Build copy instructions based on user selection
       let copyInstructionsStudio = '';
@@ -1288,7 +1460,10 @@ The goal is absolute photorealism with iPhone photography quality - the image sh
 - **EXACT lighting style** (same type, direction, intensity, color temperature, shadows, highlights) - THIS IS CRITICAL - MUST be copied exactly`;
       }
       
-      const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST, AND WILL ALSO BE ATTACHED TO FINAL IMAGE GENERATION):**
+      const referenceImageNote = (attachReferenceAsReferenceOnly && mainReferenceImageFile) ? `
+
+**REFERENCE IMAGE - USO SOLO COMO BASE DE SETTING (NO COPIAR IDENTIDAD):**
+The user will attach a reference image. Treat it as the **base setting and camera setup**: same lighting, camera angle/perspective, composition and overall background mood. The face/person/avatar MUST change. Your generated prompt MUST state clearly: "The attached image is for reference only. Use it ONLY as the base for lighting, camera angle, composition, background mood, texture, and hyperrealism level. Do not copy the exact face or identity – generate a different avatar/person starting from that same setting." Then describe the new scene from the user's description as a variation of that base image.` : mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST, AND WILL ALSO BE ATTACHED TO FINAL IMAGE GENERATION):**
 A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. **IMPORTANT**: This reference image will ALSO be attached to the final image generation model, so the model will have access to it.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' **CRITICAL: You MUST copy the EXACT camera angle and perspective from the attached reference image.**' : ''}${copyLighting ? ' **CRITICAL: You MUST copy the EXACT lighting style from the attached reference image.**' : ''}` : ' The generated prompt MUST specify that the result must match this EXACT style, lighting, and professional quality, explicitly referencing the attached reference image.'}
 
 **Main Reference Image Prompt (use this as PRIMARY style reference):**
@@ -1356,7 +1531,10 @@ The image should look like a professional studio photograph - hyperrealistic but
 - **Match lighting and textures**: If applicable, use the EXACT same lighting effects, texture treatments, and material appearances as described in the main reference - THIS IS CRITICAL`;
       }
       
-      const referenceImageNote = mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
+      const referenceImageNote = (attachReferenceAsReferenceOnly && mainReferenceImageFile) ? `
+
+**REFERENCE IMAGE - USO SOLO COMO REFERENCIA (NO REPLICAR):**
+The user will attach a reference image. Use it ONLY for **lighting, texture, and hyperrealism** (and design style if applicable). The face/person can be different. Your generated prompt MUST state: "The attached image is for reference only. Use it ONLY for lighting, texture, and hyperrealism. Do not copy the face or person." Then describe the design/scene from the user's description.` : mainReferenceImageFile && mainReferenceImagePrompt ? `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
 A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.` : ` The generated prompt MUST specify that the result must match this EXACT design style, colors, and visual aesthetics.`}
 
 **Main Reference Image Prompt (use this as PRIMARY style reference):**
@@ -1723,7 +1901,7 @@ Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, 
 **User's Description:**
 "${description}"
 
-${styleInstructions}
+${styleInstructions}${style === 'hyperrealistic-cinematic' && imageCameraAngleAndLightingBlock ? imageCameraAngleAndLightingBlock : ''}
 
 **Your Task:**
 Generate an extremely detailed, comprehensive prompt that:
@@ -1736,6 +1914,7 @@ Generate an extremely detailed, comprehensive prompt that:
 **Critical Requirements:**
 ${criticalRequirementsSection}- The prompt must be detailed and comprehensive
 - Include all necessary technical details for the selected style
+- **Lighting, shadows and tonalities (mandatory for hyperrealistic-ugc and hyperrealistic-cinematic):** Describe explicitly: light source type and direction, color temperature and diffusion, shadows with proper falloff and density matching the light source, highlights and reflections, and how each surface responds to light. Use the same level of detail as UGC video prompts (e.g. "ultra-realistic shadows with proper falloff", "authentic color temperature", "genuine light diffusion"). For UGC: iPhone color science and white balance; for cinematic: professional color grading and tonal range.
 - Be specific about lighting, composition, colors, textures, and all visual elements
 - Ensure the prompt will generate exactly what the user described, but with professional enhancement
 - Make every detail explicit and clear

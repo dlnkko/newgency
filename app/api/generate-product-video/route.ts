@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC, lastFrameNanoBananaOnly, firstAndLastFrameAnimation, lastFrameImage, script } = body;
+    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC: isUGCBody, lastFrameNanoBananaOnly, firstAndLastFrameAnimation, lastFrameImage, script } = body;
+    const isUGC = !!isUGCBody || !!body.ugcMode;
     const scriptTrimmed = typeof script === 'string' ? script.trim() : '';
 
     if (!productImage || !actionDescription) {
@@ -132,43 +133,45 @@ export async function POST(request: NextRequest) {
 
     // If nanoBananaOnly is true, generate only the Nano Banana prompt
     if (nanoBananaOnly) {
-      const nanoBananaPromptRequest = `You are an expert AI prompt engineer specializing in professional product video animations. You are creating a prompt for Nano Banana Pro to generate a reference image that will be used as the base for video animation.
+      const nanoBananaPromptRequestLines: string[] = [
+        'You are an expert AI prompt engineer specializing in professional product video animations. You are creating a prompt for Nano Banana Pro to generate a reference image that will be used as the base for video animation.',
+        '',
+        '**Context:**',
+        '- Product: Analyze the provided product image carefully',
+        `- User's Request for Animation: "${actionDescription}"` + (isUGC
+          ? `
 
-**Context:**
-- Product: Analyze the provided product image carefully
-- User's Request for Animation: "${actionDescription}"
+**UGC MODE:** The image must look like UGC/iPhone content - natural lighting, hyperrealistic texture, not studio; suitable for UGC video (e.g. person with product, selfie-style, natural setting). Like real iPhone capture.`
+          : ''),
+        '',
+        '**CRITICAL INSTRUCTION:**',
+        'You MUST create a prompt that generates the PERFECT frame for the animation the user described. The image must be optimized to support the specific video action requested.',
+        '',
+        '**Your Task:**',
+        'Generate a detailed, cinematic prompt for Nano Banana Pro that:',
+        `1. **Optimizes for the animation**: The image must be framed and composed to support the specific animation described: "${actionDescription}"`,
+        '- If the animation involves rotation: create an image that shows the product in a way that allows for rotation',
+        '- If the animation involves falling/movement: position the product to support that movement',
+        '- If the animation involves close-ups: create an image that allows for detailed close-up shots',
+        '- If the animation involves specific angles: frame the product from the angle that supports the animation',
+        '',
+        '2. **Includes exact product details**:',
+        '- Exact appearance, colors, materials, textures from the provided product image',
+        '- Professional studio-quality composition',
+        '- High-resolution, hyperrealistic details',
+        '',
+        '3. **Optimal lighting setup**:',
+        '- Lighting that supports the specific video animation requested',
+        '- Background and environment that supports the animation style',
+        '- Camera angle and perspective that works well for the specific action requested',
+        '',
+        '4. **Frame optimization**:',
+        '- The image should be the perfect starting frame for the animation',
+        '- Consider what elements need to be visible for the animation to work',
+        '- Ensure the composition allows for the movement/action described'
+      ];
 
-**CRITICAL INSTRUCTION:**
-You MUST create a prompt that generates the PERFECT frame for the animation the user described. The image must be optimized to support the specific video action requested.
-
-**Your Task:**
-Generate a detailed, cinematic prompt for Nano Banana Pro that:
-1. **Optimizes for the animation**: The image must be framed and composed to support the specific animation described: "${actionDescription}"
-   - If the animation involves rotation: create an image that shows the product in a way that allows for rotation
-   - If the animation involves falling/movement: position the product to support that movement
-   - If the animation involves close-ups: create an image that allows for detailed close-up shots
-   - If the animation involves specific angles: frame the product from the angle that supports the animation
-
-2. **Includes exact product details**: 
-   - Exact appearance, colors, materials, textures from the provided product image
-   - Professional studio-quality composition
-   - High-resolution, hyperrealistic details
-
-3. **Optimal lighting setup**: 
-   - Lighting that supports the specific video animation requested
-   - Background and environment that supports the animation style
-   - Camera angle and perspective that works well for the specific action requested
-
-4. **Frame optimization**:
-   - The image should be the perfect starting frame for the animation
-   - Consider what elements need to be visible for the animation to work
-   - Ensure the composition allows for the movement/action described
-
-**Output Format:**
-Provide your response EXACTLY in this format:
-
-**NANO_BANANA_PROMPT:**
-[Your detailed Nano Banana Pro prompt here - create an asset optimized for the animation: "${actionDescription}"]`;
+      const nanoBananaPromptRequest = nanoBananaPromptRequestLines.join('\n');
 
       try {
         const result = await ai.models.generateContent({
@@ -230,7 +233,9 @@ Provide your response EXACTLY in this format:
 
     // Last-frame mode: first frame image is provided; generate Nano Banana prompt for the END/LAST frame of the animation (consistent with first frame)
     if (lastFrameNanoBananaOnly) {
-      const lastFramePromptRequest = `You are an expert AI prompt engineer for Nano Banana Pro. The user has provided the FIRST FRAME of an animation (attached image) and this description of the animation: "${actionDescription}"
+      const lastFramePromptRequest = `You are an expert AI prompt engineer for Nano Banana Pro. The user has provided the FIRST FRAME of an animation (attached image) and this description of the animation: "${actionDescription}"${isUGC ? `
+
+**UGC MODE:** The last frame must keep UGC/iPhone style - natural lighting, hyperrealistic texture, same UGC look as the first frame.` : ''}
 
 **Your task:**
 Create a detailed Nano Banana Pro prompt that will generate the LAST/END FRAME of this same animation. The generated image must:
@@ -239,11 +244,7 @@ Create a detailed Nano Banana Pro prompt that will generate the LAST/END FRAME o
 3. **Maintain visual consistency** – same lighting style, same environment, same camera angle/style, same color grading and aesthetic as the first frame
 4. **Be the natural end state** – exactly how the scene would look when the animation finishes
 
-Do NOT describe the motion or the animation – only describe the final still image (last frame) so that Nano Banana can generate it. The prompt must be a single, detailed image description ready for Nano Banana Pro.
-
-**Output Format:**
-**NANO_BANANA_PROMPT:**
-[Your detailed Nano Banana Pro prompt for the LAST FRAME image only – same consistency as first frame, end state of: "${actionDescription}"]`;
+Do NOT describe the motion or the animation – only describe the final still image (last frame) so that Nano Banana can generate it. The prompt must be a single, detailed image description ready for Nano Banana Pro.`;
 
       try {
         const result = await ai.models.generateContent({
@@ -319,13 +320,22 @@ Do NOT describe the motion or the animation – only describe the final still im
         }
       }
 
+      const firstLastUgcBlock = isUGC ? `
+
+**CRITICAL - UGC STYLE (USER ENABLED UGC MODE):**
+The animation must feel like real UGC / iPhone video. You MUST:
+- **Shaky handheld**: If the first/last frame shows a person holding an iPhone or selfie-style, describe natural handheld shaky camera - subtle camera shake, as if holding the phone, organic and realistic.
+- **Natural movements**: All movements must be natural, realistic, not staged - like real UGC content.
+- **Hyperrealistic**: Preserve lighting, texture, and hyperrealism from the images; the motion should feel authentic and real, like a real person recording with their phone.
+- **No cinematic camera moves** unless the user asked for them - keep it like iPhone UGC: natural, slightly shaky when handheld, real movements.` : '';
+
       const firstLastAnimationRequest = `You are an expert AI prompt engineer for video animation. The user has provided TWO images:
 - **First image (attached)**: The START/FIRST FRAME of the animation
 - **Second image (attached)**: The END/LAST FRAME of the animation
 
 Animation description: "${actionDescription}"${scriptTrimmed ? `
 
-**CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's description indicates. Do NOT add "a character says" or similar – integrate the script where the user said it goes.` : ''}
+**CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's description indicates. Do NOT add "a character says" or similar – integrate the script where the user said it goes.` : ''}${firstLastUgcBlock}
 
 **Your task:**
 Generate ONE detailed video animation prompt that describes the motion from the first frame to the last frame. The prompt will be used by a video AI that can animate between two keyframes. You must:
@@ -337,8 +347,7 @@ Generate ONE detailed video animation prompt that describes the motion from the 
 6. Be precise about movement, timing, and cinematography so the video goes smoothly from first to last frame${scriptTrimmed ? '\n7. Include the script text where the user\'s description indicates; never add "a character says"' : ''}
 
 **Output Format:**
-**VIDEO_ANIMATION_PROMPT:**
-[One paragraph, under 999 characters, describing the animation from first frame to last frame.${scriptTrimmed ? ' Include the script where the user indicated; do not add "a character says".' : ''}]`;
+Respond with exactly one section labeled VIDEO_ANIMATION_PROMPT, containing one paragraph under 999 characters describing the animation from first frame to last frame.${scriptTrimmed ? ' Include the script where the user indicated; do not add "a character says".' : ''}`;
 
       try {
         const result = await ai.models.generateContent({
@@ -404,7 +413,8 @@ The attached image is a hyperrealistic person (UGC style). You MUST create an an
 - **NO CAMERA MOVEMENT UNLESS REQUESTED**: You MUST NOT include ANY camera movement (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requests it in their description. The camera must remain static and fixed in position. Only animate the person/subject in the frame.
 - **CAMERA MOVEMENT EXCEPTION**: If the user explicitly mentions camera movements (e.g., "camera zooms in", "camera moves", "camera follows", "pan", "tilt", etc.), then you may include those specific camera movements the user requested. Otherwise, NO camera movement.
 - **NATURAL ANIMATION**: Focus on natural, realistic movements of the person - facial expressions, body movements, gestures, etc. - all must be hyperrealistic and natural
-- **PRESERVE VISUAL FIDELITY**: The animated result must look exactly like the attached image came to life, with no visual changes except for the natural movements described` : '';
+- **PRESERVE VISUAL FIDELITY**: The animated result must look exactly like the attached image came to life, with no visual changes except for the natural movements described
+- **UGC HANDHELD / SELFIE**: If the image shows a person holding an iPhone or in selfie-style: the animation MUST feel like real UGC - natural handheld shaky camera, subtle camera shake as if holding the phone, natural hand movements, authentic UGC feel. Describe subtle camera shake, natural movements, realistic as if recorded on iPhone. If someone is holding the phone, the camera should feel slightly shaky and organic, not static.` : '';
 
       const animationPromptRequest = `You are an expert AI prompt engineer specializing in professional product video animations. You are creating a video animation prompt that will animate an uploaded image.
 
@@ -464,7 +474,7 @@ Generate ONE extremely detailed video animation prompt that:
 Provide your response EXACTLY in this format:
 
 **VIDEO_ANIMATION_PROMPT:**
-[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. The prompt MUST explicitly mention that the animation should be based on the attached product image. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' Include the user script text where their description indicates; never add "a character says" or similar.' : ''}]`;
+Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. Explicitly mention the attached product image. Faithfully follow the user request and enhance it with professional details. Dense language, under 999 chars.${scriptTrimmed ? ' Include the user script text where their description indicates; never add "a character says" or similar.' : ''}`;
 
       try {
         const result = await ai.models.generateContent({
@@ -531,12 +541,14 @@ Provide your response EXACTLY in this format:
 
 **Context:**
 - Product: Analyze the provided product image carefully
-- User's Request: "${actionDescription}"
+- User's Request: "${actionDescription}"${isUGC ? `
+
+**UGC MODE (USER ENABLED):** Generate prompts in UGC style. Nano Banana: image like UGC/iPhone (natural lighting, hyperrealistic texture). Video prompt: if person holds iPhone/selfie, describe natural handheld shaky camera, natural movements, realistic as if recorded on iPhone. No cinematic camera moves unless user asked.` : ''}
 
 **CRITICAL INSTRUCTION:**
 You MUST respect and follow EXACTLY what the user requested. Your job is to:
-1. Take the user's description and enhance it with professional cinematography details
-2. Add technical details (camera movements, lighting, physics) to make it executable
+1. Take the user's description and enhance it with professional cinematography details${isUGC ? ' (UGC: natural handheld, shaky when relevant, no cinematic moves unless requested)' : ''}
+2. Add technical details (camera movements, lighting, physics) to make it executable${isUGC ? ' - UGC: natural handheld/shaky when person holds phone; no dolly/pan unless user asked' : ''}
 3. BUT keep the core action, pacing, and style that the user described
 4. If the user mentions "quick cuts" or "different shots", include those
 5. If the user mentions "slow rotation" or "slow movement", keep it slow
@@ -547,7 +559,7 @@ You MUST respect and follow EXACTLY what the user requested. Your job is to:
 **Your Task:**
 Generate TWO extremely detailed, professional prompts:
 
-1. **Nano Banana Pro Prompt**: A detailed, cinematic prompt to generate a high-quality reference image/asset of the product that will help create the video the user requested. This image will be used as the base for video animation. The prompt should:
+1. **Nano Banana Pro Prompt**: A detailed, cinematic prompt to generate a high-quality reference image/asset of the product that will help create the video the user requested. This image will be used as the base for video animation. The prompt should:${isUGC ? '\n   - **UGC style**: Image must look like UGC/iPhone content - natural lighting, hyperrealistic texture, not studio; suitable for UGC video (e.g. person with product, selfie-style, or natural setting).' : ''}
    - Create an asset that supports the specific video action the user described
    - If user wants "different shots/detailed close-ups": generate a product image that shows the product in a way that allows for those shots
    - If user wants "rotation showing front": generate a product image that clearly shows the front and allows for rotation
@@ -572,18 +584,18 @@ Generate TWO extremely detailed, professional prompts:
      * If user says "detailed close-ups" → include detailed close-up shots
      * If user says "show front part" → make sure to show the front part clearly
    - Use dense, efficient language: combine details into single phrases, use compound adjectives, merge related concepts
-   - Include essential technical details: camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques
-   - Describe physical movements concisely but precisely (gravity, rotation speed, impact effects)
+   - Include essential technical details: ${isUGC ? 'for UGC: natural handheld camera, subtle shake when person holds phone, natural movements; ' : ''}camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques${isUGC ? ' (only if user requested; otherwise UGC = natural handheld, no cinematic moves)' : ''}
+   - Describe physical movements concisely but precisely (gravity, rotation speed, impact effects)${isUGC ? ', natural and realistic as UGC' : ''}
    - Include visual effects, depth of field, motion blur where appropriate
    - Specify color grading and aesthetic
    - Follow the sequence the user described
    - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
    - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
-   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${scriptTrimmed ? `
+   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n   - **UGC**: If image shows or will show person holding iPhone/selfie: describe natural handheld shaky camera, natural movements, realistic UGC feel.' : ''}${scriptTrimmed ? `
    - **CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES)**: User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's action description indicates. Do NOT add "a character says" or "A character says exactly" – integrate the script where the user said it goes.` : ''}
 
 **Critical Requirements:**
-- Both prompts must be optimized for professional product advertising
+- Both prompts must be optimized for professional product advertising${isUGC ? ' (UGC mode: natural, handheld, hyperrealistic, shaky when holding phone)' : ''}
 - The video prompt MUST follow the user's request structure and pacing
 - If user mentions "quick cuts" or "different shots", the video prompt should include quick cuts
 - If user mentions "slow" or "slowly", keep those movements slow
@@ -594,14 +606,11 @@ Generate TWO extremely detailed, professional prompts:
 - Make every detail explicit and clear
 - The prompts should be ready to copy and paste directly into their respective tools
 
-**Output Format:**
-Provide your response EXACTLY in this format:
-
-**NANO_BANANA_PROMPT:**
-[Your detailed Nano Banana Pro prompt here - create an asset that helps complete the video the user requested]
-
-**VIDEO_ANIMATION_PROMPT:**
-[Your extremely detailed video animation prompt here - MUST be exactly ONE continuous paragraph, UNDER 999 characters total, maximum density and precision. Faithfully follow the user's request: "${actionDescription}" and enhance it with professional details. Use efficient, dense language. Count characters to ensure under 999.${scriptTrimmed ? ' Include the user script text where their description indicates; never add "a character says" or similar.' : ''}]`;
+**Output Format (implicit):**
+The model should internally produce two sections in its text response:
+- One describing the Nano Banana reference image prompt.
+- One describing the Video Animation prompt (single paragraph, under 999 characters).
+You do NOT need to wrap them in any special markers; a plain text response is enough.`;
 
     try {
       const result = await ai.models.generateContent({
@@ -633,12 +642,14 @@ Provide your response EXACTLY in this format:
 
       console.log('Response received, length:', responseText.length);
 
-      // Parse the response to extract both prompts
+      // Parse the response to extract both prompts when markers are present.
+      // If markers are missing (model returns plain text), fall back to using the full response
+      // so the user still receives a usable prompt instead of a hard failure.
       const nanoBananaMatch = responseText.match(/\*\*NANO_BANANA_PROMPT:\*\*\s*([\s\S]*?)(?=\*\*VIDEO_ANIMATION_PROMPT:\*\*|$)/i);
       const videoPromptMatch = responseText.match(/\*\*VIDEO_ANIMATION_PROMPT:\*\*\s*([\s\S]*?)$/i);
 
-      let nanoBananaPrompt = nanoBananaMatch ? nanoBananaMatch[1].trim() : 'Failed to generate Nano Banana prompt';
-      let videoPrompt = videoPromptMatch ? videoPromptMatch[1].trim() : 'Failed to generate video animation prompt';
+      let nanoBananaPrompt = nanoBananaMatch ? nanoBananaMatch[1].trim() : responseText.trim();
+      let videoPrompt = videoPromptMatch ? videoPromptMatch[1].trim() : responseText.trim();
       
       // Ensure video prompt is a single paragraph and under 999 characters
       if (videoPrompt) {

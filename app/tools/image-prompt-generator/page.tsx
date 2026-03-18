@@ -19,6 +19,9 @@ export default function ImagePromptGenerator() {
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
   const [copyCameraAngle, setCopyCameraAngle] = useState<boolean>(false);
   const [copyLighting, setCopyLighting] = useState<boolean>(false);
+  const [attachReferenceAsReferenceOnly, setAttachReferenceAsReferenceOnly] = useState<boolean>(false); // "Se adjuntará reference image" → usar como referencia, no replicar
+  const [cameraAngle, setCameraAngle] = useState<string[]>([]); // Same as video: Selfie Camera, Frontal Camera, Steady
+  const [lighting, setLighting] = useState<string | null>(null); // Same as video: Night Outside, Day Outside, Artificial Light Inside, Natural Light Inside
   const [productImages, setProductImages] = useState<File[]>([]);
   const [productPreviews, setProductPreviews] = useState<string[]>([]);
   const [characterImages, setCharacterImages] = useState<File[]>([]);
@@ -530,6 +533,9 @@ export default function ImagePromptGenerator() {
           referenceImage: referenceImageBase64,
           copyCameraAngle: copyCameraAngle,
           copyLighting: copyLighting,
+          attachReferenceAsReferenceOnly: attachReferenceAsReferenceOnly,
+          cameraAngle: cameraAngle,
+          lighting: lighting,
           productImages: productImagesBase64,
           characterImages: characterImagesBase64,
           forceSameCharacterReference: forceSameCharacterRef,
@@ -758,6 +764,67 @@ export default function ImagePromptGenerator() {
           </div>
         </div>
 
+        {/* Camera Angle + Lighting (same as video UGC - only for hyperrealistic) */}
+        {(selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic') && (
+          <>
+            <div className="mb-6">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                Camera Angle
+              </label>
+              <p className="mb-3 text-xs text-zinc-400">
+                Mismo sistema que en video. Puedes elegir uno o más; el prompt usará los mismos system prompts UGC adaptados a imagen.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {['Selfie Camera', 'Frontal Camera', 'Steady'].map((angle) => {
+                  const isSelected = cameraAngle.includes(angle);
+                  return (
+                    <button
+                      key={angle}
+                      type="button"
+                      onClick={() => setCameraAngle(prev => isSelected ? prev.filter(a => a !== angle) : [...prev, angle])}
+                      disabled={isGenerating}
+                      className={`rounded-xl border-2 px-4 py-2.5 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        isSelected ? 'border-amber-500/80 bg-amber-500/20 text-amber-300' : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-amber-500/50 hover:bg-zinc-800/70'
+                      }`}
+                    >
+                      {angle}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mb-8">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+                Lighting
+              </label>
+              <p className="mb-3 text-xs text-zinc-400">
+                Mismo sistema que en video. Mismas opciones y mismo nivel hiperrealista en el prompt (adaptado a imagen).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: null, label: 'No elegido' },
+                  { value: 'Night Outside', label: 'Night Outside' },
+                  { value: 'Day Outside', label: 'Day Outside' },
+                  { value: 'Artificial Light Inside', label: 'Artificial Light Inside' },
+                  { value: 'Natural Light Inside', label: 'Natural Light Inside' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value ?? 'none'}
+                    type="button"
+                    onClick={() => setLighting(opt.value)}
+                    disabled={isGenerating}
+                    className={`rounded-xl border-2 px-4 py-2.5 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      lighting === opt.value ? 'border-amber-500/80 bg-amber-500/20 text-amber-300' : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-amber-500/50 hover:bg-zinc-800/70'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Reference Image Upload (for design, studio-quality, hyperrealistic variants, and change-elements) */}
         {(selectedStyle === 'design' || selectedStyle === 'studio-quality' || selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic' || selectedStyle === 'change-elements') && (
           <div className="mb-8">
@@ -807,30 +874,50 @@ export default function ImagePromptGenerator() {
                       </button>
                     </div>
                   </div>
-                  {/* Copy Options */}
-                  <div className="flex gap-3">
+                  {/* Copy Options + Se adjuntará reference image (solo referencia) */}
+                  <div className="space-y-2">
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setCopyCameraAngle(!copyCameraAngle)}
+                        disabled={isGenerating}
+                        className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                          copyCameraAngle
+                            ? 'bg-blue-500/80 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        Copy Camera Angle
+                      </button>
+                      <button
+                        onClick={() => setCopyLighting(!copyLighting)}
+                        disabled={isGenerating}
+                        className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                          copyLighting
+                            ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/20'
+                            : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        Copy Lighting
+                      </button>
+                    </div>
                     <button
-                      onClick={() => setCopyCameraAngle(!copyCameraAngle)}
+                      type="button"
+                      onClick={() => setAttachReferenceAsReferenceOnly(!attachReferenceAsReferenceOnly)}
                       disabled={isGenerating}
-                      className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-                        copyCameraAngle
-                          ? 'bg-blue-500/80 text-white shadow-lg shadow-blue-500/20'
+                      className={`w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                        attachReferenceAsReferenceOnly
+                          ? 'bg-emerald-500/80 text-white shadow-lg shadow-emerald-500/20'
                           : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
                       } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      title="Usar referencia solo para luz, textura e hiperrealismo; la cara puede ser otro avatar"
                     >
-                      Copy Camera Angle
+                      Se adjuntará reference image
                     </button>
-                    <button
-                      onClick={() => setCopyLighting(!copyLighting)}
-                      disabled={isGenerating}
-                      className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-                        copyLighting
-                          ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/20'
-                          : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      Copy Lighting
-                    </button>
+                    {attachReferenceAsReferenceOnly && (
+                      <p className="text-[10px] text-zinc-500">
+                        El prompt usará la referencia solo para luz, textura e hiperrealismo. La cara/persona puede ser otro avatar.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
