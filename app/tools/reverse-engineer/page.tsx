@@ -122,6 +122,14 @@ export default function ReverseEngineer() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
+  const [productDescription, setProductDescription] = useState('');
+  const [avatarDescription, setAvatarDescription] = useState('');
+  const [creativeAngle, setCreativeAngle] = useState('');
+  const [duration, setDuration] = useState<number | null>(null);
+  const [generatedScript, setGeneratedScript] = useState('');
+  const [scriptError, setScriptError] = useState<string | null>(null);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [isIteratingScript, setIsIteratingScript] = useState(false);
 
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -208,6 +216,135 @@ export default function ReverseEngineer() {
       setError(errorMessage);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleGenerateScript = async () => {
+    if (!result) {
+      setScriptError('Genera primero el análisis.');
+      return;
+    }
+    if (!productDescription.trim()) {
+      setScriptError('Describe el producto para generar el script.');
+      return;
+    }
+    if (!avatarDescription.trim()) {
+      setScriptError('Describe el avatar/personaje para generar el script.');
+      return;
+    }
+
+    setIsGeneratingScript(true);
+    setScriptError(null);
+    setIsInsufficientCredits(false);
+
+    try {
+      let videoBase64: string | null = null;
+      if (uploadedVideo) {
+        videoBase64 = await fileToBase64(uploadedVideo);
+      }
+
+      const response = await fetch('/api/generate-viral-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: socialMediaUrl.trim() || null,
+          metaAdUrl: metaAdUrl.trim() || null,
+          video: videoBase64,
+          productDescription: productDescription.trim(),
+          avatarDescription: avatarDescription.trim(),
+          creativeAngle: creativeAngle.trim() || null,
+          duration,
+        }),
+      });
+
+      const rawText = await response.text();
+      let data: { script?: string; generatedScript?: string; result?: string; error?: string; details?: string } = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        if (!response.ok) {
+          setScriptError(rawText || `Error ${response.status}: ${response.statusText}`);
+        } else {
+          setScriptError('Respuesta inválida del servidor al generar script.');
+        }
+        return;
+      }
+
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setScriptError(null);
+        } else {
+          setScriptError(data.error || data.details || 'No se pudo generar el script.');
+        }
+        return;
+      }
+
+      const resolvedScript =
+        (typeof data.script === 'string' && data.script) ||
+        (typeof data.generatedScript === 'string' && data.generatedScript) ||
+        (typeof data.result === 'string' && data.result) ||
+        '';
+      setGeneratedScript(resolvedScript.trim());
+    } catch (err: any) {
+      setScriptError(err?.message || 'Error al generar script desde reverse engineer.');
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  };
+
+  const handleIterateScript = async () => {
+    if (!generatedScript.trim()) {
+      setScriptError('No hay script para iterar. Genera uno primero.');
+      return;
+    }
+    if (!duration || ![15, 30, 45, 60].includes(duration)) {
+      setScriptError('Selecciona una duración válida (15, 30, 45 o 60).');
+      return;
+    }
+    if (!productDescription.trim() || !avatarDescription.trim()) {
+      setScriptError('Completa Product y Avatar para iterar.');
+      return;
+    }
+
+    setIsIteratingScript(true);
+    setScriptError(null);
+    setIsInsufficientCredits(false);
+
+    try {
+      const response = await fetch('/api/adapt-viral-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalScript: generatedScript,
+          duration,
+          productDescription: productDescription.trim(),
+          avatarDescription: avatarDescription.trim(),
+          creativeAngle: creativeAngle.trim() || null,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 402) {
+          setIsInsufficientCredits(true);
+          setScriptError(null);
+        } else {
+          setScriptError(data.error || data.details || 'No se pudo iterar el script.');
+        }
+        return;
+      }
+
+      const iteratedScript =
+        (typeof data.script === 'string' && data.script) ||
+        (typeof data.generatedScript === 'string' && data.generatedScript) ||
+        (typeof data.result === 'string' && data.result) ||
+        '';
+      setGeneratedScript(iteratedScript.trim());
+    } catch (err: any) {
+      setScriptError(err?.message || 'Error al iterar el script.');
+    } finally {
+      setIsIteratingScript(false);
     }
   };
 
@@ -466,6 +603,93 @@ export default function ReverseEngineer() {
                 </div>
               </div>
             )}
+
+            {/* Script Actions (inside Reverse Engineer) */}
+            <div className="rounded-2xl border border-blue-500/40 bg-zinc-950/70 p-6 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+              <h3 className="mb-4 text-lg font-semibold text-blue-200">
+                Script Builder (desde este Reverse Engineer)
+              </h3>
+
+              <div className="space-y-4">
+                <textarea
+                  value={productDescription}
+                  onChange={(e) => setProductDescription(e.target.value)}
+                  placeholder="Product: ¿qué producto vendes?"
+                  rows={3}
+                  disabled={isGeneratingScript || isIteratingScript}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+
+                <textarea
+                  value={avatarDescription}
+                  onChange={(e) => setAvatarDescription(e.target.value)}
+                  placeholder="Avatar: ¿quién lo dice y con qué tono?"
+                  rows={3}
+                  disabled={isGeneratingScript || isIteratingScript}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+
+                <textarea
+                  value={creativeAngle}
+                  onChange={(e) => setCreativeAngle(e.target.value)}
+                  placeholder="Creative angle (opcional)"
+                  rows={2}
+                  disabled={isGeneratingScript || isIteratingScript}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+
+                <div className="grid grid-cols-4 gap-2">
+                  {[15, 30, 45, 60].map((seconds) => (
+                    <button
+                      key={seconds}
+                      onClick={() => setDuration(duration === seconds ? null : seconds)}
+                      disabled={isGeneratingScript || isIteratingScript}
+                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                        duration === seconds
+                          ? 'border-blue-400 bg-blue-500/20 text-blue-200'
+                          : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-blue-500/50'
+                      }`}
+                    >
+                      {seconds}s
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleGenerateScript}
+                    disabled={isGeneratingScript || isIteratingScript || !productDescription.trim() || !avatarDescription.trim()}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isGeneratingScript ? 'Generating script...' : 'Generate Script'}
+                  </button>
+                  <button
+                    onClick={handleIterateScript}
+                    disabled={isGeneratingScript || isIteratingScript || !generatedScript.trim() || !duration}
+                    className="rounded-lg border border-blue-400/50 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-200 hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isIteratingScript ? 'Iterating...' : 'Iterate Script'}
+                  </button>
+                  {generatedScript.trim() && (
+                    <CopyButton
+                      text={generatedScript}
+                      label="Copy Script"
+                      copiedLabel="Copied!"
+                    />
+                  )}
+                </div>
+
+                {scriptError && (
+                  <p className="text-sm text-red-300">{scriptError}</p>
+                )}
+
+                {generatedScript.trim() && (
+                  <div className="rounded-xl border border-zinc-700 bg-zinc-950 p-4">
+                    <p className="text-sm leading-relaxed text-zinc-100">{generatedScript}</p>
+                  </div>
+                )}
+              </div>
+            </div>
 
           </div>
         )}
