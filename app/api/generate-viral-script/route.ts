@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     let video: string | null = null;
     let videoFile: File | null = null;
     let productDescription = '';
+    let avatarDescription = '';
     let creativeAngle: string | null = null;
     let duration: number | null = null;
 
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
       videoFile = formData.get('video') as File | null;
       if (videoFile && !(videoFile instanceof File)) videoFile = null;
       productDescription = (formData.get('productDescription') as string) || '';
+      avatarDescription = (formData.get('avatarDescription') as string) || '';
       creativeAngle = (formData.get('creativeAngle') as string) || null;
       const durationVal = formData.get('duration');
       duration = durationVal !== null && durationVal !== '' ? Number(durationVal) : null;
@@ -76,6 +78,7 @@ export async function POST(request: NextRequest) {
       metaAdUrl = body.metaAdUrl ?? null;
       video = body.video ?? null;
       productDescription = body.productDescription ?? '';
+      avatarDescription = body.avatarDescription ?? '';
       creativeAngle = body.creativeAngle ?? null;
       duration = body.duration ?? null;
     }
@@ -91,6 +94,12 @@ export async function POST(request: NextRequest) {
     if (!productDescription || !productDescription.trim()) {
       return NextResponse.json(
         { error: 'Product description is required' },
+        { status: 400 }
+      );
+    }
+    if (!avatarDescription || !avatarDescription.trim()) {
+      return NextResponse.json(
+        { error: 'Avatar description is required' },
         { status: 400 }
       );
     }
@@ -438,7 +447,10 @@ The user has provided a specific creative angle that you MUST follow:
 ${transcript}
 
 **Product Description:**
-${productDescription}${creativeAngleInstructions}${durationInstructions}
+${productDescription}
+
+**Avatar (Who Speaks the Script):**
+${avatarDescription}${creativeAngleInstructions}${durationInstructions}
 
 **Your Creative Task:**
 Transform the original viral video transcript into a fresh, creative script for the user's product. You MUST:
@@ -453,13 +465,16 @@ Transform the original viral video transcript into a fresh, creative script for 
 
 5. **Adapt Hooks and Body Creatively** - Transform the opening hook to be attention-grabbing for the user's product, but maintain the same hook style and energy. Adapt the body content to showcase the product's unique value while maintaining the narrative flow.
 
-6. **Keep Natural Language** - The script should feel authentic, conversational, and natural - like a real person enthusiastically talking about the product.${creativeAngleInstructions ? '\n\n7. **Follow Creative Angle** - The script must be generated based on the provided creative angle while maintaining the format and style of the original video.' : ''}${durationInstructions ? '\n\n8. **Respect Duration** - The script must fit within the specified duration when spoken naturally.' : ''}
+6. **Avatar-Driven Voice (MANDATORY)** - The script MUST sound like the avatar described by the user. Match their speaking rhythm, vocabulary, confidence level, personality, and emotional tone while still being clear and conversion-focused.
+
+7. **Keep Natural Language** - The script should feel authentic, conversational, and natural - like a real person enthusiastically talking about the product.${creativeAngleInstructions ? '\n\n8. **Follow Creative Angle** - The script must be generated based on the provided creative angle while maintaining the format and style of the original video.' : ''}${durationInstructions ? '\n\n9. **Respect Duration** - The script must fit within the specified duration when spoken naturally.' : ''}
 
 **Critical Requirements:**
 - **NEVER copy exact phrases or sentences** - Everything must be creatively rewritten
 - Maintain the emotional triggers, promises, and calls-to-action structure, but express them uniquely
 - Add relevant product details, benefits, and features that enhance the script
 - Keep the same energy, enthusiasm level, and speaking style
+- Keep the avatar voice consistent from first line to CTA
 - The script should feel fresh and creative, not like a template
 - Maintain the original's storytelling magic but with new, improved content
 - Do NOT add analysis or explanations - just output the transformed script

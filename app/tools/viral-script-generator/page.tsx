@@ -11,6 +11,7 @@ export default function ViralScriptGenerator() {
   const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [productDescription, setProductDescription] = useState<string>('');
+  const [avatarDescription, setAvatarDescription] = useState<string>('');
   const [creativeAngle, setCreativeAngle] = useState<string>('');
   const [duration, setDuration] = useState<number | null>(null);
   const [generatedScript, setGeneratedScript] = useState<string>('');
@@ -64,6 +65,10 @@ export default function ViralScriptGenerator() {
       setError('Please describe your product');
       return;
     }
+    if (!avatarDescription.trim()) {
+      setError('Please describe the avatar/persona');
+      return;
+    }
 
     setIsGenerating(true);
     setIsScraping(true);
@@ -85,6 +90,7 @@ export default function ViralScriptGenerator() {
           metaAdUrl: metaAdUrl.trim() || null,
           video: videoBase64,
           productDescription,
+          avatarDescription,
           creativeAngle: creativeAngle.trim() || null,
           duration: duration,
         }),
@@ -152,6 +158,9 @@ export default function ViralScriptGenerator() {
         body: JSON.stringify({
           originalScript: generatedScript,
           duration: duration,
+          productDescription,
+          avatarDescription,
+          creativeAngle: creativeAngle.trim() || null,
         }),
       });
 
@@ -323,6 +332,24 @@ export default function ViralScriptGenerator() {
           />
         </div>
 
+        {/* Avatar Input */}
+        <div className="mb-8">
+          <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
+            Avatar (Character Voice)
+          </label>
+          <textarea
+            value={avatarDescription}
+            onChange={(e) => setAvatarDescription(e.target.value)}
+            placeholder="Describe who is speaking the script... (e.g., 'Confident female UGC creator, 27, friendly but direct, uses simple punchy language and calls out objections fast')"
+            rows={4}
+            disabled={isGenerating}
+            className="w-full rounded-xl border-2 border-zinc-700/50 bg-zinc-800/50 px-5 py-4 text-sm leading-relaxed text-zinc-50 placeholder-zinc-500/70 focus:border-amber-500/70 focus:bg-zinc-800/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+          />
+          <p className="mt-2 text-xs text-zinc-500">
+            Define the character/persona that delivers the script. Tone, cadence, and phrasing will adapt to this avatar.
+          </p>
+        </div>
+
         {/* Creative Angle Input (Optional) */}
         <div className="mb-8">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
@@ -371,7 +398,7 @@ export default function ViralScriptGenerator() {
         <div className="mb-8">
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || (!videoUrl.trim() && !metaAdUrl.trim() && !uploadedVideo) || !productDescription.trim()}
+            disabled={isGenerating || (!videoUrl.trim() && !metaAdUrl.trim() && !uploadedVideo) || !productDescription.trim() || !avatarDescription.trim()}
             className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 text-base font-bold text-white shadow-[0_0_30px_rgba(250,204,21,0.4)] transition-all hover:from-amber-400 hover:to-amber-500 hover:shadow-[0_0_40px_rgba(250,204,21,0.5)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500 disabled:hover:to-amber-600"
           >
             {isScraping ? 'Scraping transcript...' : isGenerating ? 'Generating viral script...' : 'Generate Viral Script'}

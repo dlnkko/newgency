@@ -44,45 +44,58 @@ The image MUST look as if the phone was placed in a fixed position (e.g., on a t
 // ========== 2. HYPERREALISM BASE (shared by all lighting presets) ==========
 
 export const UGC_HYPERREALISM_BASE = `
-**CRITICAL - PHONE CAMERA PHOTOREALISM (PHYSICAL SIMULATION, NOT ARTISTIC FILTER):**
-The image MUST look like it was captured with a real smartphone in a real-world setting. Prioritize physical simulation over stylization. **NO** professional studio, **NO** cinematic grading, **NO** beauty filters.
+**CRITICAL - IPHONE 13 PHOTO REALISM (NO CGI, NO BEAUTY FILTER):**
+The image MUST look like a **real photo just taken with an iPhone 13**, not a 3D render. Natural iPhone sharpness: clean, appealing, realistic, but **without** clinical macro detail. **NO** professional studio, **NO** cinematic grading, **NO** beauty filters.
 
-**1. PHYSICALLY BASED LIGHTING AND SURFACE REFLECTION (MANDATORY):**
-- **Single-source directional light:** Use complex, single-source, directional lighting (e.g. direct low sun, harsh golden hour, single window light). The light MUST create distinct shadows and bright, sharp specular highlights. Avoid soft/even/all-encompassing studio light or flat diffuse ambient.
-- **Micro-texture & surface roughness:** All surfaces (skin, fabric, metal) must have realistic non-uniform micro-textures and physically accurate roughness. Render visible, non-smoothed skin pore structure, micro-imperfections, and fine vello facial (peach fuzz). Skin must show visible natural specular glossiness (oils/sweat) to define volumetric form and prevent a flat matte look.
-- **Global illumination (radiosity):** Objects must affect the lighting of their neighbors. The background's ambient light must physically influence the subject; the subject must cast subtle colored light onto nearby surfaces (light bounce).
+**1. LIGHTING AND SURFACE RESPONSE (MANDATORY):**
+- **Single-source directional light:** One believable light source (sun, window, room light) creating soft realistic highlights and gentle shadows. Avoid perfectly even studio schemes or flat ambient.
+- **Skin surface realism (SOFT):** Skin should look like a good iPhone 13 photo: clean, smooth but real. Use language like "natural, clean skin with gentle texture", never "visible pores" or "microscopic detail". Mention only subtle natural sheen from skin oils.
+- **Fabric & materials:** Clothes respond naturally to light with realistic folds and soft texture, without thread-by-thread hyper-sharp detail.
+- **Global illumination:** Environment light tints the subject softly and the subject can bounce a little color back – always subtle and natural.
 
 **2. LENS AND CAMERA MECHANICS (MANDATORY):**
-- **Smartphone lens distortion:** Simulate natural wide-angle lens distortion (16mm–20mm) and foreshortening typical of handheld selfies, where the subject's arm/hand is closer to the lens.
-- **Optical depth of field:** Do NOT use Gaussian blur. Simulate physically accurate shallow depth of field with a defined focal point. Background blur must be organic and complex, preserving light points (bokeh) and atmospheric texture.
-- **Camera noise & artefacts:** Include a subtle, organic layer of digital noise (grain) and minor chromatic aberration toward the edges of the frame to break perfect rendering and simulate a real sensor.
-- **Dynamic contrast:** Do NOT compress the dynamic range. Ensure rich, deep shadows and bright, detailed highlights without over-processing.
+- **Smartphone lens behavior:** Typical iPhone wide lens (~24–26mm), mild perspective distortion, natural field of view.
+- **Depth of field (NO background blur):** Deep iPhone 13 DoF so the **background stays sharp and fully legible** like a normal iPhone photo. The subject may show tiny real-phone imperfection (slight moment softness from micro-motion / imperfect focus), but **never cinematic blur** and **never background blur**. **NO Portrait Mode, NO bokeh, NO background blur**.
+- **Camera noise & artefacts:** Include a **more noticeable iPhone-like sensor noise/grain** plus mild chromatic aberration near frame edges only if it helps break unrealistic perfection. Keep it messy but still plausible (not CGI-clean).
+- **Dynamic contrast:** Balanced iPhone 13 dynamic range, allowing small natural clipping in bright conditions (as in real snapshots). Avoid HDR-overprocessed / crunchy tone‑mapping.
+
+**3. RAW UGC IMPERFECTIONS (MANDATORY - SHITTY UGLY RAW LOOK):**
+- Unpolished iPhone snapshot look: **clearly visible JPEG compression artifacts**, higher sensor noise/grain, more noticeable white-balance drift, and more obvious exposure “mistakes” (slight over/under, mild clipping), plus awkward/unremarkable framing as a real phone photo.
+- Allow slightly stronger lens/oil smudge vibe, mild flare, or minor ringing only if it appears naturally in real scenes.
+- Keep it casual: not beauty-graded, not studio-polished, not CGI-clean.
 
 **NEGATIVE PROMPTS (ABSOLUTE PROHIBITIONS):**
-NO over-smoothed or beauty-filtered skin. NO glamour-shot post-processing. NO uniform fabric patterns (must show imperfections and minor pilling). NO perfectly even flat lighting (no filler lights). NO synthetic-looking post-render sharpening. NO device frames or UI elements.`;
+NO beauty-filtered / airbrushed skin. NO hyper-detailed pores or microscope-level texture. NO glamour-shot post-processing. NO plastic, uniform fabrics. NO perfectly even flat lighting with many fillers. Avoid CGI oversharpening/large halo rings; **JPEG ringing and compression imperfections are allowed**. **NO cinematic background blur or heavy bokeh – keep background naturally readable like a real iPhone 13 photo.** NO device frames or UI elements.`;
 
 // ========== 3. LIGHTING PRESETS ==========
 
 export const UGC_LIGHTING_NIGHT_OUTSIDE = UGC_HYPERREALISM_BASE + `
 
 **LIGHTING: NIGHT OUTSIDE (SMARTPHONE CAPTURE):**
-Real nighttime outdoor captured on iPhone — NOT cinematic night. Single directional light sources: streetlights, car headlights, neon signs — each with realistic falloff, creating distinct pools of light and deep unlit areas. Do NOT compress dynamic range: rich deep shadows with bright isolated highlights from each light source. Organic digital noise (grain) and lower exposure typical of a real iPhone at night. Skin and fabric textures physically present under available light (pore structure, fabric weave visible under light sources). Authentic iPhone color science — warm/cool depending on light source temperature. No film-style grading, no filler lights filling the shadows.`;
+Match a real iPhone 13 night photo (Night Mode / low-light smartphone capture) — **NOT** cinematic. The scene should look like a casual phone photo taken at night (street OR outdoor venue/resort patio with warm practical lights and greenery).
+
+- **Light sources**: Practical real lights only (street lamps, shop signs, car headlights, window light) OR warm venue/resort practicals (garden uplights, pathway lights, warm sconces, pool/patio lighting). Natural falloff, no staged film lighting.
+- **Exposure**: iPhone-like night exposure: slightly lifted shadows compared to real darkness, but still natural. Avoid dramatic underexposure or film-noir contrast.
+- **Shadows**: Soft and natural; do not create sharp dramatic shadows. No “cinematic” shadow shaping.
+- **Color**: Mixed night lighting is OK (warm street lamps + cooler ambient). Keep white balance and color science realistic, like iPhone 13.
+- **Skin & detail**: Natural iPhone 13 skin — clean, soft, real, no beauty filter and no hyper-detailed pores. Textures should read naturally under available light without looking like CGI.
+- **Noise / motion**: Subtle smartphone noise and slight low-light softness are OK (authentic), but do NOT make it gritty. Add a **tiny handheld feel**: slight micro-shake / subtle motion blur like a real iPhone snapshot at night (very light, not smeary).
+- **BACKGROUND (CRITICAL - NO BLUR AT ALL):** The background must remain **sharp and fully legible** like a normal iPhone 13 photo. **NO Portrait Mode. NO bokeh. NO blur.** Distant lights may bloom slightly, but the environment must remain present and readable.
+- **Overall**: Indistinguishable from a real iPhone 13 night street photo — casual, unfiltered, not polished, a bit RAW/unpolished (slightly imperfect exposure/noise), no film grading, no device frames or UI.`;
 
 export const UGC_LIGHTING_DAY_OUTSIDE = UGC_HYPERREALISM_BASE + `
 
-**LIGHTING: DAY OUTSIDE (SMARTPHONE CAPTURE - REFERENCE STANDARD):**
-Apply this exact structure to ALL Day Outside prompts. Single-source natural directional light from outdoors (soft overcast diffusion or low sun from front-upper direction). In your prompt include:
+**LIGHTING: DAY OUTSIDE — OUTSIDE NATURAL LIGHTING (REFERENCE VISUAL — APPLY TO EVERY DAY OUTSIDE PROMPT):**
+Match this outdoor UGC look: bright but **soft** natural sunlight (late morning / early afternoon or light overcast — **NOT** harsh midday sun). Think park or urban green space, candid chest-up portrait.
 
-- **Light**: Directional natural daylight from a defined angle (e.g. "soft natural daylight from front-upper, slight left"); creates visible illuminated side and subtly shadowed side. Neutral to warm color temperature with authentic iPhone light diffusion.
-- **Shadows**: Soft with proper natural falloff from the light direction — subtle but present and physically accurate. Do NOT use flat shadowless lighting.
-- **Highlights**: Visible specular highlights on skin (forehead, nose, cheekbones) with authentic iPhone sensor rolloff. Skin shows natural specular glossiness from natural oils.
-- **Skin texture**: Visible pore structure, natural imperfections, natural skin tone variation, peach fuzz in backlit zones. NO beauty filter, NO smooth skin.
-- **Dynamic range**: Rich, full dynamic range — detailed highlights and deep-enough shadows without over-processing.
-- **Framing**: Intimate chest-up or medium shot, slight upward angle for selfie-style; or as the user describes. Spontaneous and unposed.
-- **Fabric/material**: Threads, weave imperfections, realistic folds. Clear material differentiation.
-- **Depth of field**: Physically accurate shallow DoF with organic complex bokeh (light points, atmospheric texture) — NOT Gaussian blur.
-- **Noise/aberration**: Subtle organic digital grain, minor chromatic aberration at frame edges.
-- **End**: Clean hyperrealistic photo, no device frames, no UI elements, indistinguishable from a genuine unposed smartphone capture.`;
+- **Light direction & quality**: Primary sun from **front-right of the subject, slightly elevated** (or front-upper-right). Illuminates the face evenly with a healthy natural glow. Light is **soft and flattering** — diffused enough that highlights are **not blown out**; detail remains on forehead, nose bridge, cheekbones, shoulder, hair.
+- **Shadows**: **Soft and subtle** — under chin, along the **opposite side** of the face and neck from the key light, gentle under nose and lower lip. Enough chiaroscuro for 3D form **without** dark or dramatic contrast. Never harsh studio or cinematic shadows.
+- **Color**: Natural balanced palette — **warm sunlight** on skin and clothes plus **slightly cooler ambient** from sky/green foliage in shadow areas. Authentic iPhone color science and white balance.
+- **Skin (soft hyperrealism)**: Realistic skin with **soft, appealing** detail — natural pore structure and peach fuzz **where light grazes** the cheeks and forehead; **subtle** specular gloss from natural oils on forehead and cheekbones (volumetric, not plastic). NO beauty filter, NO over-smoothed skin, NO harsh HDR skin.
+- **Hair & fabric**: Soft natural hair with visible strands near face and hairline; clothing shows **natural soft folds** and believable fabric texture (trench, scarf, knits) without crunchy oversharpening.
+- **Background (ABSOLUTE - NO BLUR):** Outdoor context — green foliage, trees, optional light building; background must stay **sharp and readable** like a normal iPhone 13 photo. **NO Portrait Mode, NO bokeh, NO blur.**
+- **Composition & gaze**: Medium **chest-up**; slight **upward angle** as casual phone hold. Subject should **look toward the camera** (talking-to-camera / friendly UGC) unless the user explicitly asks otherwise.
+- **Overall**: Hyperrealistic, **soft**, candid outdoor iPhone capture — unposed, slightly RAW/unpolished (slightly imperfect exposure/noise), no device frames, no UI, indistinguishable from a real phone photo.`;
 
 export const UGC_LIGHTING_ARTIFICIAL_INSIDE = UGC_HYPERREALISM_BASE + `
 
@@ -102,18 +115,18 @@ export const UGC_HYPERREALISTIC_MAIN_STYLE_INSTRUCTIONS = `
 The image MUST look like a **real casual iPhone photo** - natural, unposed, NOT professional studio. **NO** cinematic lighting, NO cinematic shadows, NO studio look.
 
 **OUTPUT PROMPT RULES (what to write in the final prompt, what NOT to write):**
-- **Do NOT include** the words "homemade", "casero", or "spontaneous and homemade casero style" in the generated prompt - they don't make sense for the image model. **Instead DESCRIBE the look**: e.g. "like a casual iPhone photo", "as if taken with an iPhone in a real moment", "natural and unposed, as iPhone captures in everyday life", "grabado de iPhone" (this one is OK - it describes the look).
-- **DO request realistic skin texture**: visible pore structure, natural skin imperfections, natural skin tone variation, very fine facial hair (peach fuzz) in backlit areas. Do NOT beauty-filter or over-smooth skin — this creates the "plastic/airbrushed" look. Instead describe "realistic pore structure", "natural skin texture", "subtle imperfections", "peach fuzz in backlit areas".
-- **DO request fabric realism**: individual threads, minor pilling, weave imperfections, realistic folds from posture.
-- **Do request**: directional natural light (specify type and source), surface-specific specularity, bounce light, shallow depth of field with complex bokeh, subtle chromatic aberration, physical lens simulation, chiaroscuro facial volumetrics.
-- **Avoid in the prompt**: "studio lighting", "perfect symmetry", "glamour processing", "over-smoothed skin", "cinematic shadows", device frames.
+- **Do NOT include** the words "homemade", "casero", or "spontaneous and homemade casero style" in the generated prompt - they don't make sense for the image model. **Instead DESCRIBE the look**: e.g. "like a casual iPhone 13 photo", "as if taken with an iPhone in a real moment", "natural and unposed, as iPhone captures in everyday life", "grabado de iPhone".
+- **Request natural iPhone 13 skin**: describe skin as "clean, natural, real iPhone 13 skin" – smooth but not plastic, with gentle natural texture. Do NOT request "visible pores", "microscopic detail", or "peach fuzz"; instead say "subtle natural texture" or "soft natural detail" and forbid beauty filters.
+- **Request fabric realism (soft)**: realistic folds and natural texture in clothes (hoodies, denim, knits) but **not** thread-by-thread microscopic sharpness.
+- **Do request**: directional natural light (specify type and source), gentle specular response on skin (soft natural sheen), slight smartphone noise, and natural depth of field similar to iPhone 13 Portrait / Photo mode.
+- **Avoid in the prompt**: "studio lighting", "perfect symmetry", "glamour processing", "over-smoothed skin", "cinematic shadows", "ultra-detailed pores", device frames.
 
 **HYPERREALISTIC UGC STYLE REQUIREMENTS (iPhone Photography Hyperrealism):**
 
-You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone photography quality. The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo. **Use the SAME standards as UGC video prompts for lighting, shadows, tonalities and color** - but always NATURAL and iPhone-like, never cinematic.
+You MUST generate a prompt that targets a REAL iPhone capture including RAW imperfections (JPEG artifacts, sensor noise, exposure mistakes). The image must look like it was taken with an iPhone - indistinguishable from a real iPhone photo (but unpolished/raw, not studio-perfect). **Use the SAME standards as UGC video prompts for lighting, shadows, tonalities and color** - but always NATURAL and iPhone-like, never cinematic.
 
 **LIGHTING, SHADOWS AND TONALITY (MANDATORY - PHYSICAL SIMULATION):**
-- **Single-source directional light (always specify):** Use complex, single-source, directional lighting — e.g. "direct low sun from front-left", "single window light from the left", "warm overhead LED from above-right". The light MUST create distinct shadows and bright sharp specular highlights. **Never** "soft even studio light", "filler lights", "all-encompassing ambient". Specify type, direction, and intensity.
+- **Single-source directional light (always specify):** Use a single, natural-looking light source — e.g. "soft afternoon sun from front-right", "single window light from the left", "warm overhead LED from above-right". The light should create gentle, realistic highlights and soft shadows – never harsh studio beams or completely flat fill. Specify type, direction, and intensity.
 - **Dynamic contrast (MANDATORY):** Do NOT compress the dynamic range. Ensure rich, deep shadows and bright, detailed highlights without over-processing. The image must have genuine tonal range.
 - **Surface-specific specularity (MANDATORY):** Skin must show visible natural specular glossiness (oils/sweat) to define volumetric form — prevents matte/airbrushed look. Metal, plastic, and fabric reflect light according to their physical properties. State this explicitly in the prompt.
 - **Global illumination / radiosity (MANDATORY):** The background's ambient light must physically influence the subject; the subject must cast subtle colored light onto nearby surfaces (light bounce). e.g. "warm bounce light from nearby warm-toned surface coloring the shadow side softly".
@@ -131,16 +144,16 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
   - **Close-up portrait framing**: Chest-up or intimate close-up; subject fills the frame; avoid wide-angle that "captures more of the room"
   - **Slightly low / slight upward angle** when it fits (e.g. selfie-style but refined); clear, focused framing on the subject
   - Do NOT default to "wide-angle lens characteristic of handheld mobile" or "purposefully amateur composition"; prefer "close-up portrait", "intimate framing", "chest-up with sharp focus on subject"
-- **Texture (CRITICAL - physical simulation, NOT beauty-filtered):**
-  - **Skin**: Render visible, realistic pore structure, subtle natural imperfections, natural skin tone variation, and very fine facial hair (peach fuzz) in backlit areas. Do NOT over-smooth skin — "plastic skin" / "airbrushed skin" is FORBIDDEN. Use: "realistic pore structure", "natural imperfections", "natural skin tone variation", "peach fuzz in backlit areas", "no beauty filter".
-  - **Fabric**: Must show individual threads, minor pilling, weave imperfections, and realistic folds determined by posture. No perfectly uniform patterns.
-  - **Material differentiation**: Clear visual separation between different surfaces (e.g. plastic gloss vs matte rubber vs soft hair).
-  - **Avoid in prompt**: "over-smoothed skin", "plastic skin", "glamour processing", "perfectly uniform patterns", "studio", "cinematic".
+- **Texture (CRITICAL - natural iPhone 13, NOT beauty-filtered):**
+  - **Skin**: Ask for "natural iPhone 13 skin" – clean, soft, realistic, with gentle natural texture, but **without** microscope-level pores or fuzz. Forbid phrases like "visible pores", "microscopic detail", "peach fuzz"; instead say "soft natural texture", "clean but real skin", "no beauty filter".
+  - **Fabric**: Realistic folds and believable cloth texture, but do NOT push for ultra-sharp weave; avoid language that implies thread-by-thread inspection.
+  - **Material differentiation**: Clear separation between different surfaces (e.g. plastic vs fabric vs hair) using natural light response, not exaggerated texture.
+  - **Avoid in prompt**: "over-smoothed skin", "plastic skin", "glamour processing", "perfectly uniform patterns", "ultra-detailed pores", "studio", "cinematic".
 - **iPhone photography aesthetic**: The image must look exactly like it was captured with an iPhone - authentic iPhone color science, realistic skin tones, natural image processing
 - **First-person or third-person perspective**: The image can be taken by the same person (first-person POV) or by someone else (third-person), but it must always look like an iPhone photo - natural, authentic, and realistic
 - **iPhone camera characteristics (PHYSICAL LENS SIMULATION):**
   - **Lens**: Simulate a specific real-world iPhone lens — e.g. "wide-angle iPhone lens with natural perspective distortion for selfies" or "iPhone 26mm equivalent with natural foreshortening".
-  - **Depth of field**: Physically accurate shallow depth of field with natural, complex bokeh — NOT a simple Gaussian blur. Focus point is sharp; bokeh has natural texture and variation.
+  - **Depth of field (ABSOLUTE - NO BLUR):** Deep iPhone 13 DoF – subject AND background sharp/legible. **NO Portrait Mode, NO bokeh, NO blur.**
   - **Chromatic aberration & noise**: Include subtle realistic digital camera noise and minor chromatic aberration toward the edges of the frame to break perfect rendering. e.g. "subtle digital sensor noise", "minor chromatic aberration at frame edges".
   - **Color science**: iPhone's authentic color science and white balance — natural, not cinematic grading.
   - **Dynamic range**: iPhone's characteristic dynamic range — as in real phone photos.
@@ -195,7 +208,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
 - In the prompt write: "iPhone photography", "taken with iPhone", "grabado de iPhone", or "like a casual iPhone photo" / "as if taken with an iPhone" — **do NOT write "homemade" or "casero"** (describe the look instead).
 - **Physical skin realism (MANDATORY)**: "visible pore structure", "natural skin imperfections", "natural skin tone variation", "peach fuzz in backlit areas", "visible natural specular glossiness from skin oils". Do NOT smooth or beauty-filter — "plastic skin" / "airbrushed skin" is FORBIDDEN.
 - **Physical lighting (MANDATORY)**: Single-source directional light with type and direction specified; surface-specific specularity; global illumination / radiosity; chiaroscuro facial volumetrics; full dynamic range (rich shadows + bright highlights).
-- **Lens mechanics (MANDATORY)**: 16mm–20mm wide-angle lens simulation with natural perspective distortion and foreshortening; physically accurate shallow DoF with organic complex bokeh (NOT Gaussian blur); subtle organic digital grain; minor chromatic aberration at frame edges.
+- **Lens mechanics (MANDATORY)**: iPhone wide lens look (~24–26mm), natural perspective distortion; **deep DoF (no blur)**; subtle organic digital grain; minor chromatic aberration at frame edges.
 - **ABSOLUTE NEGATIVE PROMPTS** (must appear as prohibitions in or alongside the generated prompt): NO over-smoothed / beauty-filtered skin. NO glamour-shot processing. NO uniform fabric patterns. NO flat even lighting / no filler lights. NO synthetic post-render sharpening. NO cinematic grading. NO device frames or UI elements.
 - Include iPhone's characteristic color science — natural color, natural exposure.
 - If flash is needed, specify "iPhone flash" or "iPhone camera flash".
@@ -206,7 +219,7 @@ You MUST generate a prompt that prioritizes ABSOLUTE HYPERREALISM with iPhone ph
   - **NO UI elements**: Do NOT include any UI elements, status bars, navigation bars, or device interface elements
   - **Just the photo**: The prompt should describe a clean photo/image without any device framing or borders
 - **Perspective clarification**:
-  - If description mentions people: Describe as **like a casual iPhone photo** — directional natural light (single source), close-up or chest-up, selfie-style angle; request visible pore structure, natural imperfections, peach fuzz in backlit areas, skin specularity; soft natural shadows from light direction; iPhone color science; shallow DoF with organic bokeh; organic digital noise. Do NOT write "homemade" or "casero" in the prompt text.
+  - If description mentions people: Describe as **like a casual iPhone 13 photo** — directional natural light (single source), close-up or chest-up, selfie-style angle; natural iPhone 13 skin; soft natural shadows; iPhone color science; **deep DoF (NO blur)**; subtle smartphone noise; do NOT write "homemade" or "casero" in the prompt text.
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
   - **Reference image priority**: Same as above — choose based on whether reference image is used in your project.
 

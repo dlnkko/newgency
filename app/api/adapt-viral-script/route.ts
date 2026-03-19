@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { originalScript, duration } = body;
+    const { originalScript, duration, productDescription, avatarDescription, creativeAngle } = body;
 
     if (!originalScript || !originalScript.trim()) {
       return NextResponse.json(
@@ -54,6 +54,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!productDescription || !String(productDescription).trim()) {
+      return NextResponse.json(
+        { error: 'Product description is required for script adaptation' },
+        { status: 400 }
+      );
+    }
+
+    if (!avatarDescription || !String(avatarDescription).trim()) {
+      return NextResponse.json(
+        { error: 'Avatar description is required for script adaptation' },
+        { status: 400 }
+      );
+    }
+
     // Adapt script to specific duration
     const adaptationPrompt = `You are an expert at adapting viral video scripts to specific durations while maintaining the core storytelling, hooks, and energy.
 
@@ -63,6 +77,16 @@ ${originalScript}
 **Target Duration:**
 ${duration} seconds
 
+**Product Description:**
+${String(productDescription).trim()}
+
+**Avatar (Who Speaks the Script):**
+${String(avatarDescription).trim()}
+
+${creativeAngle && String(creativeAngle).trim() ? `**Creative Angle (optional):**
+${String(creativeAngle).trim()}
+` : ''}
+
 **Your Task:**
 Adapt the original script to fit exactly ${duration} seconds of spoken content. You MUST:
 
@@ -71,10 +95,13 @@ Adapt the original script to fit exactly ${duration} seconds of spoken content. 
 3. **Optimize for duration** - Adjust pacing, remove or condense less critical parts, but keep all essential elements
 4. **Keep it natural** - The script should feel organic and conversational, not rushed or cut off awkwardly
 5. **Maintain conversion elements** - Keep all hooks, promises, calls-to-action, and emotional triggers
+6. **Avatar voice is mandatory** - Rewrite phrasing so the script clearly sounds like the avatar/persona above (cadence, vocabulary, confidence, attitude) while staying natural and persuasive
+7. **Product alignment** - Ensure benefits and claims remain coherent with the provided product description
+8. **Respect creative angle when provided** - If a creative angle is present, keep that narrative lens throughout
 
 **Critical Requirements:**
 - The adapted script should feel like the same script, just optimized for ${duration} seconds
-- Keep the same style, voice, and personality
+- Keep the same style and structure, but with the requested avatar voice/personality
 - Don't add new content, just optimize what exists
 - Make it flow naturally at the target duration
 - **CRITICAL FORMATTING**: The script must be output as a SINGLE, CONTINUOUS PARAGRAPH with no line breaks, no bullet points, and no special formatting. Just one flowing paragraph of text.
