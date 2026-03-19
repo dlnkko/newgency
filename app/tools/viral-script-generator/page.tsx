@@ -124,7 +124,13 @@ export default function ViralScriptGenerator() {
         return;
       }
 
-      setGeneratedScript(data.script || '');
+      const resolvedScript =
+        (typeof data.script === 'string' && data.script) ||
+        ((data as any).generatedScript && String((data as any).generatedScript)) ||
+        ((data as any).result && String((data as any).result)) ||
+        (rawText && !rawText.startsWith('{') ? rawText : '') ||
+        '';
+      setGeneratedScript(resolvedScript.trim());
     } catch (err) {
       setError('An error occurred while generating the script');
       console.error('Error generating viral script:', err);
@@ -180,7 +186,12 @@ export default function ViralScriptGenerator() {
         return;
       }
 
-      setGeneratedScript(data.script);
+      const iteratedScript =
+        (typeof data.script === 'string' && data.script) ||
+        ((data as any).generatedScript && String((data as any).generatedScript)) ||
+        ((data as any).result && String((data as any).result)) ||
+        '';
+      setGeneratedScript(iteratedScript.trim());
     } catch (err) {
       setError('An error occurred while iterating the script');
       console.error('Error iterating script:', err);
@@ -420,7 +431,7 @@ export default function ViralScriptGenerator() {
         )}
 
         {/* Generated Script */}
-        {generatedScript && (
+        {generatedScript.trim().length > 0 && (
           <div className="space-y-4">
             {/* Action Buttons */}
             <div className="flex items-center justify-between gap-4">
