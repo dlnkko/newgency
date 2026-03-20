@@ -58,6 +58,13 @@ const tools = [
     path: '/tools/research-competitors',
     description: 'Find related Instagram profiles and competitors',
     active: true
+  },
+  {
+    id: 'convert-file-to-url',
+    name: 'Convert File To URL',
+    path: '/tools/convert-file-to-url',
+    description: 'Upload local image to Gemini URI',
+    active: true
   }
 ];
 
