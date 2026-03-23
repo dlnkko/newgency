@@ -21,6 +21,14 @@ export async function getUserCredits(request: NextRequest): Promise<{
   userId: string | null;
 } | null> {
   try {
+    // Dev mode: créditos ilimitados para no bloquear iteraciones
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        credits: 1_000_000_000,
+        userId: 'dev',
+      };
+    }
+
     const user = await getAuthenticatedUser(request);
     
     if (!user) {
@@ -78,6 +86,14 @@ export async function consumeCredit(request: NextRequest): Promise<{
   error?: string;
 }> {
   try {
+    // Dev mode: no consumir créditos
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        success: true,
+        remainingCredits: 1_000_000_000,
+      };
+    }
+
     const creditsInfo = await getUserCredits(request);
     
     if (!creditsInfo || !creditsInfo.userId) {

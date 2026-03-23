@@ -65,7 +65,7 @@ The image MUST look like a **real photo just taken with an iPhone 13**, not a 3D
 - Keep it casual: not beauty-graded, not studio-polished, not CGI-clean.
 
 **NEGATIVE PROMPTS (ABSOLUTE PROHIBITIONS):**
-NO beauty-filtered / airbrushed skin. NO hyper-detailed pores or microscope-level texture. NO glamour-shot post-processing. NO plastic, uniform fabrics. NO perfectly even flat lighting with many fillers. Avoid CGI oversharpening/large halo rings; **JPEG ringing and compression imperfections are allowed**. **NO cinematic background blur or heavy bokeh – keep background naturally readable like a real iPhone 13 photo.** NO device frames or UI elements.`;
+NO beauty-filtered / airbrushed skin. NO hyper-detailed pores or microscope-level texture. NO glamour-shot post-processing. NO plastic, uniform fabrics. NO perfectly even flat lighting with many fillers. Avoid CGI oversharpening/large halo rings; **JPEG ringing and compression imperfections are allowed**. **NO cinematic background blur or heavy bokeh – keep background naturally readable like a real iPhone 13 photo.** NO device frames or UI elements. **NO overlays of any kind:** no status bar (carrier, time, battery, signal), no notch/Dynamic Island chrome, no screenshot look, no black letterboxing, no fake phone preview frame, no camera-app HUD, no watermarks or on-image UI.`;
 
 // ========== 3. LIGHTING PRESETS ==========
 
@@ -107,6 +107,47 @@ export const UGC_LIGHTING_NATURAL_INSIDE = UGC_HYPERREALISM_BASE + `
 **LIGHTING: NATURAL LIGHT INSIDE (SMARTPHONE CAPTURE):**
 Indoor natural light from a window — single directional source creating a defined lit side and a softer shadow side. Light falls from the window direction with natural falloff across the scene. Skin: visible pore structure, natural imperfections, natural skin tone variation, peach fuzz in backlit areas, natural specular glossiness from skin oils on illuminated side. Fabric: threads, weave, minor pilling, realistic folds. Dynamic range: bright window-lit areas and genuine shadow depth — do NOT flatten. Organic digital noise from smartphone sensor in indoor light. Authentic iPhone color science and white balance. No cinematic polish, no studio filler lights.`;
 
+export const UGC_LIGHTING_RING = UGC_HYPERREALISM_BASE + `
+
+**LIGHTING: RING (INDOOR FRONTAL WHITE LED — SAME LOOK AS MAKEUP/VANITY LIGHT, ZERO LIGHT HARDWARE IN FRAME):**
+Real indoor smartphone capture with **the same flattering frontal white light quality** people get from a makeup/vanity setup — **but the final image must show ONLY the person and the room**, never the light fixture or mirror product.
+
+**ENCLOSED INDOOR ONLY — MANDATORY WHEN RING IS SELECTED:**
+- The scene **must** be a **closed indoor space** (living room, bedroom, bathroom, hallway, dressing area, home office, etc.) — **never** outdoor, **never** open sky, balcony-as-exterior, street, park, or daylight-from-outdoors as the main environment.
+- If **USER_DESCRIPTION** mentions outdoor or open-air, **rewrite the scene as indoors** (same subject, same vibe, but **inside** a room with walls/ceiling) — Ring mode **does not** support exterior locations.
+
+**CRITICAL — TWO THINGS THAT TRIGGER THE GLOWING RING / MIRROR EDGE:**
+1) Words like **"ring light"** → model draws a literal circular border.
+2) Phrases like **"light from the vanity mirror"**, **"vanity mirror"**, **"lighted mirror"**, **"Hollywood mirror"** → model draws the **mirror frame, LED arc, or touch buttons** at the bottom of the frame.
+
+Your **final output prompt MUST NOT** include: "ring light", "LED ring", "vanity mirror", "light from the mirror", "mirror positioned", "illuminated mirror", "lighted makeup mirror", "glowing arc", "mirror edge", "touch buttons", or any wording that places a **mirror or lamp** in the scene as a visible object.
+
+**EXCEPTION — EYES ONLY:** A **visible frontal-LED catchlight** in the eyes is **required** (small circular or semicircular **white specular reflection** on the corneas from the invisible frontal key). That is **not** the same as drawing the physical ring — describe as **"catchlights"**, **"specular highlights in the eyes from the frontal white key"**, **"readable white reflection in both eyes"**. Do **not** omit eye catchlights for Ring.
+
+**SAFE LIGHT DESCRIPTION (copy this pattern):**
+- "Enclosed indoor room; soft frontal white LED key near the camera axis (off-camera — not visible in frame), **only** this source lights the scene; even face illumination, neutral-to-cool white balance, minimal soft shadows under jaw and nose; **clear visible circular/semicircular white catchlights in both eyes** from that frontal key."
+- Optionally: "sitting at a simple desk or dressing table in the bedroom" — **do NOT** describe a mirror on the desk; **do NOT** mention where the LED is mounted.
+
+**SINGLE LIGHT SOURCE ONLY — NO WARM / AMBER FILL (MANDATORY FOR RING):**
+- The **only** light that shapes the scene is the **invisible-in-frame white frontal key** — you see its **effect** on the face (even white illumination, cool-neutral WB on skin), nothing else competing.
+- **FORBIDDEN in the final prompt and in the image:** warm bedside lamp glow, amber/orange practicals, "warm lamp in the background", tungsten room lights, golden hour spill, sunset tone behind the subject, second key light, rim light, or any **visible warm/yellow light source** in the background.
+- Background may read as **dim, neutral, or slightly cool shadow** (typical bedroom at night with only the face lit) — **not** lit by a separate warm lamp. If the room is visible, keep it **low-luminance and desaturated** so the eye reads **one** lighting story: white frontal beauty light on the face only.
+- **Override vs generic UGC lighting text:** For Ring, **do not** describe warm bounce from walls, warm ambient fill, golden spill, or "natural color cast from a warm source" in the background — those conflict with single white-key-only.
+
+**SET / FRAMING (MANDATORY):**
+- Chest-up or medium shot focused on the face; **crop so no mirror, no lamp stand, and no glowing product edge** appears at the bottom or edges of the frame.
+- The room may show behind the subject — **sharp background, no blur** — but **zero** mirror-with-LEDs product shots; **no glowing warm lamp** visible in frame.
+
+- **Light source (concept):** **Exactly one** dominant **front-facing soft white LED** close to camera axis — same *look* as vanity lighting, **not** a multi-light cinematic setup. Treat the light as **invisible in-frame** (implied only by how the face is lit). **No additive warm lights.**
+- **Face illumination:** Even frontal wrap; soft shadows under jawline/neck; natural, not flat CGI.
+- **Eyes (MANDATORY FOR RING):** **Visible** frontal-key catchlights — small **circular or semicircular white reflections** on both eyes (the telltale sign of frontal beauty/LED lighting). **Must be present and legible**, not absent or crushed by shadow. Do **not** describe the physical ring device — only the **reflection in the eyes**. **Multiple subjects:** every visible face / avatar in frame must show matching frontal catchlights in the eyes where eyes are visible.
+- **Framing (ABSOLUTE):** No physical lamp, no mirror surface, no mirror frame, no LED strip around a mirror, no glowing white arc at the bottom, no UI/icons on a mirror — **only the person and normal bedroom/desk environment**.
+- **Color temperature:** Neutral-to-cool white, authentic iPhone WB.
+- **Skin:** Clean natural iPhone skin, no beauty filter.
+- **Environment:** **Indoor enclosed space only** — bedroom, living room, bathroom, etc.; readable context; **BACKGROUND (ABSOLUTE - NO BLUR)** like a normal iPhone 13 photo. No outdoor/exterior setting.
+- **Reflections (avoid literal ring in glass):** If the scene includes a window, **do not** show a bright circular reflection of the key light in the glass — prefer wall/drapes/corner behind the subject, or a window area that reads as dark/neutral without a mirrored specular ring.
+- **Overall:** Same stunning frontal white UGC look — **lighting spot-on, hardware invisible.**`;
+
 // ========== 4. MAIN UGC HYPERREALISTIC STYLE INSTRUCTIONS ==========
 // Replace {{USER_DESCRIPTION}}, {{REFERENCE_IMAGE_NOTE}}, {{CAMERA_ANGLE_AND_LIGHTING_BLOCK}} when building the full system prompt.
 
@@ -120,6 +161,7 @@ The image MUST look like a **real casual iPhone photo** - natural, unposed, NOT 
 - **Request fabric realism (soft)**: realistic folds and natural texture in clothes (hoodies, denim, knits) but **not** thread-by-thread microscopic sharpness.
 - **Do request**: directional natural light (specify type and source), gentle specular response on skin (soft natural sheen), slight smartphone noise, and natural depth of field similar to iPhone 13 Portrait / Photo mode.
 - **Avoid in the prompt**: "studio lighting", "perfect symmetry", "glamour processing", "over-smoothed skin", "cinematic shadows", "ultra-detailed pores", device frames.
+- **NO OVERLAY (MANDATORY in every generated prompt):** The final prompt MUST state the image is a **clean full-bleed photograph only** — **zero** on-image overlays: no status bar, carrier, clock, battery %, Wi‑Fi/signal icons, notch UI, Dynamic Island, recording indicators, camera-app interface, screenshot-style black bars, fake iPhone chrome, watermarks, or any UI on the image. Output = exported photo file, not a screen capture.
 
 **HYPERREALISTIC UGC STYLE REQUIREMENTS (iPhone Photography Hyperrealism):**
 
@@ -209,7 +251,7 @@ You MUST generate a prompt that targets a REAL iPhone capture including RAW impe
 - **Physical skin realism (MANDATORY)**: "visible pore structure", "natural skin imperfections", "natural skin tone variation", "peach fuzz in backlit areas", "visible natural specular glossiness from skin oils". Do NOT smooth or beauty-filter — "plastic skin" / "airbrushed skin" is FORBIDDEN.
 - **Physical lighting (MANDATORY)**: Single-source directional light with type and direction specified; surface-specific specularity; global illumination / radiosity; chiaroscuro facial volumetrics; full dynamic range (rich shadows + bright highlights).
 - **Lens mechanics (MANDATORY)**: iPhone wide lens look (~24–26mm), natural perspective distortion; **deep DoF (no blur)**; subtle organic digital grain; minor chromatic aberration at frame edges.
-- **ABSOLUTE NEGATIVE PROMPTS** (must appear as prohibitions in or alongside the generated prompt): NO over-smoothed / beauty-filtered skin. NO glamour-shot processing. NO uniform fabric patterns. NO flat even lighting / no filler lights. NO synthetic post-render sharpening. NO cinematic grading. NO device frames or UI elements.
+- **ABSOLUTE NEGATIVE PROMPTS** (must appear as prohibitions in or alongside the generated prompt): NO over-smoothed / beauty-filtered skin. NO glamour-shot processing. NO uniform fabric patterns. NO flat even lighting / no filler lights. NO synthetic post-render sharpening. NO cinematic grading. NO device frames or UI elements. **NO overlays** (status bar, carrier, time, battery, signal, notch, screenshot bars, letterboxing, phone mockup chrome, watermarks).
 - Include iPhone's characteristic color science — natural color, natural exposure.
 - If flash is needed, specify "iPhone flash" or "iPhone camera flash".
 - **CRITICAL - NO DEVICE FRAMES OR BORDERS**: 
@@ -223,4 +265,4 @@ You MUST generate a prompt that targets a REAL iPhone capture including RAW impe
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
   - **Reference image priority**: Same as above — choose based on whether reference image is used in your project.
 
-The goal: image like a **real casual iPhone photo** (grabado de iPhone). Natural light, natural skin and texture (as iPhone captures - **not** "visible pores" or ultra-defined), soft shadows, no cinematic. **In the final prompt:** describe the look as "like a casual iPhone photo" / "as if taken with iPhone" - do NOT write "homemade" or "casero". Do NOT ask for "visible pores" or "subtle fine lines". **CRITICAL:** Result must look like real UGC on iPhone - natural, not over-defined, NOT studio, NOT cinematic. Clean photo, no device frames. **CRITICAL: The image should be a clean photo without any device frames, borders, margins, or UI elements - just the photo itself.**{{CAMERA_ANGLE_AND_LIGHTING_BLOCK}}{{REFERENCE_IMAGE_NOTE}}`;
+The goal: image like a **real casual iPhone photo** (grabado de iPhone). Natural light, natural skin and texture (as iPhone captures - **not** "visible pores" or ultra-defined), soft shadows, no cinematic. **In the final prompt:** describe the look as "like a casual iPhone photo" / "as if taken with iPhone" - do NOT write "homemade" or "casero". Do NOT ask for "visible pores" or "subtle fine lines". **CRITICAL:** Result must look like real UGC on iPhone - natural, not over-defined, NOT studio, NOT cinematic. Clean photo, no device frames. **CRITICAL: The image should be a clean full-bleed photo without any device frames, borders, margins, overlays, status bars, or UI elements — just the photograph itself (not a screenshot, not a phone mockup).**{{CAMERA_ANGLE_AND_LIGHTING_BLOCK}}{{REFERENCE_IMAGE_NOTE}}`;

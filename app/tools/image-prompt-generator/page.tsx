@@ -21,7 +21,7 @@ export default function ImagePromptGenerator() {
   const [copyLighting, setCopyLighting] = useState<boolean>(false);
   const [attachReferenceAsReferenceOnly, setAttachReferenceAsReferenceOnly] = useState<boolean>(false); // "Se adjuntará reference image" → usar como referencia, no replicar
   const [cameraAngle, setCameraAngle] = useState<string[]>([]); // Same as video: Selfie Camera, Frontal Camera, Steady
-  const [lighting, setLighting] = useState<string | null>(null); // Same as video: Night Outside, Day Outside, Artificial Light Inside, Natural Light Inside
+  const [lighting, setLighting] = useState<string | null>(null); // Same as video + Ring: Night Outside, Day Outside, Artificial Light Inside, Natural Light Inside, Ring
   const [productImages, setProductImages] = useState<File[]>([]);
   const [productPreviews, setProductPreviews] = useState<string[]>([]);
   const [characterImages, setCharacterImages] = useState<File[]>([]);
@@ -807,6 +807,7 @@ export default function ImagePromptGenerator() {
                   { value: 'Day Outside', label: 'Day Outside' },
                   { value: 'Artificial Light Inside', label: 'Artificial Light Inside' },
                   { value: 'Natural Light Inside', label: 'Natural Light Inside' },
+                  { value: 'Ring', label: 'Ring' },
                 ].map((opt) => (
                   <button
                     key={opt.value ?? 'none'}
@@ -821,6 +822,11 @@ export default function ImagePromptGenerator() {
                   </button>
                 ))}
               </div>
+              {lighting === 'Ring' && (
+                <p className="mt-3 text-xs text-amber-200/80">
+                  <strong>Ring:</strong> escena siempre en interior cerrado; única luz frontal blanca (el aparato no se ve); reflejo tipo catchlight blanco visible en los ojos. Sin luz cálida de fondo.
+                </p>
+              )}
             </div>
           </>
         )}
