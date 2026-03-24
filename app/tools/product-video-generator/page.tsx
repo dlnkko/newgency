@@ -24,6 +24,9 @@ export default function ProductVideoGenerator() {
   const [isGeneratingLastFramePrompt, setIsGeneratingLastFramePrompt] = useState<boolean>(false);
   const [isGeneratingAnimationFromFrames, setIsGeneratingAnimationFromFrames] = useState<boolean>(false);
   const [ugcMode, setUgcMode] = useState<boolean>(false);
+  const [ugcCameraMode, setUgcCameraMode] = useState<'selfie' | 'gimbal'>('selfie');
+  /** When true, prompts enforce product identity vs the uploaded first frame ("as seen in the attached image"). */
+  const [productLock, setProductLock] = useState(false);
 
   const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -140,6 +143,8 @@ export default function ProductVideoGenerator() {
           actionDescription: actionDescription.trim(),
           script: script.trim() || null,
           isUGC: ugcMode,
+          ugcCameraMode: ugcMode ? ugcCameraMode : null,
+          lockProductFromFrame: productLock,
         }),
       });
 
@@ -198,6 +203,8 @@ export default function ProductVideoGenerator() {
           script: script.trim() || null,
           lastFrameNanoBananaOnly: true,
           isUGC: ugcMode,
+          ugcCameraMode: ugcMode ? ugcCameraMode : null,
+          lockProductFromFrame: productLock,
         }),
       });
       const rawText = await response.text();
@@ -247,6 +254,8 @@ export default function ProductVideoGenerator() {
           script: script.trim() || null,
           firstAndLastFrameAnimation: true,
           isUGC: ugcMode,
+          ugcCameraMode: ugcMode ? ugcCameraMode : null,
+          lockProductFromFrame: productLock,
         }),
       });
       const rawText = await response.text();
@@ -300,9 +309,42 @@ export default function ProductVideoGenerator() {
               UGC
             </button>
             {ugcMode && (
-              <p className="mt-2 text-xs text-zinc-500">
-                Prompts adaptados a UGC: si la imagen es tipo selfie/sosteniendo iPhone, cámara shaky, movimientos naturales y realistas.
-              </p>
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-zinc-500">
+                  Prompts adaptados a UGC. Elige el modo de cámara para forzar el estilo del movimiento.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUgcCameraMode('selfie')}
+                    disabled={isGenerating || isGeneratingLastFramePrompt || isGeneratingAnimationFromFrames}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 ${
+                      ugcCameraMode === 'selfie'
+                        ? 'border-amber-500/80 bg-amber-500/20 text-amber-300'
+                        : 'border-zinc-700/60 bg-zinc-800/40 text-zinc-400 hover:border-amber-500/40 hover:text-amber-300'
+                    }`}
+                  >
+                    Selfie
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUgcCameraMode('gimbal')}
+                    disabled={isGenerating || isGeneratingLastFramePrompt || isGeneratingAnimationFromFrames}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 ${
+                      ugcCameraMode === 'gimbal'
+                        ? 'border-amber-500/80 bg-amber-500/20 text-amber-300'
+                        : 'border-zinc-700/60 bg-zinc-800/40 text-zinc-400 hover:border-amber-500/40 hover:text-amber-300'
+                    }`}
+                  >
+                    Gimbal
+                  </button>
+                </div>
+                <p className="text-[11px] text-zinc-500">
+                  {ugcCameraMode === 'selfie'
+                    ? 'Selfie: handheld natural con micro shake realista, como avatar sosteniendo el celular.'
+                    : 'Gimbal: ultra smooth, sin jitter, tracking walk-and-talk con arco/orbita de atras hacia frente.'}
+                </p>
+              </div>
             )}
           </div>
 
@@ -350,6 +392,26 @@ export default function ProductVideoGenerator() {
                     className="hidden"
                   />
                 </label>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setProductLock(!productLock)}
+                  disabled={!productImage || isGenerating || isGeneratingLastFramePrompt || isGeneratingAnimationFromFrames}
+                  className={`rounded-xl border-2 px-4 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                    productLock
+                      ? 'border-emerald-500/80 bg-emerald-500/20 text-emerald-200'
+                      : 'border-zinc-700/50 bg-zinc-800/50 text-zinc-400 hover:border-emerald-500/50'
+                  }`}
+                  title="Fija el producto al primer frame: sin morph, con descripción y “as seen in the attached image”"
+                >
+                  Product
+                </button>
+                <p className="text-xs text-zinc-500 max-w-xl">
+                  {productLock
+                    ? 'Activo: el video no debe transformar el producto del frame; los prompts pedirán consistencia y la frase “as seen in the attached image”.'
+                    : 'Opcional: activa para anclar el producto al frame subido (primera imagen) en los modelos de IA.'}
+                </p>
               </div>
             </div>
 

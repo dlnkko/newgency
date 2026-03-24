@@ -182,6 +182,7 @@ export default function VideoPromptGenerator() {
   const [bRollAnimation, setBRollAnimation] = useState<boolean>(false); // B-roll: action only, no script, hyperrealistic
   const [bRollSceneCount, setBRollSceneCount] = useState<1 | 2>(2); // B-roll: 1 or 2 scenes
   const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
+  const [ugcCameraMode, setUgcCameraMode] = useState<'selfie' | 'gimbal'>('selfie'); // UGC capture style
   
   // Copy Video mode state
   const [referenceVideo, setReferenceVideo] = useState<File | null>(null);
@@ -845,6 +846,7 @@ export default function VideoPromptGenerator() {
           description: autoDescription.trim(),
           productImage: productImageBase64,
           isUGC: isUGC,
+          ugcCameraMode: isUGC ? ugcCameraMode : null,
           bRollAnimation: bRollAnimation,
           bRollSceneCount: bRollAnimation ? bRollSceneCount : null
         }),
@@ -965,6 +967,7 @@ export default function VideoPromptGenerator() {
           script: autoScript.trim(),
           productImage: productImageBase64,
           isUGC: isUGC,
+          ugcCameraMode: isUGC ? ugcCameraMode : null,
           productPhotoWillBeAttached: productPhotoWillBeAttached
         }),
       });
@@ -2096,6 +2099,38 @@ export default function VideoPromptGenerator() {
                   <p className="text-xs text-amber-300">
                     <strong>UGC Mode ON:</strong> The video will be generated as hyperrealistic UGC content, as if recorded by a real person on their iPhone with authentic mobile aesthetics, natural handheld movements, and photorealistic textures.
                   </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/90">UGC Camera</span>
+                    <button
+                      type="button"
+                      onClick={() => setUgcCameraMode('selfie')}
+                      disabled={isGenerating}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        ugcCameraMode === 'selfie'
+                          ? 'border-amber-400/80 bg-amber-400/20 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
+                          : 'border-zinc-700/60 bg-zinc-900/40 text-zinc-300 hover:border-amber-400/50 hover:text-amber-200'
+                      }`}
+                    >
+                      Selfie
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUgcCameraMode('gimbal')}
+                      disabled={isGenerating}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        ugcCameraMode === 'gimbal'
+                          ? 'border-amber-400/80 bg-amber-400/20 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
+                          : 'border-zinc-700/60 bg-zinc-900/40 text-zinc-300 hover:border-amber-400/50 hover:text-amber-200'
+                      }`}
+                    >
+                      Gimbal
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[11px] text-amber-100/80">
+                    {ugcCameraMode === 'selfie'
+                      ? 'Selfie: avatar sostiene el telefono, movimiento handheld natural con micro-jitter realista.'
+                      : 'Gimbal: movimiento ultra smooth sin shake, tracking walk-and-talk con arco de atras hacia frente.'}
+                  </p>
                 </div>
               )}
               <textarea
@@ -2150,6 +2185,38 @@ export default function VideoPromptGenerator() {
                 <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
                   <p className="text-xs text-amber-300">
                     <strong>UGC Mode ON:</strong> The video will be generated as hyperrealistic UGC content, as if recorded by a real person on their iPhone with authentic mobile aesthetics, natural handheld movements, and photorealistic textures.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/90">UGC Camera</span>
+                    <button
+                      type="button"
+                      onClick={() => setUgcCameraMode('selfie')}
+                      disabled={isGenerating}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        ugcCameraMode === 'selfie'
+                          ? 'border-amber-400/80 bg-amber-400/20 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
+                          : 'border-zinc-700/60 bg-zinc-900/40 text-zinc-300 hover:border-amber-400/50 hover:text-amber-200'
+                      }`}
+                    >
+                      Selfie
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUgcCameraMode('gimbal')}
+                      disabled={isGenerating}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        ugcCameraMode === 'gimbal'
+                          ? 'border-amber-400/80 bg-amber-400/20 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.25)]'
+                          : 'border-zinc-700/60 bg-zinc-900/40 text-zinc-300 hover:border-amber-400/50 hover:text-amber-200'
+                      }`}
+                    >
+                      Gimbal
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[11px] text-amber-100/80">
+                    {ugcCameraMode === 'selfie'
+                      ? 'Selfie: avatar sostiene el telefono, movimiento handheld natural con micro-jitter realista.'
+                      : 'Gimbal: movimiento ultra smooth sin shake, tracking walk-and-talk con arco de atras hacia frente.'}
                   </p>
                 </div>
               )}

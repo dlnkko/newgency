@@ -1765,7 +1765,36 @@ Provide ONLY the detailed description as a single, continuous paragraph. No head
     } else if (style === 'change-elements') {
       // Change Elements mode: replace specific elements in the base image with new elements
       // CRITICAL: Must maintain the EXACT format/type of image (screenshot, photo, etc.) unless user explicitly asks to change it
-      
+
+      const changeElementsLightingPresetLock =
+        lighting && typeof lighting === 'string'
+          ? `
+
+**LIGHTING PRESET SELECTED IN UI: "${lighting}"**
+**Do NOT** preserve the base image's original lighting when this preset is active. **Relight** the entire scene to match the **PRESET SPECIFICATION** in the appendix at the end of these instructions. Still preserve: same camera angle, framing, composition, subjects, objects, and format/type — **only** the illumination changes (unless the user's text explicitly requests additional edits).`
+          : '';
+
+      const changeElementsRelightAppendix =
+        lighting && typeof lighting === 'string' && imageLightingBlock.trim() !== ''
+          ? `
+
+---
+
+**CHANGE ELEMENTS — RELIGHT ONLY (USER CHOSE A LIGHTING PRESET: "${lighting}")**
+Unless the user's description explicitly requires **other** changes (replace element, new background, new text, etc.), the **primary** job is **relighting only**:
+- **Preserve unchanged:** composition, camera angle, framing, subject poses, object placement, identity of people/products, readable text/logos, UI structure, background layout, aspect ratio, and **format/type** (screenshot vs photo vs mockup vs design).
+- **Replace fully:** **all lighting** — key/fill/rim/ambient, shadow placement and softness, highlight intensity, color temperature, and global WB — so the image reads as the **same shot** photographed under the new lighting condition.
+- **Do not** change location, add/remove people, or reframe unless the user's description asks.
+- The **output prompt** must tell the image model clearly: start from the **attached base image** and **relight** it per the preset; **match** shadows and highlights to the new light; keep pixel-level **content** the same.
+${isRingLighting ? `
+**RING — CRITICAL:** Do **not** describe the result as "natural light from a window" or "daylight from the side" unless the user asked. Follow the Ring rules in the preset block only.
+` : ''}
+
+**PRESET SPECIFICATION (mandatory — follow exactly):**
+${imageLightingBlock}
+`
+          : '';
+
       // Build element replacement instructions
       let elementReplacementInstructions = '';
       if (elementImageFiles.length > 0 && elementImagePrompts.length > 0) {
@@ -1784,12 +1813,12 @@ ${elementImagePrompts.map((prompt, index) => {
 - The base image will be uploaded to Nano Banana Pro and placed FIRST
 - The element images will be attached after the base image
 - You MUST create a prompt that describes the base image EXACTLY as it is, but with the attached elements replacing the corresponding original elements
-- Maintain the EXACT same camera angle, lighting, composition, background, and all other visual characteristics from the base image
-- ONLY replace the elements - everything else must remain identical
-- The replaced elements must fit naturally into the base image's style, lighting, and perspective
+- Maintain the EXACT same camera angle, composition, background layout, and all other visual characteristics from the base image${lighting ? ` — **then relight the whole scene** (including new elements) per lighting preset **"${lighting}"** in the appendix; do **not** keep the base image's old lighting` : ` — including **lighting**`}
+- ONLY replace the elements - everything else must remain identical${lighting ? ` (except global illumination changes from the lighting preset)` : ''}
+- The replaced elements must fit naturally into the base image's style${lighting ? ` under the **new** preset lighting` : `, lighting`}, and perspective
 - If the base image has a product, replace it with Element 1 (if provided)
 - If the base image has a person/character, replace them with Element 2 (if provided)
-- Match the lighting, shadows, and perspective of the base image for the replaced elements`;
+- Match the ${lighting ? `**preset** lighting, shadows` : `lighting, shadows`}, and perspective ${lighting ? `for the replaced elements — integrated into the relit scene` : `of the base image for the replaced elements`}`;
       } else if (elementImageFiles.length > 0) {
         elementReplacementInstructions = `\n\n**CRITICAL - ELEMENTS TO REPLACE:**
 The following element images have been provided and will be attached to the prompt. These elements MUST replace the corresponding elements in the base image:
@@ -1802,9 +1831,9 @@ ${elementImageFiles.map((_, index) => {
 - The base image will be uploaded to Nano Banana Pro and placed FIRST
 - The element images will be attached after the base image
 - You MUST create a prompt that describes the base image EXACTLY as it is, but with the attached elements replacing the corresponding original elements
-- Maintain the EXACT same camera angle, lighting, composition, background, and all other visual characteristics from the base image
-- ONLY replace the elements - everything else must remain identical
-- The replaced elements must fit naturally into the base image's style, lighting, and perspective`;
+- Maintain the EXACT same camera angle, composition, background layout, and all other visual characteristics from the base image${lighting ? ` — **then relight** per preset **"${lighting}"** (appendix); new elements must match that light` : ` — including **lighting**`}
+- ONLY replace the elements - everything else must remain identical${lighting ? ` (lighting follows preset)` : ''}
+- The replaced elements must fit naturally into the base image's style${lighting ? ` under preset lighting` : `, lighting`}, and perspective`;
       }
       
       const { productInstructions, characterInstructions } = buildProductCharacterInstructions();
@@ -1826,7 +1855,7 @@ ${elementImageFiles.map((_, index) => {
       let referenceImageNote = '';
       if (mainReferenceImageFile && mainReferenceImagePrompt) {
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE PROMPT (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ` The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.`}
+A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting && !lighting ? ' Copy the lighting style.' : ''}${copyLighting && lighting ? ' **Lighting:** User chose a **lighting preset in the UI** — do **not** copy lighting from the reference; relight per PRESET SPECIFICATION appendix.' : ''}` : ` The generated prompt MUST specify that the result must match this EXACT style, angle, lighting, and hyperrealism level.`}
 
 **Main Reference Image Prompt (this is the base image):**
 "${mainReferenceImagePrompt}"
@@ -1842,15 +1871,17 @@ You MUST create a prompt that iterates on the main reference image based on what
   - If the main reference is a "product photo" → The output MUST be "product photo" (unless user explicitly changes it)
 
 - **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image prompt EXACTLY as described:${copyInstructionsCopy}
-${!copyCameraAngle && !copyLighting ? `
+${!copyCameraAngle && !copyLighting && !lighting ? `
   - **EXACT camera angle and perspective** - THIS IS CRITICAL
   - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL` : ''}
+${lighting ? `
+  - **LIGHTING:** User selected preset **"${lighting}"** — **relight** the scene per appendix; do **not** keep original lighting` : ''}
   - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
   - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
   - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
   - **EXACT texture quality and appearance** (same level of detail, same material appearance)
-  - **EXACT color palette** (same color temperature, saturation, contrast)
-  - **EXACT overall aesthetic and visual style** (same look and feel)
+  - **Color / palette:** ${lighting ? `Must **follow** the new lighting preset (WB, shadows, highlights) while keeping the same scene content` : `**EXACT color palette** (same color temperature, saturation, contrast)`}
+  - **EXACT overall aesthetic and visual style** (same look and feel)${lighting ? ` except **lighting**, which follows the preset` : ''}
 
 - **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
   - If user says "change background to beach" → Keep the EXACT format (e.g., "screenshot of iPhone screen") but change the background content
@@ -1872,7 +1903,7 @@ ${!copyCameraAngle && !copyLighting ? `
 - Main Reference: "screenshot of iPhone screen" + User: "change text to 'Hello'" → Output: "screenshot of iPhone screen with text 'Hello'" (KEEPS screenshot format, only changes text)
 - Main Reference: "photo of product" + User: "change background" → Output: "photo of product with different background" (KEEPS photo format)
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${elementReplacementInstructions}${productInstructions}${characterInstructions}`;
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, ${lighting ? `**new lighting from preset "${lighting}"**` : `lighting`}, and all other characteristics unless explicitly changed by the user.${elementReplacementInstructions}${productInstructions}${characterInstructions}`;
       } else if (mainReferenceImageFile) {
         // Main reference image provided but no prompt generated - use image directly
         // Build copy instructions for change-elements when no prompt is generated
@@ -1890,7 +1921,7 @@ ${!copyCameraAngle && !copyLighting ? `
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
-A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting ? ' Copy the lighting style.' : ''}` : ''} You MUST:
+A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' Copy the camera angle and perspective.' : ''}${copyLighting && !lighting ? ' Copy the lighting style.' : ''}${copyLighting && lighting ? ' **Lighting:** User chose a **lighting preset in the UI** — do **not** copy lighting from the reference; relight per PRESET SPECIFICATION appendix.' : ''}` : ''} You MUST:
 
 **Your Task:**
 Create a prompt that iterates on the main reference image based on what the user wants to change: "${description}". This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.
@@ -1909,15 +1940,17 @@ Create a prompt that iterates on the main reference image based on what the user
   - If main reference is a design mockup → Output MUST be "design mockup" (unless user explicitly changes it)
 
 - **MAINTAIN EXACT VISUAL CHARACTERISTICS**: Keep EVERYTHING from the main reference image EXACTLY:${copyInstructionsCopyNoPrompt}
-${!copyCameraAngle && !copyLighting ? `
+${!copyCameraAngle && !copyLighting && !lighting ? `
   - **EXACT camera angle and perspective** - THIS IS CRITICAL
   - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL` : ''}
+${lighting ? `
+  - **LIGHTING:** User selected preset **"${lighting}"** — **relight** per appendix; do **not** keep original lighting` : ''}
   - **EXACT format/type** (screenshot, photo, mockup, etc.) - DO NOT change unless user explicitly requests format change
   - **EXACT device/medium** (iPhone screen, iPhone camera, computer screen, etc.) - DO NOT change unless user explicitly requests it
   - **EXACT composition and framing** (same aspect ratio, same layout structure, same visual structure)
   - **EXACT texture quality** (same level of detail, same material appearance)
-  - **EXACT color palette** (same color temperature, saturation, contrast)
-  - **EXACT overall aesthetic** (same look and feel)
+  - **Color / palette:** ${lighting ? `Follow the new lighting preset (WB, shadows) with same scene content` : `**EXACT color palette** (same color temperature, saturation, contrast)`}
+  - **EXACT overall aesthetic** (same look and feel)${lighting ? ` except **lighting** from preset` : ''}
 
 - **ONLY CHANGE WHAT USER EXPLICITLY REQUESTS**: 
   - If user says "change background" → Keep the EXACT format but change the background content
@@ -1926,10 +1959,14 @@ ${!copyCameraAngle && !copyLighting ? `
   - If user says "change to photo" or "change format" → THEN you can change the format/type
   - If user does NOT mention format/type change → KEEP THE EXACT FORMAT/TYPE FROM MAIN REFERENCE${elementReplacementInstructions}${productInstructions}${characterInstructions}
 
-**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, lighting, and all other characteristics unless explicitly changed by the user.${elementReplacementInstructions}${productInstructions}${characterInstructions}`;
+**CRITICAL**: The main reference image will be uploaded to Nano Banana Pro and placed first, so the prompt must ensure 100% style replication. The output must describe the main reference image with the requested modifications applied, maintaining the EXACT format/type, angle, ${lighting ? `and **new lighting from preset**` : `lighting`}, and all other characteristics unless explicitly changed by the user.${elementReplacementInstructions}${productInstructions}${characterInstructions}`;
       } else {
         const { productInstructions: pi, characterInstructions: ci } = buildProductCharacterInstructions();
         referenceImageNote = `${elementReplacementInstructions}${pi}${ci}`;
+      }
+
+      if (lighting && typeof lighting === 'string') {
+        referenceImageNote += changeElementsLightingPresetLock;
       }
 
       styleInstructions = `**CHANGE ELEMENTS IN IMAGE MODE - EXACT FORMAT PRESERVATION:**
@@ -1938,20 +1975,22 @@ You are creating a prompt that will iterate/vary a reference image based on spec
 
 **User's Requested Changes:**
 "${description}"
-
+${lighting && typeof lighting === 'string' ? `
+**Lighting preset (from UI):** "${lighting}" — When the description does not contradict it, **relighting** per this preset takes priority over preserving the base image's original lighting.
+` : ''}
 **Your Task:**
 Generate a detailed prompt that:
 1. **Identifies the EXACT format/type** of the reference image (screenshot, photo, mockup, etc.)
 2. **Maintains that EXACT format/type** unless user explicitly requests format change
-3. **Applies ONLY the requested changes** from the user's description
-4. **Preserves EVERYTHING else** that wasn't mentioned for change
+3. **Applies ONLY the requested changes** from the user's description${lighting && typeof lighting === 'string' ? `, **and** applies the **lighting preset "${lighting}"** (relight only — same composition and content unless the description asks for more)` : ''}
+4. **Preserves EVERYTHING else** that wasn't mentioned for change${lighting && typeof lighting === 'string' ? ` — **except** original lighting when a preset is selected (use the preset instead)` : ''}
 
 **ABSOLUTELY CRITICAL REQUIREMENTS:**
 - **FORMAT PRESERVATION IS MANDATORY**: If the reference image is a "screenshot of iPhone screen", your output MUST describe a "screenshot of iPhone screen" (unless user says "change to photo" or similar)
 - **ONLY CHANGE FORMAT IF EXPLICITLY REQUESTED**: If user does NOT mention changing the format/type, you MUST keep the exact same format/type as the reference
-- **MAINTAIN ALL VISUAL CHARACTERISTICS**: Keep the exact composition, lighting, colors, textures, and aesthetic from the reference (unless specifically asked to change)
-- **CHANGE ONLY REQUESTED ELEMENTS**: Modify only what the user explicitly wants to change (content, colors, text, etc.) while keeping the format intact
-- **BE SPECIFIC ABOUT FORMAT**: Explicitly state the format/type in your prompt (e.g., "screenshot of iPhone screen", "photo taken with iPhone", etc.)${referenceImageNote}
+- ${lighting && typeof lighting === 'string' ? `**LIGHTING (PRESET SELECTED):** **Replace** the base image's lighting entirely with the illumination described in the **PRESET SPECIFICATION** appendix below. Keep the same composition, subjects, and layout. Do **not** describe the output as still using the old light.` : `**MAINTAIN ALL VISUAL CHARACTERISTICS**: Keep the exact composition, lighting, colors, textures, and aesthetic from the reference (unless specifically asked to change)`}
+- **CHANGE ONLY REQUESTED ELEMENTS**: Modify only what the user explicitly wants to change (content, colors, text, etc.) while keeping the format intact${lighting && typeof lighting === 'string' ? ` — **unless** the only intent is relighting (empty or minimal description), then **only** lighting changes per preset` : ''}
+- **BE SPECIFIC ABOUT FORMAT**: Explicitly state the format/type in your prompt (e.g., "screenshot of iPhone screen", "photo taken with iPhone", etc.)${referenceImageNote}${changeElementsRelightAppendix}
 
 **Output Format:**
 Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text ready to use.`;

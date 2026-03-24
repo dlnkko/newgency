@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { description, productImage, isUGC = true, bRollAnimation = false, bRollSceneCount = 2 } = body;
+    const { description, productImage, isUGC = true, ugcCameraMode = 'selfie', bRollAnimation = false, bRollSceneCount = 2 } = body;
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -93,6 +93,24 @@ export async function POST(request: NextRequest) {
         // Continue without image if upload fails
       }
     }
+
+    const ugcCameraModeInstructions = isUGC
+      ? (ugcCameraMode === 'gimbal'
+          ? `
+**CRITICAL - UGC CAMERA MODE: GIMBAL (ABSOLUTE OVERRIDE):**
+- Use **Steady** camera behavior (stabilized gimbal style). No handheld shake, no jitter, no micro-bounce.
+- Camera movement must be **ultra smooth**: slow tracking walk-and-talk shot following the creator from behind, gradually arcing/orbiting to a front-facing angle.
+- Camera glides fluidly at chest height and keeps steady focus on the subject.
+- Lighting should be natural and warm.
+- In generated JSON scenes, prioritize "cameraAngle": ["Steady"] unless the user explicitly requests a different angle.
+- In action descriptions, explicitly mention smooth stabilized movement and no shake.`
+          : `
+**CRITICAL - UGC CAMERA MODE: SELFIE (ABSOLUTE OVERRIDE):**
+- The creator/avatar holds the phone while recording (selfie style).
+- Handheld movement must feel authentic: natural micro-shake, subtle jitter, tiny grip adjustments, and realistic motion when walking/talking.
+- In generated JSON scenes, prioritize "cameraAngle": ["Selfie Camera"] unless the user explicitly requests POV/Frontal for a specific moment.
+- In action descriptions, explicitly mention selfie handheld capture and realistic human movement while filming.`)
+      : '';
 
     // Build UGC-specific instructions
     const ugcInstructions = isUGC ? `
@@ -159,6 +177,7 @@ ${productImageFile ? '**Product Image:** You have access to a product image. Ana
 ${bRollInstructions}
 
 ${ugcInstructions}
+${ugcCameraModeInstructions}
 
 **Your Task:**
 Deconstruct the user's description into structured scenes with ALL parameters automatically filled. Generate a JSON response with complete scene configurations.
@@ -223,6 +242,8 @@ You MUST respond with a valid JSON object in this EXACT format:
 - **MANDATORY**: Generate 1-5 scenes based on the description complexity
 - **MANDATORY**: All content must be in English
 ${isUGC ? '- **MANDATORY**: All scenes must maintain hyperrealistic UGC characteristics' : ''}
+${isUGC && ugcCameraMode === 'gimbal' ? '- **MANDATORY (Gimbal mode)**: For each scene, cameraAngle must be ["Steady"] unless user explicitly requests a different angle.' : ''}
+${isUGC && ugcCameraMode !== 'gimbal' ? '- **MANDATORY (Selfie mode)**: Prefer cameraAngle ["Selfie Camera"] for scenes unless POV/frontal is explicitly required by the action.' : ''}
 ${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script: null, noDialogue: true, lipSync: false, voiceover: false. Action-only, no spoken content.' : ''}
 
 **Important:**

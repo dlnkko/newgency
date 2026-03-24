@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { script, productImage, isUGC = true, productPhotoWillBeAttached = false } = body;
+    const { script, productImage, isUGC = true, ugcCameraMode = 'selfie', productPhotoWillBeAttached = false } = body;
 
     if (!script || !script.trim()) {
       return NextResponse.json(
@@ -95,6 +95,22 @@ export async function POST(request: NextRequest) {
         // Continue without image if upload fails
       }
     }
+
+    const ugcCameraModeInstructions = isUGC
+      ? (ugcCameraMode === 'gimbal'
+          ? `
+**CRITICAL - UGC CAMERA MODE: GIMBAL (ABSOLUTE OVERRIDE):**
+- The camera must be stabilized and smooth (no camera shake, no jitter).
+- Movement style: slow tracking walk-and-talk following a content creator from behind, then gradually arc/orbit to a front-facing angle.
+- Keep chest-height glide and steady focus on the subject.
+- Lighting should feel natural and warm.
+- Prefer camera angle language equivalent to **Steady/gimbal** in all scenes unless script explicitly demands otherwise.`
+          : `
+**CRITICAL - UGC CAMERA MODE: SELFIE (ABSOLUTE OVERRIDE):**
+- The avatar/creator is holding the phone while filming themselves.
+- Movement should be hyperrealistic handheld selfie: natural micro-shake, tiny jitter from grip and walking, authentic mobile capture imperfections.
+- Prefer camera angle language equivalent to **Selfie Camera** in all scenes unless script explicitly demands POV/frontal for a specific moment.`)
+      : '';
 
     // Build UGC-specific instructions
     const ugcInstructions = isUGC ? `
@@ -168,6 +184,7 @@ ${script}
 ${productImageNote}
 
 ${ugcInstructions}
+${ugcCameraModeInstructions}
 
 **Your Task:**
 Analyze the script and break it down into logical scenes. For EACH scene, you MUST:
@@ -209,6 +226,7 @@ Scene 3:
 - **MANDATORY**: Ensure background is always sharp and in focus (no blur)
 - **MANDATORY**: Include natural character expressions and gestures (not robotic)
 - **MANDATORY**: If Selfie Camera is used with movement, emphasize enhanced shaky camera
+- ${isUGC && ugcCameraMode === 'gimbal' ? '**MANDATORY (Gimbal mode)**: Keep movement smooth and stabilized; avoid any shake/jitter language.' : '**MANDATORY (Selfie mode)**: Emphasize authentic handheld selfie movement and natural shake.'}
 - **MANDATORY**: Generate 1-5 scenes based on script complexity and natural breaks
 - **MANDATORY**: All content must be in English
 - **MANDATORY**: Each scene should be self-contained and complete

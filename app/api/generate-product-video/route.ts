@@ -4,6 +4,26 @@ import { getGoogleGenAI } from '@/lib/gemini';
 import { verifyAndConsumeCredit } from '@/lib/credit-check';
 import { recordGeneration } from '@/lib/generation-check';
 
+const PRODUCT_LOCK_PHRASE = 'as seen in the attached image';
+
+/** Ensures the exact product-lock anchor phrase is present (models often drop it). */
+function ensureProductLockInVideoPrompt(videoPrompt: string, lock: boolean): string {
+  if (!lock) return videoPrompt;
+  const t = videoPrompt.trim().replace(/\s+/g, ' ').trim();
+  if (!t) return t;
+  if (t.toLowerCase().includes(PRODUCT_LOCK_PHRASE.toLowerCase())) return t;
+  const glue = /[.!?]$/.test(t) ? ' ' : '. ';
+  const suffix = `${glue}Keep the product ${PRODUCT_LOCK_PHRASE}; no morphing or redesign.`;
+  const maxBase = Math.max(80, 999 - suffix.length);
+  let base = t;
+  if (base.length + suffix.length > 999) {
+    base = base.substring(0, maxBase).trim();
+    const ls = base.lastIndexOf(' ');
+    if (ls > maxBase * 0.4) base = base.substring(0, ls).trim();
+  }
+  return (base + suffix).replace(/\s+/g, ' ').trim();
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check rate limit
@@ -39,9 +59,43 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC: isUGCBody, lastFrameNanoBananaOnly, firstAndLastFrameAnimation, lastFrameImage, script } = body;
+    const { productImage, actionDescription, animateOnly, nanoBananaOnly, isUGC: isUGCBody, ugcCameraMode: ugcCameraModeBody, lastFrameNanoBananaOnly, firstAndLastFrameAnimation, lastFrameImage, script } = body;
     const isUGC = !!isUGCBody || !!body.ugcMode;
+    const ugcCameraMode: 'selfie' | 'gimbal' = ugcCameraModeBody === 'gimbal' ? 'gimbal' : 'selfie';
+    const lockProductFromFrame = body.lockProductFromFrame === true;
     const scriptTrimmed = typeof script === 'string' ? script.trim() : '';
+    const ugcCameraModeBlock = isUGC
+      ? (ugcCameraMode === 'gimbal'
+          ? `
+
+**UGC CAMERA MODE: GIMBAL (MANDATORY):**
+- Camera must be smooth and stabilized: **no shake, no jitter, no micro-bounce**.
+- Movement style: slow tracking walk-and-talk following the creator from behind, then gradual arc/orbit to a front-facing angle.
+- Camera glides fluidly at chest height, steady focus on subject.
+- Lighting feel: natural and warm.
+- Avoid handheld language in prompts unless user explicitly asks for it.`
+          : `
+
+**UGC CAMERA MODE: SELFIE (MANDATORY):**
+- **ABSOLUTE PRIORITY:** The shot must ALWAYS feel handheld, as if the avatar is physically holding the phone while talking.
+- Always include subtle continuous handheld motion: natural micro-shake, tiny jitter, grip corrections, slight breathing/walking wobble.
+- The camera must never look locked-off, tripod-like, or gimbal-smooth in Selfie mode.
+- If dialogue/speaking is present, reinforce that the avatar records themselves while speaking to camera (selfie-talk style).
+- Keep movement hyperrealistic and organic, with authentic iPhone selfie capture feel.`)
+      : '';
+
+    const productLockBlock = lockProductFromFrame
+      ? `
+
+**PRODUCT LOCK — ABSOLUTE PRIORITY (USER ENABLED "PRODUCT"):**
+The attached image is the **first frame** / reference frame that will be fed to the video (or image) model. The visible product (or branded item) must stay **identical in identity** across the video.
+- **NO visual drift:** Do NOT morph, transform, rebrand, restyle, relabel, recolor, or redesign the product. Do NOT change logo, typography, packaging shape, proportions, or materials.
+- **Describe ONLY from the image:** List visible attributes (shape, **exact readable brand text**, cap/lid colors, body color, materials) **exactly as shown**. Do NOT invent ingredients, internal texture, or product category details not visible (e.g. do not call a **pink cap** "pink cream" or invent "cream" texture if the image shows a solid stick/tube).
+- **NON-NEGOTIABLE — EXACT PHRASE IN VIDEO PROMPT:** The **Video Animation Prompt** (the single paragraph for video) MUST contain the **verbatim substring** \`as seen in the attached image\` (not paraphrased). **Before you finish, verify that substring appears in that paragraph.**
+- **Mandatory phrasing:** Use **"as seen in the attached image"** when stating product identity so downstream models anchor to the uploaded frame.
+- **Motion vs identity:** The product may move, rotate, or translate with **natural physics**, but it must **not** become a different product or variant. Background, camera, and lighting may change only if the user requested; **never** change the product identity.
+- **If two keyframes are provided:** The **first frame** defines the product; the **last frame** must show the **same** product with only the end-state of the motion—no redesign or replacement between frames.`
+      : '';
 
     if (!productImage || !actionDescription) {
       return NextResponse.json(
@@ -141,7 +195,7 @@ export async function POST(request: NextRequest) {
         `- User's Request for Animation: "${actionDescription}"` + (isUGC
           ? `
 
-**UGC MODE:** The image must look like UGC/iPhone content - natural lighting, hyperrealistic texture, not studio; suitable for UGC video (e.g. person with product, selfie-style, natural setting). Like real iPhone capture.`
+**UGC MODE:** The image must look like UGC/iPhone content - natural lighting, hyperrealistic texture, not studio; suitable for UGC video (e.g. person with product, selfie-style, natural setting). Like real iPhone capture.${ugcCameraModeBlock}`
           : ''),
         '',
         '**CRITICAL INSTRUCTION:**',
@@ -171,7 +225,7 @@ export async function POST(request: NextRequest) {
         '- Ensure the composition allows for the movement/action described'
       ];
 
-      const nanoBananaPromptRequest = nanoBananaPromptRequestLines.join('\n');
+      const nanoBananaPromptRequest = nanoBananaPromptRequestLines.join('\n') + productLockBlock;
 
       try {
         const result = await ai.models.generateContent({
@@ -235,7 +289,7 @@ export async function POST(request: NextRequest) {
     if (lastFrameNanoBananaOnly) {
       const lastFramePromptRequest = `You are an expert AI prompt engineer for Nano Banana Pro. The user has provided the FIRST FRAME of an animation (attached image) and this description of the animation: "${actionDescription}"${isUGC ? `
 
-**UGC MODE:** The last frame must keep UGC/iPhone style - natural lighting, hyperrealistic texture, same UGC look as the first frame.` : ''}
+**UGC MODE:** The last frame must keep UGC/iPhone style - natural lighting, hyperrealistic texture, same UGC look as the first frame.${ugcCameraModeBlock}` : ''}${productLockBlock}
 
 **Your task:**
 Create a detailed Nano Banana Pro prompt that will generate the LAST/END FRAME of this same animation. The generated image must:
@@ -320,14 +374,25 @@ Do NOT describe the motion or the animation – only describe the final still im
         }
       }
 
-      const firstLastUgcBlock = isUGC ? `
+      const firstLastUgcBlock = isUGC
+        ? ugcCameraMode === 'gimbal'
+          ? `
 
-**CRITICAL - UGC STYLE (USER ENABLED UGC MODE):**
+**CRITICAL - UGC STYLE (GIMBAL — USER SELECTED):**
+The animation must feel like real UGC content with a **gimbal-stabilized** camera (NOT handheld shake). You MUST:
+- **Smooth stabilized camera**: Describe **gimbal-smooth** orbit/tracking/walk-and-talk—**zero** handheld jitter, **zero** micro-shake, **no** "shaky iPhone" language unless the user explicitly asks for it.
+- **Natural movements**: Subject and product motion stay natural and realistic.
+- **Hyperrealistic**: Preserve lighting, texture, and hyperrealism from both frames.
+- **No conflicting camera language**: Do NOT describe handheld selfie shake; that contradicts Gimbal mode.${ugcCameraModeBlock}`
+          : `
+
+**CRITICAL - UGC STYLE (SELFIE — USER SELECTED):**
 The animation must feel like real UGC / iPhone video. You MUST:
 - **Shaky handheld**: If the first/last frame shows a person holding an iPhone or selfie-style, describe natural handheld shaky camera - subtle camera shake, as if holding the phone, organic and realistic.
 - **Natural movements**: All movements must be natural, realistic, not staged - like real UGC content.
 - **Hyperrealistic**: Preserve lighting, texture, and hyperrealism from the images; the motion should feel authentic and real, like a real person recording with their phone.
-- **No cinematic camera moves** unless the user asked for them - keep it like iPhone UGC: natural, slightly shaky when handheld, real movements.` : '';
+- **No cinematic camera moves** unless the user asked for them - keep it like iPhone UGC: natural, slightly shaky when handheld, real movements.${ugcCameraModeBlock}`
+        : '';
 
       const firstLastAnimationRequest = `You are an expert AI prompt engineer for video animation. The user has provided TWO images:
 - **First image (attached)**: The START/FIRST FRAME of the animation
@@ -335,7 +400,7 @@ The animation must feel like real UGC / iPhone video. You MUST:
 
 Animation description: "${actionDescription}"${scriptTrimmed ? `
 
-**CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's description indicates. Do NOT add "a character says" or similar – integrate the script where the user said it goes.` : ''}${firstLastUgcBlock}
+**CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's description indicates. Do NOT add "a character says" or similar – integrate the script where the user said it goes.` : ''}${firstLastUgcBlock}${productLockBlock}
 
 **Your task:**
 Generate ONE detailed video animation prompt that describes the motion from the first frame to the last frame. The prompt will be used by a video AI that can animate between two keyframes. You must:
@@ -385,6 +450,7 @@ Respond with exactly one section labeled VIDEO_ANIMATION_PROMPT, containing one 
           const lastSpace = videoPrompt.lastIndexOf(' ');
           if (lastSpace > 0) videoPrompt = videoPrompt.substring(0, lastSpace).trim();
         }
+        videoPrompt = ensureProductLockInVideoPrompt(videoPrompt, lockProductFromFrame);
         await recordGeneration(request);
         return NextResponse.json({
           success: true,
@@ -401,7 +467,17 @@ Respond with exactly one section labeled VIDEO_ANIMATION_PROMPT, containing one 
 
     // If animateOnly is true, generate only the video animation prompt based on the uploaded image
     if (animateOnly) {
-      const ugcInstructions = isUGC ? `\n\n**CRITICAL - UGC HYPERREALISTIC ANIMATION (IMAGE IS A HYPERREALISTIC PERSON):**
+      const ugcInstructions = isUGC
+        ? ugcCameraMode === 'gimbal'
+          ? `\n\n**CRITICAL - UGC HYPERREALISTIC ANIMATION (GIMBAL MODE):**
+The attached image is hyperrealistic UGC. You MUST create an animation prompt that:
+- **MAXIMUM HYPERREALISM**: Maintain the same level of realism as the attached image
+- **FAITHFUL TO IMAGE**: Preserve skin texture, facial features, hair, clothing, lighting, shadows, colors, and all visual elements
+- **GIMBAL CAMERA (MANDATORY)**: Follow **UGC CAMERA MODE: GIMBAL**—smooth stabilized orbit/tracking, **no** handheld shake, **no** jitter. Do NOT describe shaky handheld iPhone recording.
+- **CAMERA MOVEMENT**: You MAY and SHOULD describe smooth gimbal-style camera motion (orbit, tracking, walk-and-talk) when it matches the user's request and Gimbal mode—never contradict with "static camera" or selfie shake rules.
+- **NATURAL ANIMATION**: Natural facial expressions, gestures, and product handling; hyperrealistic motion
+- **PRESERVE VISUAL FIDELITY**: The result must look like the attached image came to life with **gimbal-smooth** cinematography, not handheld shake.${ugcCameraModeBlock}`
+          : `\n\n**CRITICAL - UGC HYPERREALISTIC ANIMATION (IMAGE IS A HYPERREALISTIC PERSON — SELFIE MODE):**
 The attached image is a hyperrealistic person (UGC style). You MUST create an animation prompt that:
 - **MAXIMUM HYPERREALISM**: The animation must be absolutely hyperrealistic, maintaining the same level of realism as the attached image
 - **FAITHFUL TO IMAGE**: Every detail from the attached image must be preserved - skin texture, facial features, hair, clothing, lighting conditions, shadows, colors, and all visual elements
@@ -414,26 +490,27 @@ The attached image is a hyperrealistic person (UGC style). You MUST create an an
 - **CAMERA MOVEMENT EXCEPTION**: If the user explicitly mentions camera movements (e.g., "camera zooms in", "camera moves", "camera follows", "pan", "tilt", etc.), then you may include those specific camera movements the user requested. Otherwise, NO camera movement.
 - **NATURAL ANIMATION**: Focus on natural, realistic movements of the person - facial expressions, body movements, gestures, etc. - all must be hyperrealistic and natural
 - **PRESERVE VISUAL FIDELITY**: The animated result must look exactly like the attached image came to life, with no visual changes except for the natural movements described
-- **UGC HANDHELD / SELFIE**: If the image shows a person holding an iPhone or in selfie-style: the animation MUST feel like real UGC - natural handheld shaky camera, subtle camera shake as if holding the phone, natural hand movements, authentic UGC feel. Describe subtle camera shake, natural movements, realistic as if recorded on iPhone. If someone is holding the phone, the camera should feel slightly shaky and organic, not static.` : '';
+- **UGC HANDHELD / SELFIE**: If the image shows a person holding an iPhone or in selfie-style: the animation MUST feel like real UGC - natural handheld shaky camera, subtle camera shake as if holding the phone, natural hand movements, authentic UGC feel. Describe subtle camera shake, natural movements, realistic as if recorded on iPhone. If someone is holding the phone, the camera should feel slightly shaky and organic, not static.${ugcCameraModeBlock}`
+        : '';
 
       const animationPromptRequest = `You are an expert AI prompt engineer specializing in professional product video animations. You are creating a video animation prompt that will animate an uploaded image.
 
 **Context:**
 - Product Image: Analyze the provided product image carefully - this image will be attached to the video AI model
-- User's Original Request: "${actionDescription}" - This is the original description the user provided. The animation MUST follow this description exactly.${ugcInstructions}
+- User's Original Request: "${actionDescription}" - This is the original description the user provided. The animation MUST follow this description exactly.${ugcInstructions}${productLockBlock}
 
 **CRITICAL INSTRUCTION:**
 You MUST respect and follow EXACTLY what the user requested. Your job is to:
 1. Analyze the attached product image to understand what elements need to be animated
 2. Take the user's description and enhance it with professional cinematography details
-3. Add technical details (camera movements, lighting, physics) to make it executable${isUGC ? ' (BUT: NO camera movements unless explicitly requested by user)' : ''}
+3. Add technical details (camera movements, lighting, physics) to make it executable${isUGC ? (ugcCameraMode === 'gimbal' ? ' — **GIMBAL**: describe smooth stabilized camera motion (orbit, tracking, walk-and-talk) per UGC CAMERA MODE: GIMBAL; **never** handheld shake.' : ' (BUT: NO camera movements unless explicitly requested by user)') : ''}
 4. BUT keep the core action, pacing, and style that the user described
 5. Ensure the animation prompt correctly animates the elements visible in the attached image
 6. If the user mentions "quick cuts" or "different shots", include those
 7. If the user mentions "slow rotation" or "slow movement", keep it slow
 8. If the user wants "detailed close-ups", include detailed close-up shots
 9. Don't add actions the user didn't request
-10. Don't change the pacing the user described (fast cuts stay fast, slow movements stay slow)${isUGC ? '\n11. **CRITICAL**: Do NOT add any camera movements unless the user explicitly requests them. The camera must remain static.' : ''}
+10. Don't change the pacing the user described (fast cuts stay fast, slow movements stay slow)${isUGC ? (ugcCameraMode === 'gimbal' ? '\n11. **CRITICAL**: Follow **GIMBAL** rules—smooth stabilized camera; **no** handheld shake or jitter.' : '\n11. **CRITICAL**: Do NOT add any camera movements unless the user explicitly requests them. The camera must remain static.') : ''}
 
 **Your Task:**
 Generate ONE extremely detailed video animation prompt that:
@@ -443,7 +520,7 @@ Generate ONE extremely detailed video animation prompt that:
 - You MUST explicitly mention in the prompt that the animation should be based on the attached image
 - The prompt must describe how to animate the elements visible in the attached image
 - Ensure the prompt correctly identifies what should be animated from the image (product, background, lighting, etc.)
-- The animation should respect the visual elements, colors, composition, and style of the attached image
+- The animation should respect the visual elements, colors, composition, and style of the attached image${lockProductFromFrame ? '\n- **PRODUCT LOCK:** The product must remain **exactly** as seen in the attached image—include **"as seen in the attached image"** and a concrete product description; forbid morphing or redesign.' : ''}
 
 **Video Animation Prompt Requirements:**
 - **MUST be EXACTLY ONE continuous paragraph** (no line breaks, no bullet points)
@@ -457,16 +534,16 @@ Generate ONE extremely detailed video animation prompt that:
   * If user says "quick cuts" or "different shots" → include quick cuts between shots
   * If user says "slow rotation" or "slowly" → keep it slow and detailed
   * If user says "detailed close-ups" → include detailed close-up shots
-  * If user says "show front part" → make sure to show the front part clearly${isUGC ? '\n  * **CRITICAL**: If user does NOT mention camera movements → DO NOT include any camera movements. Camera must remain static.' : ''}
+  * If user says "show front part" → make sure to show the front part clearly${isUGC ? (ugcCameraMode === 'gimbal' ? '\n  * **GIMBAL**: Describe **gimbal-smooth** camera motion—**not** static camera, **not** handheld shake.' : '\n  * **CRITICAL**: If user does NOT mention camera movements → DO NOT include any camera movements. Camera must remain static.') : ''}
 - Use dense, efficient language: combine details into single phrases, use compound adjectives, merge related concepts
-- Include essential technical details:${isUGC ? ' lighting (preserved from image), physics (if applicable),' : ' camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques'}${isUGC ? ' BUT NO camera movements unless explicitly requested' : ''}
+- Include essential technical details:${isUGC ? (ugcCameraMode === 'gimbal' ? ' gimbal-stabilized orbit/tracking, lighting (preserved from image), physics (if applicable),' : ' lighting (preserved from image), physics (if applicable),') : ' camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques'}${isUGC ? (ugcCameraMode === 'gimbal' ? ' **never** describe handheld shake' : ' BUT NO camera movements unless explicitly requested') : ''}
 - Describe physical movements concisely but precisely (gravity, rotation speed, impact effects)${isUGC ? ', maintaining hyperrealistic natural motion' : ''}
 - Include visual effects, depth of field, motion blur where appropriate${isUGC ? ', all hyperrealistic and matching the attached image' : ''}
 - Specify color grading and aesthetic matching the attached image${isUGC ? ' EXACTLY - preserve all colors, lighting, and visual characteristics' : ''}
 - Follow the sequence the user described
 - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
 - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
-- **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n- **CRITICAL - NO CAMERA MOVEMENT**: You MUST NOT include ANY camera movements (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requested camera movements in their description. The camera must remain static and fixed.' : ''}${scriptTrimmed ? `
+- **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? (ugcCameraMode === 'gimbal' ? '\n- **GIMBAL CAMERA**: Describe smooth **gimbal** movement only—**do not** forbid camera motion; **do not** use static-camera or handheld-shake rules from Selfie mode.' : '\n- **CRITICAL - NO CAMERA MOVEMENT**: You MUST NOT include ANY camera movements (pan, tilt, zoom, dolly, orbit, tracking, etc.) UNLESS the user explicitly requested camera movements in their description. The camera must remain static and fixed.') : ''}${scriptTrimmed ? `
 
 **CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES):** The user provided this script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact script text in the prompt at the moment/place the user's action description indicates (e.g. at the start, as voiceover, when the product lands). Do NOT add phrases like "a character says" or "A character says exactly" – integrate the script text where the user said it goes.` : ''}
 
@@ -520,12 +597,19 @@ Your extremely detailed video animation prompt here - MUST be exactly ONE contin
             { status: 500 }
           );
         }
+        let normalizedVideo = videoPrompt.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (normalizedVideo.length > 999) {
+          normalizedVideo = normalizedVideo.substring(0, 996).trim();
+          const ls = normalizedVideo.lastIndexOf(' ');
+          if (ls > 0) normalizedVideo = normalizedVideo.substring(0, ls).trim();
+        }
+        normalizedVideo = ensureProductLockInVideoPrompt(normalizedVideo, lockProductFromFrame);
         // Record generation after successful completion
         await recordGeneration(request);
 
         return NextResponse.json({
           success: true,
-          videoPrompt: videoPrompt
+          videoPrompt: normalizedVideo
         });
       } catch (error: any) {
         console.error('Error generating animation prompt:', error);
@@ -543,12 +627,12 @@ Your extremely detailed video animation prompt here - MUST be exactly ONE contin
 - Product: Analyze the provided product image carefully
 - User's Request: "${actionDescription}"${isUGC ? `
 
-**UGC MODE (USER ENABLED):** Generate prompts in UGC style. Nano Banana: image like UGC/iPhone (natural lighting, hyperrealistic texture). Video prompt: if person holds iPhone/selfie, describe natural handheld shaky camera, natural movements, realistic as if recorded on iPhone. No cinematic camera moves unless user asked.` : ''}
+**UGC MODE (USER ENABLED):** Generate prompts in UGC style. Nano Banana: image like UGC/iPhone (natural lighting, hyperrealistic texture). ${ugcCameraMode === 'gimbal' ? '**Video MUST follow GIMBAL:** smooth stabilized orbit/tracking at chest height, **no** handheld shake, **no** jitter, **no** "shaky iPhone" wording unless the user explicitly asks. ' : '**Video MUST follow SELFIE/HANDHELD:** natural handheld micro-shake, realistic phone-recording feel. '}Do NOT mix Gimbal and Selfie camera language—only one mode applies.${ugcCameraModeBlock}` : ''}${productLockBlock}
 
 **CRITICAL INSTRUCTION:**
 You MUST respect and follow EXACTLY what the user requested. Your job is to:
-1. Take the user's description and enhance it with professional cinematography details${isUGC ? ' (UGC: natural handheld, shaky when relevant, no cinematic moves unless requested)' : ''}
-2. Add technical details (camera movements, lighting, physics) to make it executable${isUGC ? ' - UGC: natural handheld/shaky when person holds phone; no dolly/pan unless user asked' : ''}
+1. Take the user's description and enhance it with professional cinematography details${isUGC ? (ugcCameraMode === 'gimbal' ? ' (**UGC + GIMBAL**: smooth stabilized camera only—**never** handheld shake or jitter.)' : ' (UGC + SELFIE: natural handheld shake when relevant.)') : ''}
+2. Add technical details (camera movements, lighting, physics) to make it executable${isUGC ? (ugcCameraMode === 'gimbal' ? ' — **GIMBAL**: gimbal-smooth orbit/tracking; **forbid** handheld/shaky iPhone language.' : ' — **SELFIE**: handheld/shaky when person holds phone; no dolly/pan unless user asked') : ''}
 3. BUT keep the core action, pacing, and style that the user described
 4. If the user mentions "quick cuts" or "different shots", include those
 5. If the user mentions "slow rotation" or "slow movement", keep it slow
@@ -573,7 +657,8 @@ Generate TWO extremely detailed, professional prompts:
    - The asset should be optimized to help complete the video the user wants
 
 2. **Video Animation Prompt**: An EXTREMELY detailed prompt describing the video animation. **CRITICAL CONSTRAINTS:**
-   - **MUST be EXACTLY ONE continuous paragraph** (no line breaks, no bullet points)
+${lockProductFromFrame ? `   - **PRODUCT LOCK:** The paragraph MUST contain the **exact** substring \`as seen in the attached image\` (verbatim). Describe the product **only** from what is visible in the image—do NOT invent textures, ingredients, or mislabel parts (e.g. cap color ≠ product substance).
+` : ''}   - **MUST be EXACTLY ONE continuous paragraph** (no line breaks, no bullet points)
    - **MUST be UNDER 999 characters** (strictly enforced - count characters including spaces)
    - **MUST maintain maximum detail and precision** despite the character limit
    - **FAITHFULLY FOLLOW** the user's request: "${actionDescription}"
@@ -584,18 +669,18 @@ Generate TWO extremely detailed, professional prompts:
      * If user says "detailed close-ups" → include detailed close-up shots
      * If user says "show front part" → make sure to show the front part clearly
    - Use dense, efficient language: combine details into single phrases, use compound adjectives, merge related concepts
-   - Include essential technical details: ${isUGC ? 'for UGC: natural handheld camera, subtle shake when person holds phone, natural movements; ' : ''}camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques${isUGC ? ' (only if user requested; otherwise UGC = natural handheld, no cinematic moves)' : ''}
+   - Include essential technical details: ${isUGC ? (ugcCameraMode === 'gimbal' ? 'for UGC **GIMBAL**: smooth stabilized camera, orbit/tracking, **no** handheld shake; ' : 'for UGC **SELFIE**: natural handheld camera, subtle shake when person holds phone; ') : ''}camera movements (dolly, pan, zoom, orbit), lighting, physics (if applicable), cinematography techniques${isUGC ? (ugcCameraMode === 'gimbal' ? ' (**GIMBAL** overrides generic "UGC handheld" rules)' : ' (only if user requested; otherwise UGC = natural handheld, no cinematic moves)') : ''}
    - Describe physical movements concisely but precisely (gravity, rotation speed, impact effects)${isUGC ? ', natural and realistic as UGC' : ''}
    - Include visual effects, depth of field, motion blur where appropriate
    - Specify color grading and aesthetic
    - Follow the sequence the user described
    - **EVERY WORD MUST COUNT** - maximize information density while staying under 999 characters
    - **VERIFY CHARACTER COUNT** - ensure the prompt is exactly one paragraph and under 999 characters before finalizing
-   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND.${isUGC ? '\n   - **UGC**: If image shows or will show person holding iPhone/selfie: describe natural handheld shaky camera, natural movements, realistic UGC feel.' : ''}${scriptTrimmed ? `
+   - **CRITICAL PROHIBITION - NO TEXT OVERLAY**: You MUST NOT include, mention, or suggest ANY text overlay, on-screen text, captions, subtitles, or any text appearing in the video. Text overlays always look bad in generated videos. Describe ONLY visual elements, actions, camera movements, lighting, and composition - NO TEXT, NO CAPTIONS, NO SUBTITLES, NO ON-SCREEN TEXT OF ANY KIND. (Spoken dialogue given in the user script is OK to quote as speech—it is not an on-screen text overlay.)${isUGC ? (ugcCameraMode === 'gimbal' ? '\n   - **UGC + GIMBAL**: Describe **gimbal-smooth** camera only—**never** handheld shaky iPhone unless user explicitly asks.' : '\n   - **UGC + SELFIE**: If person holds iPhone/selfie: describe natural handheld shaky camera, realistic UGC feel.') : ''}${scriptTrimmed ? `
    - **CRITICAL - SCRIPT (100% INCLUDED, WHERE USER INDICATES)**: User script: "${scriptTrimmed.replace(/"/g, '\\"')}". Include this exact text in the prompt at the moment/place the user's action description indicates. Do NOT add "a character says" or "A character says exactly" – integrate the script where the user said it goes.` : ''}
 
 **Critical Requirements:**
-- Both prompts must be optimized for professional product advertising${isUGC ? ' (UGC mode: natural, handheld, hyperrealistic, shaky when holding phone)' : ''}
+- Both prompts must be optimized for professional product advertising${isUGC ? (ugcCameraMode === 'gimbal' ? ' (**UGC + GIMBAL**: smooth stabilized, hyperrealistic—**not** shaky handheld)' : ' (UGC + SELFIE: natural handheld, hyperrealistic, shaky when holding phone)') : ''}
 - The video prompt MUST follow the user's request structure and pacing
 - If user mentions "quick cuts" or "different shots", the video prompt should include quick cuts
 - If user mentions "slow" or "slowly", keep those movements slow
@@ -606,11 +691,20 @@ Generate TWO extremely detailed, professional prompts:
 - Make every detail explicit and clear
 - The prompts should be ready to copy and paste directly into their respective tools
 
-**Output Format (implicit):**
+${lockProductFromFrame ? `**OUTPUT FORMAT (MANDATORY — PRODUCT LOCK ON):**
+You MUST respond with **exactly** these two labeled sections (so the client can parse them):
+
+**NANO_BANANA_PROMPT:**
+(full prompt; product fidelity to the attached image)
+
+**VIDEO_ANIMATION_PROMPT:**
+EXACTLY ONE paragraph, UNDER 999 characters. It MUST include the verbatim phrase **as seen in the attached image** when describing product identity. If that phrase is missing, your answer is **wrong**—rewrite.
+
+**FAILURE:** Omitting **as seen in the attached image** from the VIDEO paragraph is invalid.` : `**Output Format (implicit):**
 The model should internally produce two sections in its text response:
 - One describing the Nano Banana reference image prompt.
 - One describing the Video Animation prompt (single paragraph, under 999 characters).
-You do NOT need to wrap them in any special markers; a plain text response is enough.`;
+You do NOT need to wrap them in any special markers; a plain text response is enough.`}`;
 
     try {
       const result = await ai.models.generateContent({
@@ -674,7 +768,8 @@ ${videoPrompt}
 - Maintain ALL essential technical details (camera movements, lighting, physics, cinematography)
 - Keep the core action and pacing from the original
 - Use dense, efficient language
-- Every word must count
+- Every word must count${lockProductFromFrame ? `
+- **PRODUCT LOCK:** The output MUST still contain the exact phrase "as seen in the attached image" (verbatim). Do not remove or paraphrase it. If missing, weave it in when describing the product.` : ''}
 
 **Output:**
 Provide ONLY the optimized prompt as a single continuous paragraph, under 999 characters.`;
@@ -728,6 +823,8 @@ Provide ONLY the optimized prompt as a single continuous paragraph, under 999 ch
             }
           }
         }
+
+        videoPrompt = ensureProductLockInVideoPrompt(videoPrompt, lockProductFromFrame);
         
         console.log(`Final video prompt length: ${videoPrompt.length} characters`);
       }

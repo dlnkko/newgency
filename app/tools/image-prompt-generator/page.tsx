@@ -668,7 +668,7 @@ export default function ImagePromptGenerator() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder={selectedStyle === 'change-elements' 
-              ? "Describe what you want to change or make different in the reference image. For example: 'Replace the product with my product', 'Change the person with my character', 'Keep everything the same but swap the elements'"
+              ? "Describe changes (e.g. replace product, swap person). If you only picked Lighting below: e.g. 'relight only' or 'solo cambiar la iluminación' — the prompt will relight the base image and keep composition. Optional: combine with element uploads."
               : "Describe what you want in the image. For example: 'A person using headphones while exercising in a gym', 'A skincare product on a bathroom counter with natural lighting', 'An infographic showing the benefits of a supplement'"}
             rows={6}
             disabled={isGenerating}
@@ -764,9 +764,10 @@ export default function ImagePromptGenerator() {
           </div>
         </div>
 
-        {/* Camera Angle + Lighting (same as video UGC - only for hyperrealistic) */}
-        {(selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic') && (
+        {/* Camera Angle + Lighting (UGC/cinematic; Change Elements = lighting only for relight) */}
+        {(selectedStyle === 'hyperrealistic-ugc' || selectedStyle === 'hyperrealistic-cinematic' || selectedStyle === 'change-elements') && (
           <>
+            {selectedStyle !== 'change-elements' && (
             <div className="mb-6">
               <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
                 Camera Angle
@@ -793,12 +794,15 @@ export default function ImagePromptGenerator() {
                 })}
               </div>
             </div>
+            )}
             <div className="mb-8">
               <label className="mb-3 block text-sm font-semibold uppercase tracking-wide text-amber-400/90">
                 Lighting
               </label>
               <p className="mb-3 text-xs text-zinc-400">
-                Mismo sistema que en video. Mismas opciones y mismo nivel hiperrealista en el prompt (adaptado a imagen).
+                {selectedStyle === 'change-elements'
+                  ? 'Opcional: elige **un** preset para **solo cambiar la iluminación** de la imagen base (misma composición y contenido). Si no eliges, el prompt sigue el comportamiento habitual de Change Elements.'
+                  : 'Mismo sistema que en video. Mismas opciones y mismo nivel hiperrealista en el prompt (adaptado a imagen).'}
               </p>
               <div className="flex flex-wrap gap-2">
                 {[
@@ -825,6 +829,11 @@ export default function ImagePromptGenerator() {
               {lighting === 'Ring' && (
                 <p className="mt-3 text-xs text-amber-200/80">
                   <strong>Ring:</strong> escena siempre en interior cerrado; única luz frontal blanca (el aparato no se ve); reflejo tipo catchlight blanco visible en los ojos. Sin luz cálida de fondo.
+                </p>
+              )}
+              {selectedStyle === 'change-elements' && lighting != null && (
+                <p className="mt-3 text-xs text-green-200/85">
+                  <strong>Change Elements + Lighting:</strong> el prompt pedirá **solo relighting** según el preset (misma toma, sujetos y layout); no cambia composición salvo que lo indiques en el texto.
                 </p>
               )}
             </div>
