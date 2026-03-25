@@ -63,10 +63,11 @@ export async function POST(request: NextRequest) {
       hasCharacterImages: Array.isArray(body.characterImages) && body.characterImages.length > 0,
       hasElementImages: Array.isArray(body.elementImages) && body.elementImages.length > 0,
       copyCameraAngle: body.copyCameraAngle,
-      copyLighting: body.copyLighting
+      copyLighting: body.copyLighting,
+      copyAction: body.copyAction
     });
     
-    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, attachReferenceAsReferenceOnly, cameraAngle, lighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
+    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, copyAction, attachReferenceAsReferenceOnly, cameraAngle, lighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
 
     const hasUserCameraAngleSelection =
       Array.isArray(cameraAngle) && cameraAngle.length > 0;
@@ -964,6 +965,28 @@ The user will attach a reference image to the final image generation. This image
 1. **State clearly**: "The attached image is for reference only. Use it ONLY as the base for lighting, camera angle, composition, background mood, texture, and hyperrealism level. Do not copy the exact face or identity from the reference – the subject/avatar must be different, but with the same lighting, camera angle, and overall setting as the reference."
 2. **Start from that reference image**: Describe a new image that clearly **starts from the same scene/setting** (same type of background, same light direction and intensity, same framing and lens feel) but with a different avatar/person and the user's requested changes.
 3. The result MUST feel like a **variation of that reference photo**: similar environment, angle, and light, but NOT a 1:1 copy of the person. Do NOT replicate the identity; only keep lighting, camera angle, composition and setting as the base.`;
+      } else if (mainReferenceImageFile && mainReferenceImagePrompt && copyAction && !copyCameraAngle && !copyLighting && !attachReferenceAsReferenceOnly) {
+        // Copy ACTION/POSE ONLY (without attach-reference mode): extract pose/action cues from reference analysis,
+        // but DO NOT mention attached image in the generated prompt.
+        const poseMatch = mainReferenceImagePrompt.match(
+          /(?:pose|posing|posture|position|stance|standing|sitting|kneeling|lying|leaning|walking|running|jumping|reaching|holding|gripping|hands?|arms?|legs?|gesture|expression|looking|gaze|head tilt|shoulders?)[^.]*(?:\.|$)/gi
+        );
+        const poseDescription = poseMatch && poseMatch.length > 0
+          ? poseMatch.slice(0, 4).join(' ').trim()
+          : '';
+
+        referenceImageNote = `\n\n**CRITICAL - ACTION/POSE EXTRACTION FROM REFERENCE ANALYSIS (NO ATTACHED REFERENCE MENTION):**
+A main reference image was analyzed only to extract the subject's **action / pose / body position / gesture**. For this mode, the final generation prompt must NOT say "attached image", "attached reference image", or similar.
+
+**YOUR TASK:**
+- Extract and describe the action/pose/body position in detail from the analyzed reference context.
+- Copy ONLY the action/pose/body position/gesture (e.g., sitting/standing posture, hand placement, arm gesture, head angle, gaze direction, relative body orientation).
+- Keep all other styling based on the user's description and selected presets.
+${poseDescription ? `- Extracted pose/action cues from analysis: "${poseDescription}". Use these cues explicitly in the final prompt description.` : '- If pose cues are limited, infer the most faithful pose/action description from the analyzed reference context and user request.'}
+
+**ABSOLUTE RULE:**
+Do NOT include phrases like "matching the attached reference image", "as shown in the attached image", or any instruction implying an attached reference exists.
+Do NOT copy any other visual characteristics from the reference: do NOT copy clothing, face, identity, background, lighting, color grading, lens, camera angle, or composition.`;
       } else if (mainReferenceImageFile && mainReferenceImagePrompt && copyCameraAngle && !copyLighting && !attachReferenceAsReferenceOnly) {
         // Copy Camera Angle ONLY (without attach-reference mode): extract angle from reference analysis,
         // but DO NOT mention attached image in the generated prompt.
@@ -1021,6 +1044,9 @@ Do NOT include phrases like "matching the attached reference image", "as shown i
         } else if (copyLighting) {
           copyInstructions = `
 - **EXACT lighting style** from the main reference - THIS IS ABSOLUTELY CRITICAL - The reference image prompt describes the EXACT lighting. You MUST replicate ALL lighting details EXACTLY: the EXACT type of lighting (natural daylight, studio lighting, FLASH PHOTOGRAPHY - on-camera flash, off-camera flash, ring flash, bounce flash, etc., artificial lighting, dramatic spotlight, soft diffused, harsh directional, ambient, mixed lighting, etc.), the EXACT direction the light comes from, the EXACT intensity and brightness, the EXACT color temperature (warm, cool, neutral), the EXACT shadow placement and characteristics (including flash shadows if present), the EXACT highlight placement and intensity (including flash highlights if present), any multiple light sources and their positions, any light modifiers (softbox, umbrella, reflector, etc.), and MOST IMPORTANTLY if flash is present, describe ALL flash characteristics (harsh shadows, strong highlights, flash color temperature, flash reflections, catchlights in eyes, etc.). ${lightingDescription ? `Based on the reference image analysis, the lighting is: "${lightingDescription}". ` : ''}**CRITICAL**: In your generated prompt, you MUST describe the lighting in detail (e.g., "soft natural daylight from the left", "harsh on-camera flash", "dramatic side lighting with warm color temperature", etc.) AND explicitly state "matching the attached reference image" or "as shown in the attached reference image". The reference image WILL be attached to the final generation, so make explicit references to it.`;
+        }
+        if (copyAction) {
+          copyInstructions += `\n- **COPY ACTION/POSE**: Replicate the subject’s action/pose/body position/gesture from the attached reference image (hand placement, posture, gaze direction), but do NOT copy identity/clothing/background.`;
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - FOR LIGHTING, CAMERA ANGLE, REALISM ONLY - NOT FOR THE PRODUCT):**

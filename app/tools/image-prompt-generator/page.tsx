@@ -19,6 +19,7 @@ export default function ImagePromptGenerator() {
   const [referenceImagePreview, setReferenceImagePreview] = useState<string | null>(null);
   const [copyCameraAngle, setCopyCameraAngle] = useState<boolean>(false);
   const [copyLighting, setCopyLighting] = useState<boolean>(false);
+  const [copyAction, setCopyAction] = useState<boolean>(false);
   const [attachReferenceAsReferenceOnly, setAttachReferenceAsReferenceOnly] = useState<boolean>(false); // "Se adjuntará reference image" → usar como referencia, no replicar
   const [cameraAngle, setCameraAngle] = useState<string[]>([]); // Same as video: Selfie Camera, Frontal Camera, Steady
   const [lighting, setLighting] = useState<string | null>(null); // Same as video + Ring: Night Outside, Day Outside, Artificial Light Inside, Natural Light Inside, Ring
@@ -150,6 +151,7 @@ export default function ImagePromptGenerator() {
     setReferenceImagePreview(null);
     setCopyCameraAngle(false);
     setCopyLighting(false);
+    setCopyAction(false);
   };
 
   const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
@@ -533,6 +535,7 @@ export default function ImagePromptGenerator() {
           referenceImage: referenceImageBase64,
           copyCameraAngle: copyCameraAngle,
           copyLighting: copyLighting,
+          copyAction: copyAction,
           attachReferenceAsReferenceOnly: attachReferenceAsReferenceOnly,
           cameraAngle: cameraAngle,
           lighting: lighting,
@@ -917,6 +920,19 @@ export default function ImagePromptGenerator() {
                     </div>
                     <button
                       type="button"
+                      onClick={() => setCopyAction(!copyAction)}
+                      disabled={isGenerating}
+                      className={`w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                        copyAction
+                          ? 'bg-purple-500/80 text-white shadow-lg shadow-purple-500/20'
+                          : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      title="Copiar solo la acción/pose/posición de la reference (sin copiar visuales)"
+                    >
+                      Copy Action
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setAttachReferenceAsReferenceOnly(!attachReferenceAsReferenceOnly)}
                       disabled={isGenerating}
                       className={`w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
@@ -928,6 +944,11 @@ export default function ImagePromptGenerator() {
                     >
                       Se adjuntará reference image
                     </button>
+                    {copyAction && !copyCameraAngle && !copyLighting && !attachReferenceAsReferenceOnly && (
+                      <p className="text-[10px] text-zinc-500">
+                        Copy Action activo: el prompt copiará SOLO la pose/acción/posición de la referencia. No copiará ropa, cara, fondo, lighting ni estilo.
+                      </p>
+                    )}
                     {attachReferenceAsReferenceOnly && (
                       <p className="text-[10px] text-zinc-500">
                         El prompt usará la referencia solo para luz, textura e hiperrealismo. La cara/persona puede ser otro avatar.
