@@ -64,6 +64,13 @@ export async function POST(request: NextRequest) {
     const ugcCameraMode: 'selfie' | 'gimbal' = ugcCameraModeBody === 'gimbal' ? 'gimbal' : 'selfie';
     const lockProductFromFrame = body.lockProductFromFrame === true;
     const scriptTrimmed = typeof script === 'string' ? script.trim() : '';
+    const ugcRawRealismBlock = `
+
+**UGC — REAL PHYSICS & RAW IPHONE CAPTURE (MANDATORY):**
+- **Physics:** Motion must follow **believable real-world physics**—weight, gravity, inertia, natural body mechanics, hand and product movement; nothing floaty, weightless, or overly smoothed unless the user explicitly asks.
+- **Light follows movement:** If the person **walks, turns, steps, or moves** through the room, describe **how light changes** on face, skin, hair, and product—highlights and shadows **shift**, contrast **breathes**, and the relationship to windows/lamps **updates** as the angle changes (like real life, not a locked studio key).
+- **Raw off-the-phone look:** The video must feel like **unedited footage straight from the iPhone camera**—**no** obvious color grade, **no** beauty retouch, **no** glossy “finished ad” polish, **no** fake HDR bloom; allow subtle authentic sensor noise, natural exposure micro-pumping, and compression realism—**as if there was zero post-production—only what the phone recorded in the moment.**`;
+
     const ugcCameraModeBlock = isUGC
       ? (ugcCameraMode === 'gimbal'
           ? `
@@ -81,7 +88,7 @@ export async function POST(request: NextRequest) {
 - Always include subtle continuous handheld motion: natural micro-shake, tiny jitter, grip corrections, slight breathing/walking wobble.
 - The camera must never look locked-off, tripod-like, or gimbal-smooth in Selfie mode.
 - If dialogue/speaking is present, reinforce that the avatar records themselves while speaking to camera (selfie-talk style).
-- Keep movement hyperrealistic and organic, with authentic iPhone selfie capture feel.`)
+- Keep movement hyperrealistic and organic, with authentic iPhone selfie capture feel.`) + ugcRawRealismBlock
       : '';
 
     const productLockBlock = lockProductFromFrame
