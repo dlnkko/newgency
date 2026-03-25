@@ -181,6 +181,7 @@ export default function VideoPromptGenerator() {
   const [autoScript, setAutoScript] = useState<string>('');
   const [bRollAnimation, setBRollAnimation] = useState<boolean>(false); // B-roll: action only, no script, hyperrealistic
   const [bRollSceneCount, setBRollSceneCount] = useState<1 | 2>(2); // B-roll: 1 or 2 scenes
+  const [bRollVoiceoverScript, setBRollVoiceoverScript] = useState<string>(''); // B-roll: optional VO script that drives visuals
   const [isUGC, setIsUGC] = useState<boolean>(true); // UGC mode ON by default
   const [ugcCameraMode, setUgcCameraMode] = useState<'selfie' | 'gimbal'>('selfie'); // UGC capture style
   
@@ -848,7 +849,8 @@ export default function VideoPromptGenerator() {
           isUGC: isUGC,
           ugcCameraMode: isUGC ? ugcCameraMode : null,
           bRollAnimation: bRollAnimation,
-          bRollSceneCount: bRollAnimation ? bRollSceneCount : null
+          bRollSceneCount: bRollAnimation ? bRollSceneCount : null,
+          bRollVoiceoverScript: bRollAnimation ? bRollVoiceoverScript.trim() : null,
         }),
       });
 
@@ -2061,7 +2063,7 @@ export default function VideoPromptGenerator() {
                 {bRollAnimation && (
                   <>
                     <span className="text-xs text-zinc-500">
-                      Action-only, no dialogue. Hyperrealistic visuals focused on the action.
+                      B-roll simple. Puedes dejarlo action-only, o pegar un voiceover para que el sistema genere visuals que lo representen.
                     </span>
                     {/* Scene count selector for B-roll */}
                     <div className="flex items-center gap-2 text-xs text-zinc-400">
@@ -2090,6 +2092,22 @@ export default function VideoPromptGenerator() {
                       >
                         2
                       </button>
+                    </div>
+                    <div className="w-full">
+                      <label className="mt-3 block text-xs font-semibold text-zinc-300">
+                        Voiceover script (optional, drives B-roll visuals)
+                      </label>
+                      <textarea
+                        value={bRollVoiceoverScript}
+                        onChange={(e) => setBRollVoiceoverScript(e.target.value)}
+                        placeholder={'Example: \"When a child understands why someone is bullying them, they stop being afraid of it.\"'}
+                        rows={3}
+                        disabled={isGenerating}
+                        className="mt-2 w-full rounded-xl border border-zinc-700/60 bg-zinc-950/30 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 focus:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <p className="mt-1 text-[11px] text-zinc-500">
+                        Si pegas un voiceover, el prompt se vuelve visual y simple para ilustrar el concepto. No se agrega texto en pantalla; es audio-only.
+                      </p>
                     </div>
                   </>
                 )}

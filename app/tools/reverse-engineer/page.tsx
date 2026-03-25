@@ -176,25 +176,34 @@ export default function ReverseEngineer() {
     setResult(null);
 
     try {
-      let videoBase64 = null;
-      if (uploadedVideo) {
-        // Convert video to base64
-        videoBase64 = await fileToBase64(uploadedVideo);
+      const hasUploadedVideo = !!uploadedVideo;
+      const response = await fetch('/api/analyze', hasUploadedVideo
+        ? (() => {
+            const form = new FormData();
+            if (metaAdUrl.trim()) form.append('metaAdUrl', metaAdUrl.trim());
+            if (socialMediaUrl.trim()) form.append('socialMediaUrl', socialMediaUrl.trim());
+            form.append('video', uploadedVideo as File);
+            return { method: 'POST', body: form } as RequestInit;
+          })()
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              metaAdUrl: metaAdUrl.trim() || undefined,
+              socialMediaUrl: socialMediaUrl.trim() || undefined,
+            }),
+          });
+
+      const rawText = await response.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        if (!response.ok) {
+          throw new Error(rawText || `Error ${response.status}: ${response.statusText}`);
+        }
+        throw new Error('Invalid response from server. Please try again.');
       }
-
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          metaAdUrl: metaAdUrl.trim() || undefined,
-          socialMediaUrl: socialMediaUrl.trim() || undefined,
-          video: videoBase64,
-        }),
-      });
-
-      const data = await response.json();
 
       if (!response.ok) {
         if (response.status === 402) {
@@ -203,6 +212,9 @@ export default function ReverseEngineer() {
           setError(null);
           setIsAnalyzing(false);
           return;
+        }
+        if (response.status === 413 || (typeof rawText === 'string' && rawText.includes('Entity Too Large'))) {
+          throw new Error('El video es demasiado grande para subirlo. Prueba con un video más corto/liviano (o comprimido).');
         }
         const errorMessage = data.error || data.details || 'Failed to analyze the content';
         const fullError = data.details ? `${errorMessage}: ${data.details}` : errorMessage;

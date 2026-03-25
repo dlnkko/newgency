@@ -37,13 +37,21 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { description, productImage, isUGC = true, ugcCameraMode = 'selfie', bRollAnimation = false, bRollSceneCount = 2 } = body;
+    const {
+      description,
+      productImage,
+      isUGC = true,
+      ugcCameraMode = 'selfie',
+      bRollAnimation = false,
+      bRollSceneCount = 2,
+      bRollVoiceoverScript,
+    } = body;
 
-    if (!description || !description.trim()) {
-      return NextResponse.json(
-        { error: 'Description is required' },
-        { status: 400 }
-      );
+    const descriptionTrimmed = typeof description === 'string' ? description.trim() : '';
+    const voiceoverTrimmed = typeof bRollVoiceoverScript === 'string' ? bRollVoiceoverScript.trim() : '';
+
+    if (!descriptionTrimmed && !(bRollAnimation && voiceoverTrimmed)) {
+      return NextResponse.json({ error: 'Description is required' }, { status: 400 });
     }
 
     // Handle product image if provided
@@ -155,23 +163,37 @@ The goal is absolute photorealism - the video should be impossible to distinguis
 **PROFESSIONAL VIDEO MODE:**
 Generate a professional video prompt with high production quality. Focus on clear storytelling, good composition, and professional aesthetics.`;
 
-    // B-roll animation mode: action-only, no script, hyperrealistic visuals
-    const bRollInstructions = bRollAnimation ? `
+    // B-roll animation mode: action-only OR voiceover-driven B-roll (simple, easy to generate)
+    const bRollInstructions = bRollAnimation
+      ? `
 **CRITICAL - B-ROLL ANIMATION MODE (ACTIVE):**
-The user's description is the ACTION only. Generate pure B-roll style scenes:
+Generate simple, executable B-roll scenes (easy for a video model to generate).
+${voiceoverTrimmed ? `
+**VOICEOVER SCRIPT PROVIDED (DRIVES THE VISUALS):**
+"${voiceoverTrimmed.replace(/"/g, '\\"')}"
+- Your job is to **identify the core concept** of the voiceover and create visuals that clearly illustrate it.
+- **SIMPLE VISUAL TRANSLATION**: Pick ONE clear, literal scenario that matches the meaning. Avoid abstract metaphors that are hard to generate.
+- **NO ON-SCREEN TEXT**: Do not show captions or text. Voiceover is audio only.
+- **VOICEOVER FLAGS (MANDATORY)**: Every scene MUST set voiceover: true, lipSync: false. Use script field to carry the voiceover text (either full text in scene 1, or split logically across scenes).
+- The action must be **what we SEE**: who, where, what happens—short, clear, unambiguous.
+` : `
+The user's description is the ACTION only. Generate pure action B-roll style scenes:
 - **NO SCRIPT**: Every scene MUST have script: null. There is no dialogue, no voiceover, no narration.
 - **NO DIALOGUE**: For EVERY scene set noDialogue: true, lipSync: false, voiceover: false.
-- **ACTION FOCUS**: The description describes only what we SEE: movements, close-ups, product shots, transitions. Interpret it as visual/action only.
-- **HYPERREALISTIC**: Each scene must be hyperrealistic UGC-style, focused entirely on the action and visuals (lighting, textures, camera movement, composition). No spoken content.
-- **B-ROLL STYLE**: Think cinematic B-roll: cuts, close-ups, product in use, hands, details. Pure visual storytelling.
+`}
+- **B-ROLL STYLE**: Close-ups, real use, hands, details, simple cuts. Pure visual storytelling.
+- **HYPERREALISTIC**: Focus on believable lighting, textures, and physics.
 - **SCENE COUNT (MANDATORY)**: Generate EXACTLY ${bRollSceneCount === 1 ? 'ONE (1) SCENE' : 'TWO (2) SCENES'} in total, no more and no less.
-  - If 1 scene: Describe ONE continuous, coherent action without many changes or jumps; keep it simple and focused in a single flow.
-  - If 2 scenes: Describe EXACTLY TWO distinct actions/scenes that flow naturally; do NOT create a third scene.` : '';
+  - If 1 scene: ONE coherent action; keep it simple.
+  - If 2 scenes: EXACTLY TWO distinct actions that flow naturally; do NOT create a third scene.`
+      : '';
 
     const generationPrompt = `You are an expert AI prompt engineer specializing in ${isUGC ? 'hyperrealistic UGC (User-Generated Content)' : 'professional'} video prompts. Your task is to create a complete, ready-to-use video prompt based on the user's description.
 
 **User's Request:**
-${description}
+${descriptionTrimmed || '(B-roll voiceover mode: see script below)'}
+
+${bRollAnimation && voiceoverTrimmed ? `**Voiceover Script (audio-only):**\n${voiceoverTrimmed}` : ''}
 
 ${productImageFile ? '**Product Image:** You have access to a product image. Analyze it carefully and incorporate its visual details (colors, materials, textures, design, branding) into the prompt.' : ''}
 ${bRollInstructions}
@@ -185,8 +207,8 @@ Deconstruct the user's description into structured scenes with ALL parameters au
 **CRITICAL REQUIREMENTS:**
 1. **Analyze the description** and identify ALL distinct scenes, actions, or moments
 2. **For EACH scene, determine ALL parameters:**
-   - **Action**: Detailed action description ${isUGC ? 'with hyperrealistic UGC details' : 'with professional quality'}${bRollAnimation ? ' (B-roll mode: action/visual only, no dialogue)' : ''}
-   - **Script** (if dialogue/narration is needed): Generate appropriate script/dialogue for the scene, or null if no dialogue${bRollAnimation ? '. **B-roll mode: ALWAYS null**' : ''}
+   - **Action**: Detailed action description ${isUGC ? 'with hyperrealistic UGC details' : 'with professional quality'}${bRollAnimation ? (voiceoverTrimmed ? ' (B-roll voiceover mode: simple visuals that illustrate the script)' : ' (B-roll mode: action/visual only, no dialogue)') : ''}
+   - **Script** (if dialogue/narration is needed): Generate appropriate script/dialogue for the scene, or null if no dialogue${bRollAnimation ? (voiceoverTrimmed ? '. **B-roll voiceover mode: script MUST be the provided voiceover text (full or split).**' : '. **B-roll mode: ALWAYS null**') : ''}
    - **Composition**: Choose 1-2 from: "UGC Close-up", "Product in Real Use", "Everyday Life", "Authentic Unboxing" - select what best fits the scene
    - **Camera Angle**: Choose 1-2 from: "Selfie Camera", "Frontal Camera", "Steady" - select what best fits the action (use "Frontal Camera" if POV is mentioned)
    - **Lighting**: Choose ONE from: "Night Outside", "Day Outside", "Artificial Light Inside", "Natural Light Inside" - select what best fits the scene
@@ -244,7 +266,9 @@ You MUST respond with a valid JSON object in this EXACT format:
 ${isUGC ? '- **MANDATORY**: All scenes must maintain hyperrealistic UGC characteristics' : ''}
 ${isUGC && ugcCameraMode === 'gimbal' ? '- **MANDATORY (Gimbal mode)**: For each scene, cameraAngle must be ["Steady"] unless user explicitly requests a different angle.' : ''}
 ${isUGC && ugcCameraMode !== 'gimbal' ? '- **MANDATORY (Selfie mode)**: Prefer cameraAngle ["Selfie Camera"] for scenes unless POV/frontal is explicitly required by the action.' : ''}
-${bRollAnimation ? '- **MANDATORY (B-roll mode)**: Every scene MUST have script: null, noDialogue: true, lipSync: false, voiceover: false. Action-only, no spoken content.' : ''}
+${bRollAnimation ? (voiceoverTrimmed
+  ? '- **MANDATORY (B-roll voiceover mode)**: Every scene MUST have voiceover: true, lipSync: false, noDialogue: false. Use script to carry the provided voiceover (full or split).'
+  : '- **MANDATORY (B-roll mode)**: Every scene MUST have script: null, noDialogue: true, lipSync: false, voiceover: false. Action-only, no spoken content.') : ''}
 
 **Important:**
 - If a hook is mentioned, make the first scene extremely attention-grabbing
