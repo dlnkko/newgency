@@ -70,27 +70,8 @@ export async function POST(request: NextRequest) {
 
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
-
-    const contentTypeHeader = request.headers.get('content-type') || '';
-    const isFormData = contentTypeHeader.includes('multipart/form-data');
-
-    let metaAdUrl: string | null = null;
-    let socialMediaUrl: string | null = null;
-    let video: string | null = null; // legacy base64
-    let uploadedVideoFile: File | null = null; // new: multipart file
-
-    if (isFormData) {
-      const formData = await request.formData();
-      const meta = formData.get('metaAdUrl');
-      const social = formData.get('socialMediaUrl');
-      metaAdUrl = typeof meta === 'string' ? meta : null;
-      socialMediaUrl = typeof social === 'string' ? social : null;
-      const vid = formData.get('video');
-      uploadedVideoFile = vid instanceof File ? vid : null;
-    } else {
-      const body = await request.json();
-      ({ metaAdUrl, socialMediaUrl, video } = body);
-    }
+    const body = await request.json();
+    const { metaAdUrl, socialMediaUrl, video } = body;
 
     if ((!metaAdUrl || !metaAdUrl.trim()) && (!socialMediaUrl || !socialMediaUrl.trim()) && !video) {
       return NextResponse.json(
@@ -102,35 +83,19 @@ export async function POST(request: NextRequest) {
     let videoFile: any = null;
     let contentType: 'metaAd' | 'socialMedia' | 'uploaded' = metaAdUrl ? 'metaAd' : (socialMediaUrl ? 'socialMedia' : 'uploaded');
     
-    // Handle uploaded video first (multipart OR legacy base64)
-    if (uploadedVideoFile || video) {
+    // Handle uploaded video first
+    if (video) {
       try {
         console.log('Processing uploaded video...');
-        const maxBytes = 25 * 1024 * 1024; // 25MB safety for production payloads
-        if (uploadedVideoFile && uploadedVideoFile.size > maxBytes) {
-          return NextResponse.json(
-            { error: 'Video too large', details: 'Please upload a smaller/shorter video (<= 25MB).' },
-            { status: 413 }
-          );
-        }
-
-        let videoToUpload: Blob | File;
-        let mimeType = 'video/mp4';
-        if (uploadedVideoFile) {
-          mimeType = uploadedVideoFile.type || 'video/mp4';
-          videoToUpload = uploadedVideoFile;
-        } else {
-          const base64Data = (video as string).split(',')[1];
-          const videoBuffer = Buffer.from(base64Data, 'base64');
-          const videoUint8Array = new Uint8Array(videoBuffer);
-          videoToUpload = new Blob([videoUint8Array], { type: 'video/mp4' });
-        }
+        const videoBuffer = Buffer.from(video.split(',')[1], 'base64');
+        const videoUint8Array = new Uint8Array(videoBuffer);
+        const videoBlob = new Blob([videoUint8Array], { type: 'video/mp4' });
         
         // Upload video to Gemini Files
         console.log('Uploading video to Gemini Files...');
         let myfile = await ai.files.upload({
-          file: videoToUpload,
-          config: { mimeType }
+          file: videoBlob,
+          config: { mimeType: 'video/mp4' }
         });
         
         console.log('Video uploaded to Gemini:', myfile.uri);

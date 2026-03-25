@@ -821,8 +821,9 @@ export default function VideoPromptGenerator() {
   };
 
   const generatePromptAutomatic = async () => {
-    if (!autoDescription.trim()) {
-      alert('Please enter a description');
+    const hasVoiceoverOnly = bRollAnimation && !!bRollVoiceoverScript.trim();
+    if (!autoDescription.trim() && !hasVoiceoverOnly) {
+      alert('Please enter a description (or enable B-roll + add a voiceover script)');
       return;
     }
 
