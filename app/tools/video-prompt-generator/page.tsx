@@ -2344,7 +2344,12 @@ export default function VideoPromptGenerator() {
 
             <button
               onClick={autoMode === 'describe' ? generatePromptAutomatic : generatePromptFromScript}
-              disabled={isGenerating || (autoMode === 'describe' ? !autoDescription.trim() : !autoScript.trim())}
+              disabled={
+                isGenerating ||
+                (autoMode === 'describe'
+                  ? (!autoDescription.trim() && !(bRollAnimation && !!bRollVoiceoverScript.trim()))
+                  : !autoScript.trim())
+              }
               className="w-full rounded-xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-500/20 via-amber-500/15 to-amber-500/20 px-8 py-4 font-bold text-amber-200 shadow-[0_0_30px_rgba(250,204,21,0.25)] transition-all hover:from-amber-500/30 hover:via-amber-500/25 hover:to-amber-500/30 hover:shadow-[0_0_40px_rgba(250,204,21,0.35)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-amber-500/20 disabled:hover:via-amber-500/15 disabled:hover:to-amber-500/20 disabled:hover:scale-100"
             >
               {isGenerating ? (
