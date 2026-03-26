@@ -20,6 +20,7 @@ export default function ImagePromptGenerator() {
   const [copyCameraAngle, setCopyCameraAngle] = useState<boolean>(false);
   const [copyLighting, setCopyLighting] = useState<boolean>(false);
   const [copyAction, setCopyAction] = useState<boolean>(false);
+  const [rawUgc, setRawUgc] = useState<boolean>(false);
   const [attachReferenceAsReferenceOnly, setAttachReferenceAsReferenceOnly] = useState<boolean>(false); // "Se adjuntará reference image" → usar como referencia, no replicar
   const [cameraAngle, setCameraAngle] = useState<string[]>([]); // Same as video: Selfie Camera, Frontal Camera, Steady
   const [lighting, setLighting] = useState<string | null>(null); // Same as video + Ring: Night Outside, Day Outside, Artificial Light Inside, Natural Light Inside, Ring
@@ -152,6 +153,7 @@ export default function ImagePromptGenerator() {
     setCopyCameraAngle(false);
     setCopyLighting(false);
     setCopyAction(false);
+    setRawUgc(false);
   };
 
   const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
@@ -536,6 +538,7 @@ export default function ImagePromptGenerator() {
           copyCameraAngle: copyCameraAngle,
           copyLighting: copyLighting,
           copyAction: copyAction,
+          rawUGC: rawUgc,
           attachReferenceAsReferenceOnly: attachReferenceAsReferenceOnly,
           cameraAngle: cameraAngle,
           lighting: lighting,
@@ -944,6 +947,24 @@ export default function ImagePromptGenerator() {
                     >
                       Se adjuntará reference image
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setRawUgc(!rawUgc)}
+                      disabled={isGenerating}
+                      className={`w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                        rawUgc
+                          ? 'bg-cyan-500/80 text-white shadow-lg shadow-cyan-500/20'
+                          : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-700/70'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      title="Forzar look RAW UGC: luz menos definida, leve grain y micro-difusión como iPhone real sin edición"
+                    >
+                      Raw UGC
+                    </button>
+                    {rawUgc && (
+                      <p className="text-[10px] text-zinc-500">
+                        Raw UGC activo: prioriza look iPhone sin postproducción (grano fino natural, luz suave/difusa, nitidez no clínica). Con Copy Lighting, intenta replicar ese carácter exactamente.
+                      </p>
+                    )}
                     {copyAction && !copyCameraAngle && !copyLighting && !attachReferenceAsReferenceOnly && (
                       <p className="text-[10px] text-zinc-500">
                         Copy Action activo: el prompt copiará SOLO la pose/acción/posición de la referencia. No copiará ropa, cara, fondo, lighting ni estilo.

@@ -64,10 +64,11 @@ export async function POST(request: NextRequest) {
       hasElementImages: Array.isArray(body.elementImages) && body.elementImages.length > 0,
       copyCameraAngle: body.copyCameraAngle,
       copyLighting: body.copyLighting,
-      copyAction: body.copyAction
+      copyAction: body.copyAction,
+      rawUGC: body.rawUGC
     });
     
-    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, copyAction, attachReferenceAsReferenceOnly, cameraAngle, lighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
+    const { description, style, referenceImage, referenceImages, copyCameraAngle, copyLighting, copyAction, rawUGC, attachReferenceAsReferenceOnly, cameraAngle, lighting, productImages, characterImages, elementImages, firstFrameFromVideo, forceSameCharacterReference } = body;
 
     const hasUserCameraAngleSelection =
       Array.isArray(cameraAngle) && cameraAngle.length > 0;
@@ -75,6 +76,10 @@ export async function POST(request: NextRequest) {
     const lightingLowerForRing =
       typeof lighting === 'string' ? lighting.toLowerCase() : '';
     const isRingLighting = lightingLowerForRing.includes('ring');
+    const rawUgcLock = !!rawUGC;
+    const rawUgcPromptBlock = rawUgcLock
+      ? `\n\n**RAW UGC LOOK — ABSOLUTE PRIORITY:**\n- Preserve/produce a real iPhone capture feel with subtle natural grain/noise, mild lens softness, and micro-diffusion.\n- Avoid over-clean, over-sharp, studio-crisp rendering. No hyper-defined edges, no ultra-clarity skin, no polished ad look.\n- Lighting must feel naturally imperfect and soft (not hard-defined studio key), with realistic falloff and gentle highlight bloom when bright sources exist.\n- Keep color science natural and ungraded: no cinematic grade, no heavy contrast push, no beauty retouch.\n- If Copy Lighting is selected, match the reference light character exactly: same softness, same shadow definition level, same ambient haze/diffusion, same noise character. Do not invent cleaner light than reference.`
+      : '';
     
     // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages/elementImages)
     let mainReferenceImage: string | null = null;
@@ -1048,6 +1053,9 @@ Do NOT include phrases like "matching the attached reference image", "as shown i
         if (copyAction) {
           copyInstructions += `\n- **COPY ACTION/POSE**: Replicate the subject’s action/pose/body position/gesture from the attached reference image (hand placement, posture, gaze direction), but do NOT copy identity/clothing/background.`;
         }
+        if (copyLighting && rawUgcLock) {
+          copyInstructions += `\n- **RAW UGC LIGHTING LOCK**: Match the reference light exactly in RAW character: soft/undefined shadow edges, subtle ambient haze, slight smartphone grain/noise, gentle highlight bloom, and non-clinical sharpness. Do NOT clean up, denoise, sharpen, or studio-polish the lighting.`;
+        }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - FOR LIGHTING, CAMERA ANGLE, REALISM ONLY - NOT FOR THE PRODUCT):**
 A main reference image has been provided and analyzed. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. **Use it ONLY for**: style, realism, lighting, camera angle, composition. **DO NOT use the reference image for the product's appearance.** If the reference shows a product (e.g. a bottle), IGNORE that—the product to show is defined ONLY by the attached PRODUCT image(s) (e.g. if the product image shows a pouch, the result MUST show a pouch).${productImageFiles.length > 0 ? ' **The product in the final image MUST look exactly as in the attached product image(s)—same packaging type, shape, and design.**' : ''}
@@ -1502,7 +1510,7 @@ You MUST generate a prompt that targets a REAL iPhone capture including RAW impe
 - **Authentic colors**: iPhone's natural color science, realistic color temperature, genuine color reproduction as seen in real iPhone photos
 - **Real-world details**: Natural imperfections, authentic material response to lighting, genuine atmospheric perspective, realistic depth of field (iPhone-style)
 - **Maximum realism**: If the description mentions a person, environment, object, or anything - it must look 100% real, as if photographed with an iPhone in real life
-- **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone${referenceImageNote}
+- **No artificial elements**: Everything must look natural and authentic, as if it exists in the real world and was captured with an iPhone${referenceImageNote}${rawUgcPromptBlock}
 
 **CRITICAL - PERSON DETECTION AND CAMERA PERSPECTIVE:**
 - **FIRST: Check if description mentions people/persons**: Analyze the user's description: "${description}"
@@ -1560,7 +1568,7 @@ You MUST generate a prompt that targets a REAL iPhone capture including RAW impe
   - If description does NOT mention people: The image should look like it was taken by someone with an iPhone in third-person perspective (as if someone is photographing the subject/scene), but NO people visible in the frame
   - **Reference image priority**: ${mainReferenceImageFile ? (attachReferenceAsReferenceOnly ? 'A reference image will be attached for REFERENCE ONLY. Use it ONLY for lighting, texture, and hyperrealism. The face/person can be a different avatar. Do NOT copy the person; same lighting, texture, hyperrealistic look.' : (copyCameraAngle && !copyLighting ? 'If Copy Camera Angle is selected without attaching reference image, extract and describe the camera angle from reference analysis only. Do NOT mention any attached reference image in the final prompt.' : (copyCameraAngle ? 'If a main reference image is provided, you MUST copy the EXACT camera angle and perspective from the main reference image. This is CRITICAL - the camera angle MUST be replicated exactly. The main reference image will be uploaded to Nano Banana Pro and placed first, so the camera angle must be matched precisely.' : mainReferenceImagePrompt ? 'If a main reference image is provided, match the EXACT camera angle and perspective from the main reference image. The main reference image prompt describes exactly how the reference looks - respect that EXACTLY. This image will be uploaded to Nano Banana Pro and placed first, so the style must be replicated exactly.' : 'If a main reference image is provided, analyze it and match its camera angle and perspective exactly. This image will be uploaded to Nano Banana Pro and placed first.'))) : 'Choose the most natural camera angle that fits the scene.'}
 
-The goal: image like a **real casual iPhone photo** (grabado de iPhone). ${isRingLighting ? '**Lighting is ONLY as in the Ring block above** — do not substitute "natural light from a window".' : 'Natural light,'} natural skin and texture (as iPhone captures - **not** "visible pores" or ultra-defined), soft shadows, no cinematic. **In the final prompt:** describe the look as "like a casual iPhone photo" / "as if taken with iPhone" - do NOT write "homemade" or "casero". Do NOT ask for "visible pores" or "subtle fine lines". **CRITICAL:** Result must look like real UGC on iPhone - natural, not over-defined, NOT studio, NOT cinematic. Clean photo, no device frames. **CRITICAL: The image should be a clean full-bleed photo without any device frames, borders, margins, overlays, status bars, or UI elements — just the photograph itself (not a screenshot, not a phone mockup).**${imageCameraAngleAndLightingBlock}${referenceImageNote}`;
+The goal: image like a **real casual iPhone photo** (grabado de iPhone). ${isRingLighting ? '**Lighting is ONLY as in the Ring block above** — do not substitute "natural light from a window".' : 'Natural light,'} natural skin and texture (as iPhone captures - **not** "visible pores" or ultra-defined), soft shadows, no cinematic. **In the final prompt:** describe the look as "like a casual iPhone photo" / "as if taken with iPhone" - do NOT write "homemade" or "casero". Do NOT ask for "visible pores" or "subtle fine lines". **CRITICAL:** Result must look like real UGC on iPhone - natural, not over-defined, NOT studio, NOT cinematic. Clean photo, no device frames. **CRITICAL: The image should be a clean full-bleed photo without any device frames, borders, margins, overlays, status bars, or UI elements — just the photograph itself (not a screenshot, not a phone mockup).**${imageCameraAngleAndLightingBlock}${referenceImageNote}${rawUgcPromptBlock}`;
     } else if (style === 'studio-quality') {
       // Build copy instructions based on user selection
       let copyInstructionsStudio = '';
@@ -1629,7 +1637,7 @@ You MUST generate a prompt that creates professional studio photography quality:
 - **Controlled environment**: Clean backgrounds, controlled lighting, professional setup
 - **Photographer quality**: As if taken by a professional photographer in a studio with professional equipment
 - **Clarity and sharpness**: Crystal clear details, perfect focus, professional depth of field
-- **Color accuracy**: Professional color grading, accurate color reproduction, studio lighting color temperature${referenceImageNote}
+- **Color accuracy**: Professional color grading, accurate color reproduction, studio lighting color temperature${referenceImageNote}${rawUgcPromptBlock}
 
 The image should look like a professional studio photograph - hyperrealistic but with the controlled, polished aesthetic of professional photography. Everything should be perfectly lit, composed, and detailed as if shot in a professional photography studio.`;
     } else if (style === 'design') {
@@ -1696,7 +1704,7 @@ You MUST generate a prompt that creates professional design work (infographics, 
 - **Visual hierarchy**: Clear information hierarchy, balanced composition, professional design structure
 - **Detail-oriented**: Every element carefully placed, no random elements, everything serves a purpose
 - **Professional polish**: Clean, polished design, as if created by an experienced designer
-- **Creative but functional**: Creative and visually appealing while maintaining clarity and functionality${referenceImageNote}
+- **Creative but functional**: Creative and visually appealing while maintaining clarity and functionality${referenceImageNote}${rawUgcPromptBlock}
 
 The image should look like professional design work - infographics, static ads, or creative designs that a human designer would create, with careful attention to every detail, color, composition, and element.`;
     
@@ -1877,6 +1885,10 @@ ${elementImageFiles.map((_, index) => {
         copyInstructionsCopy = `
   - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
       }
+      if (copyLighting && rawUgcLock) {
+        copyInstructionsCopy += `
+  - **RAW UGC LIGHTING LOCK**: preserve the same diffuse/soft light character, subtle grain/noise, and non-clinical sharpness from the reference. Never upgrade it to crisp studio lighting.`;
+      }
       
       let referenceImageNote = '';
       if (mainReferenceImageFile && mainReferenceImagePrompt) {
@@ -1944,6 +1956,10 @@ ${lighting ? `
         } else if (copyLighting) {
           copyInstructionsCopyNoPrompt = `
   - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
+        }
+        if (copyLighting && rawUgcLock) {
+          copyInstructionsCopyNoPrompt += `
+  - **RAW UGC LIGHTING LOCK**: preserve soft/diffuse light edges, slight grain/noise, and natural iPhone imperfection level from the reference. Do NOT render as clean studio light.`;
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
@@ -2016,7 +2032,7 @@ Generate a detailed prompt that:
 - **ONLY CHANGE FORMAT IF EXPLICITLY REQUESTED**: If user does NOT mention changing the format/type, you MUST keep the exact same format/type as the reference
 - ${lighting && typeof lighting === 'string' ? `**LIGHTING (PRESET SELECTED):** **Replace** the base image's lighting entirely with the illumination described in the **PRESET SPECIFICATION** appendix below. Keep the same composition, subjects, and layout. Do **not** describe the output as still using the old light.` : `**MAINTAIN ALL VISUAL CHARACTERISTICS**: Keep the exact composition, lighting, colors, textures, and aesthetic from the reference (unless specifically asked to change)`}
 - **CHANGE ONLY REQUESTED ELEMENTS**: Modify only what the user explicitly wants to change (content, colors, text, etc.) while keeping the format intact${lighting && typeof lighting === 'string' ? ` — **unless** the only intent is relighting (empty or minimal description), then **only** lighting changes per preset` : ''}
-- **BE SPECIFIC ABOUT FORMAT**: Explicitly state the format/type in your prompt (e.g., "screenshot of iPhone screen", "photo taken with iPhone", etc.)${referenceImageNote}${changeElementsRelightAppendix}
+- **BE SPECIFIC ABOUT FORMAT**: Explicitly state the format/type in your prompt (e.g., "screenshot of iPhone screen", "photo taken with iPhone", etc.)${referenceImageNote}${changeElementsRelightAppendix}${rawUgcPromptBlock}
 
 **Output Format:**
 Provide ONLY the detailed prompt as a single, continuous paragraph. No headers, no sections, no bullet points - just the complete prompt text ready to use.`;
