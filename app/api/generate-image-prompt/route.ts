@@ -76,11 +76,7 @@ export async function POST(request: NextRequest) {
     const lightingLowerForRing =
       typeof lighting === 'string' ? lighting.toLowerCase() : '';
     const isRingLighting = lightingLowerForRing.includes('ring');
-    const rawUgcLock = !!rawUGC;
-    const rawUgcPromptBlock = rawUgcLock
-      ? `\n\n**RAW UGC LOOK — ABSOLUTE PRIORITY:**\n- Preserve/produce a real iPhone capture feel with subtle natural grain/noise, mild lens softness, and micro-diffusion.\n- Avoid over-clean, over-sharp, studio-crisp rendering. No hyper-defined edges, no ultra-clarity skin, no polished ad look.\n- Lighting must feel naturally imperfect and soft (not hard-defined studio key), with realistic falloff and gentle highlight bloom when bright sources exist.\n- Keep color science natural and ungraded: no cinematic grade, no heavy contrast push, no beauty retouch.\n- If Copy Lighting is selected, match the reference light character exactly: same softness, same shadow definition level, same ambient haze/diffusion, same noise character. Do not invent cleaner light than reference.`
-      : '';
-    
+
     // Support both old format (referenceImages array) and new format (referenceImage + productImages/characterImages/elementImages)
     let mainReferenceImage: string | null = null;
     let productImagesArray: string[] = [];
@@ -99,6 +95,28 @@ export async function POST(request: NextRequest) {
       productImagesArray = referenceImages.slice(1);
       characterImagesArray = [];
     }
+
+    const lightingLowerPreset =
+      typeof lighting === 'string' ? lighting.toLowerCase().trim() : '';
+    const isRawUgcLightingPreset =
+      lightingLowerPreset === 'raw ugc' || lightingLowerPreset.includes('raw ugc');
+    const rawUgcLock = !!rawUGC;
+    const hasMainReferenceImage = !!mainReferenceImage;
+    /** Raw UGC from reference button OR from Lighting preset "Raw UGC" (hyperrealistic UGC) */
+    const effectiveRawUgc = rawUgcLock || isRawUgcLightingPreset;
+
+    /** Used in copy-instruction blocks: match reference capture even when Copy Lighting is OFF */
+    const rawUgcFingerprintAppendix = effectiveRawUgc
+      ? `${hasMainReferenceImage
+          ? `\n- **RAW UGC — REFERENCE OPTICAL FINGERPRINT (ABSOLUTE PRIORITY):** The attached reference/base image is the **master** for **entire** capture quality: smartphone ISO noise/grain, muddy/diffuse shadows, soft highlight roll-off, **low** micro-contrast, imperfect white balance, and any "ugly" authentic phone-only imperfections. **Do NOT** beautify, sharpen, or upgrade lighting/clarity beyond what the reference implies. This applies **even if "Copy Lighting" is OFF** — you must still match the reference's **lighting diffusion, shadow softness, and noise character**; only the user's text may change subject/scene content.`
+          : `\n- **RAW UGC — LIGHTING PRESET / NO REFERENCE IMAGE (ABSOLUTE PRIORITY):** The user chose **Raw UGC** (reference toggle and/or **Raw UGC** in Lighting). **Do NOT** invent crisp studio/cinematic lighting. Apply **smartphone ISO noise/grain**, muddy/diffuse shadows, soft highlight roll-off, **low** micro-contrast, imperfect white balance, and an **ugly-authentic** capture band — **aligned with the RAW UGC block + CAMERA ANGLE & LIGHTING section** below.`}\n- **FORBIDDEN with RAW UGC:** cinematic color grade or HDR "pop"; perfect circular bokeh balls or creamy telephoto blur; razor micro-contrast; beauty/glamour retouch; pristine LED strip or studio key lighting; "shot on cinema / anamorphic / high-end lens" language; crisp defined shadows that look lit for a commercial.\n- **REQUIRED:** visible luminance noise in darker areas (like a small phone sensor), slightly smeared/mushy bright points, ambiguous shadow edges, non-clinical skin/hair definition, background blur that reads as **messy smartphone OOF** — not catalogue-perfect.\n- **Dynamic:** ${hasMainReferenceImage ? `Infer the reference's actual light (flat ambient, tungsten mush, night noise, etc.) and **lock** that character; never substitute a "nicer" invented setup.` : `Infer light from the **user description** + **Raw UGC** rules; keep it diffuse and imperfect — never "upgrade" to a glamour look.`}${copyLighting && hasMainReferenceImage ? `\n- **Copy Lighting is ON:** Match reference light **exactly** in softness, haze, and grain — do not clean it up.` : ''}`
+      : '';
+    const rawUgcPromptBlock = effectiveRawUgc
+      ? `\n\n**RAW UGC LOOK — ABSOLUTE PRIORITY (NON-NEGOTIABLE):**\n- **Reference-driven:** ${hasMainReferenceImage ? `Whenever an image is attached, treat it as the **single source of truth** for grain level, diffusion, shadow depth, highlight behavior, noise pattern, and camera realism — **not only when "Copy Lighting" is selected.**` : `If a reference image is attached, it is the source of truth for capture quality. **If no reference is attached:** follow the **Raw UGC** CAMERA ANGLE & LIGHTING block and these rules (grain, diffusion, anti-cinematic).`}\n- Preserve a **real smartphone capture** feel: natural grain/noise, mild lens softness, micro-diffusion, **low** micro-contrast; avoid clinical sharpness and ad polish.\n- **Lighting:** Must stay **diffuse, imperfect, and phone-authentic** — flat or muddy ambient is valid; **never** "upgrade" to glossy cinematic key/fill with perfect gradients or hero lighting unless an attached reference shows that.\n- **Color:** Natural/ungraded — no teal-orange, no blockbuster contrast, no beauty retouch.\n- **Anti-cinematic:** No perfect LED ceiling rigs, no Hollywood bokeh, no HDR skin clarity; stay in the **same ugly-authentic band** as a real phone snapshot.`
+      : '';
+    const rawUgcChangeElementsReferenceAppendix = effectiveRawUgc
+      ? `\n\n**RAW UGC — CHANGE ELEMENTS (REFERENCE MATCH, ABSOLUTE PRIORITY):**\n- The attached **base image** defines the **optical + lighting DNA** for the result: **same** ugly-smartphone grain, **same** diffuse/muddy light quality, **same** shadow softness and noise-in-shadows, **same** lack of clinical sharpness — **whether or not "Copy Lighting" is toggled.** Changing the subject (e.g. age, gender) does **not** permit switching to a cleaner, more cinematic, or more "pro" look.\n- **Copy Camera Angle** (if on): Match **selfie / front-camera / handheld** distance and tilt from the reference — **not** a perfectly level commercial tripod shot.\n- If a **lighting preset** is selected in the UI: apply direction/warmth from the preset but **render it through the same RAW sensor character** as the reference (grainy, soft, imperfect) — **not** as a crisp studio interpretation of that preset.`
+      : '';
 
     if (!description || !description.trim()) {
       return NextResponse.json(
@@ -1053,8 +1071,8 @@ Do NOT include phrases like "matching the attached reference image", "as shown i
         if (copyAction) {
           copyInstructions += `\n- **COPY ACTION/POSE**: Replicate the subject’s action/pose/body position/gesture from the attached reference image (hand placement, posture, gaze direction), but do NOT copy identity/clothing/background.`;
         }
-        if (copyLighting && rawUgcLock) {
-          copyInstructions += `\n- **RAW UGC LIGHTING LOCK**: Match the reference light exactly in RAW character: soft/undefined shadow edges, subtle ambient haze, slight smartphone grain/noise, gentle highlight bloom, and non-clinical sharpness. Do NOT clean up, denoise, sharpen, or studio-polish the lighting.`;
+        if (effectiveRawUgc) {
+          copyInstructions += rawUgcFingerprintAppendix;
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE (PRIMARY STYLE REFERENCE - FOR LIGHTING, CAMERA ANGLE, REALISM ONLY - NOT FOR THE PRODUCT):**
@@ -1149,7 +1167,10 @@ A main reference image was analyzed only to infer camera angle and perspective. 
           copyInstructionsNoPrompt = `
 - **EXACT lighting style** from the main reference - THIS IS ABSOLUTELY CRITICAL - Analyze the attached reference image and extract ALL lighting details: identify the EXACT type of lighting (natural daylight, studio lighting, FLASH PHOTOGRAPHY - identify if it's on-camera flash, off-camera flash, ring flash, bounce flash, etc., artificial lighting, dramatic spotlight, soft diffused, harsh directional, ambient, mixed lighting, etc.), the EXACT direction the light comes from, the EXACT intensity and brightness, the EXACT color temperature (warm, cool, neutral), the EXACT shadow placement and characteristics (including flash shadows if flash is present), the EXACT highlight placement and intensity (including flash highlights if flash is present), any multiple light sources and their positions, any light modifiers (softbox, umbrella, reflector, etc.), and MOST IMPORTANTLY if flash photography is present, identify and describe ALL flash characteristics (harsh shadows, strong highlights, flash color temperature, flash reflections, catchlights in eyes, characteristic flash look, etc.). You MUST describe these EXACTLY in your prompt with maximum detail. **CRITICAL**: Explicitly state "copy the EXACT lighting style from the attached reference image" in your prompt. The reference image WILL be attached to the final generation, so make explicit references to it.`;
         }
-        
+        if (effectiveRawUgc) {
+          copyInstructionsNoPrompt += rawUgcFingerprintAppendix;
+        }
+
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (PRIMARY STYLE REFERENCE - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST, AND WILL ALSO BE ATTACHED TO FINAL IMAGE GENERATION):**
 A main reference image has been attached. This image will be uploaded to the Nano Banana Pro model and will be placed FIRST. **IMPORTANT**: This reference image will ALSO be attached to the final image generation model, so the model will have access to it.${copyCameraAngle || copyLighting ? ` The user has selected specific elements to copy from this reference image.${copyCameraAngle ? ' **CRITICAL: You MUST copy the EXACT camera angle and perspective from the attached reference image.**' : ''}${copyLighting ? ' **CRITICAL: You MUST copy the EXACT lighting style from the attached reference image.**' : ''}` : ''}
 
@@ -1357,6 +1378,20 @@ The image MUST look like a **real photo just taken with an iPhone 13**, not a 3D
 
 **NEGATIVE PROMPTS (ABSOLUTE PROHIBITIONS):**
 NO beauty-filtered or airbrushed skin. NO visible “CGI pores” or microscope-level detail. NO glamour-shot post-processing. NO uniform plastic fabrics. NO perfectly even flat lighting (no heavy filler lights). Avoid CGI oversharpening/large halo rings; **JPEG ringing and compression imperfections are allowed**. **NO cinematic background blur or heavy bokeh – the background must remain naturally readable like a real iPhone 13 photo.** NO device frames or UI elements. **NO overlays of any kind:** no status bar (carrier, time, battery, signal), no notch/Dynamic Island chrome, no screenshot look, no black letterboxing, no fake phone preview frame, no camera-app HUD, no watermarks or on-image UI.`;
+
+      if (lightingLower.includes('raw ugc')) {
+        return `${hyperrealismBase}
+
+**LIGHTING PRESET: RAW UGC (SMARTPHONE AUTHENTIC — DYNAMIC, NOT CINEMATIC):**
+The user selected **Raw UGC** in the Lighting control. This preset **locks the same** **RAW UGC LOOK**, **RAW UGC fingerprint**, and anti-cinematic rules as the rest of this system message (appendix blocks). Do **not** invent a separate “prettier” lighting setup.
+
+- **Light (scene-specific):** Infer light from the **user description** — indoor night, indoor tungsten, soft window, mixed LED, etc. — but always **diffuse / imperfect / phone-authentic**: soft or muddy shadow edges, **no** crisp studio keys, **no** hero LED strips, **no** cinematic color grade, **no** perfect circular bokeh or Hollywood backlight.
+- **Grain & texture:** Visible **sensor noise** in darker areas, **mild lens softness**, micro-diffusion; **never** clinical HDR skin or tack-sharp “catalog” detail.
+- **Forbidden:** pristine ceiling LED rigs, glamour retouch, creamy telephoto bokeh, “shot on cinema / anamorphic” language.
+- **Overall:** Stay in the **ugly-authentic band** of a real iPhone snapshot — **not** a polished commercial still.
+
+**NOTE:** This preset **does not** replace the global **RAW UGC** blocks — it **reinforces** them in the CAMERA ANGLE & LIGHTING section for the final prompt.`;
+      }
 
       if (lightingLower.includes('night outside')) {
         return `${hyperrealismBase}
@@ -1885,9 +1920,8 @@ ${elementImageFiles.map((_, index) => {
         copyInstructionsCopy = `
   - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
       }
-      if (copyLighting && rawUgcLock) {
-        copyInstructionsCopy += `
-  - **RAW UGC LIGHTING LOCK**: preserve the same diffuse/soft light character, subtle grain/noise, and non-clinical sharpness from the reference. Never upgrade it to crisp studio lighting.`;
+      if (effectiveRawUgc) {
+        copyInstructionsCopy += rawUgcFingerprintAppendix.replace(/\n- /g, '\n  - ');
       }
       
       let referenceImageNote = '';
@@ -1957,9 +1991,8 @@ ${lighting ? `
           copyInstructionsCopyNoPrompt = `
   - **EXACT lighting style** (same type, direction, intensity, color temperature) - THIS IS CRITICAL - MUST be preserved exactly`;
         }
-        if (copyLighting && rawUgcLock) {
-          copyInstructionsCopyNoPrompt += `
-  - **RAW UGC LIGHTING LOCK**: preserve soft/diffuse light edges, slight grain/noise, and natural iPhone imperfection level from the reference. Do NOT render as clean studio light.`;
+        if (effectiveRawUgc) {
+          copyInstructionsCopyNoPrompt += rawUgcFingerprintAppendix.replace(/\n- /g, '\n  - ');
         }
         
         referenceImageNote = `\n\n**CRITICAL - MAIN REFERENCE IMAGE ATTACHED (BASE FOR ITERATION - WILL BE UPLOADED TO NANO BANANA PRO AND PLACED FIRST):**
@@ -2009,6 +2042,9 @@ ${lighting ? `
 
       if (lighting && typeof lighting === 'string') {
         referenceImageNote += changeElementsLightingPresetLock;
+      }
+      if (effectiveRawUgc) {
+        referenceImageNote += rawUgcChangeElementsReferenceAppendix;
       }
 
       styleInstructions = `**CHANGE ELEMENTS IN IMAGE MODE - EXACT FORMAT PRESERVATION:**

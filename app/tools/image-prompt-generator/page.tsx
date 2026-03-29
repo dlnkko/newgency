@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DashboardLayout from '@/app/components/DashboardLayout';
 import CopyButton from '@/app/components/CopyButton';
 import InsufficientCreditsError from '@/components/InsufficientCreditsError';
@@ -23,7 +23,7 @@ export default function ImagePromptGenerator() {
   const [rawUgc, setRawUgc] = useState<boolean>(false);
   const [attachReferenceAsReferenceOnly, setAttachReferenceAsReferenceOnly] = useState<boolean>(false); // "Se adjuntará reference image" → usar como referencia, no replicar
   const [cameraAngle, setCameraAngle] = useState<string[]>([]); // Same as video: Selfie Camera, Frontal Camera, Steady
-  const [lighting, setLighting] = useState<string | null>(null); // Same as video + Ring: Night Outside, Day Outside, Artificial Light Inside, Natural Light Inside, Ring
+  const [lighting, setLighting] = useState<string | null>(null); // Night/Day/Artificial/Natural/Ring; hyperrealistic-ugc also: Raw UGC
   const [productImages, setProductImages] = useState<File[]>([]);
   const [productPreviews, setProductPreviews] = useState<string[]>([]);
   const [characterImages, setCharacterImages] = useState<File[]>([]);
@@ -32,6 +32,12 @@ export default function ImagePromptGenerator() {
   const [elementImages, setElementImages] = useState<File[]>([]);
   const [elementPreviews, setElementPreviews] = useState<string[]>([]);
   const [veo3FirstFrame, setVeo3FirstFrame] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (selectedStyle !== 'hyperrealistic-ugc' && lighting === 'Raw UGC') {
+      setLighting(null);
+    }
+  }, [selectedStyle, lighting]);
 
   // Compress and resize image to reduce file size
   const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.85, targetSizeKB?: number): Promise<File> => {
@@ -818,6 +824,9 @@ export default function ImagePromptGenerator() {
                   { value: 'Artificial Light Inside', label: 'Artificial Light Inside' },
                   { value: 'Natural Light Inside', label: 'Natural Light Inside' },
                   { value: 'Ring', label: 'Ring' },
+                  ...(selectedStyle === 'hyperrealistic-ugc'
+                    ? [{ value: 'Raw UGC', label: 'Raw UGC' } as const]
+                    : []),
                 ].map((opt) => (
                   <button
                     key={opt.value ?? 'none'}
@@ -835,6 +844,11 @@ export default function ImagePromptGenerator() {
               {lighting === 'Ring' && (
                 <p className="mt-3 text-xs text-amber-200/80">
                   <strong>Ring:</strong> escena siempre en interior cerrado; única luz frontal blanca (el aparato no se ve); reflejo tipo catchlight blanco visible en los ojos. Sin luz cálida de fondo.
+                </p>
+              )}
+              {selectedStyle === 'hyperrealistic-ugc' && lighting === 'Raw UGC' && (
+                <p className="mt-3 text-xs text-cyan-200/85">
+                  <strong>Raw UGC (Lighting):</strong> activa los mismos system prompts globales de Raw UGC (grano, luz difusa/imperfecta, anti-cinemático) y el bloque de preset en cámara + iluminación. Puedes combinarlo con el botón Raw UGC de la referencia si quieres reforzar aún más.
                 </p>
               )}
               {selectedStyle === 'change-elements' && lighting != null && (
@@ -962,7 +976,7 @@ export default function ImagePromptGenerator() {
                     </button>
                     {rawUgc && (
                       <p className="text-[10px] text-zinc-500">
-                        Raw UGC activo: prioriza look iPhone sin postproducción (grano fino natural, luz suave/difusa, nitidez no clínica). Con Copy Lighting, intenta replicar ese carácter exactamente.
+                        Raw UGC activo: la imagen adjunta define grano, difusión de luz y nitidez tipo smartphone auténtico (no clínico), también si Copy Lighting está apagado. Con Copy Lighting, el match de luz es aún más estricto.
                       </p>
                     )}
                     {copyAction && !copyCameraAngle && !copyLighting && !attachReferenceAsReferenceOnly && (
