@@ -140,7 +140,7 @@ const DEFAULT_LIGHTING_TEXTS: Record<string, string> = {
   'Natural Light Inside': 'Natural window light streaming indoors, soft diffused daylight through windows, realistic indoor natural lighting, authentic mobile phone recording indoors with natural light, natural shadows from window light, bright and airy atmosphere, genuine indoor natural lighting as if someone is genuinely recording inside near a window with their phone'
 };
 
-type Step = 'sceneCount' | `scene${number}` | 'generate';
+type Step = 'startingFrame' | 'sceneCount' | `scene${number}` | 'generate';
 
 export default function VideoPromptGenerator() {
   // Estilo fijo para UGC videos
@@ -150,8 +150,8 @@ export default function VideoPromptGenerator() {
   // Generator type: 'ugc' or 'cinematic'
   const [generatorType, setGeneratorType] = useState<'ugc' | 'cinematic' | null>(null);
   
-  // Mode: 'manual', 'automatic', or 'copy-video'
-  const [mode, setMode] = useState<'manual' | 'automatic' | 'copy-video'>('manual');
+  // Mode: 'manual', 'automatic', 'copy-video', or null (null = show mode picker)
+  const [mode, setMode] = useState<'manual' | 'automatic' | 'copy-video' | null>('manual');
   
   // Manual mode state
   const [sceneCount, setSceneCount] = useState<number>(1);
@@ -173,7 +173,7 @@ export default function VideoPromptGenerator() {
     voiceover: false,
     continuousAction: false
   }]);
-  const [currentStep, setCurrentStep] = useState<Step>('sceneCount');
+  const [currentStep, setCurrentStep] = useState<Step>('startingFrame');
   
   // Automatic mode state
   const [autoMode, setAutoMode] = useState<'describe' | 'script'>('describe');
@@ -216,6 +216,9 @@ export default function VideoPromptGenerator() {
   const [productImage, setProductImage] = useState<File | null>(null);
   const [productPreview, setProductPreview] = useState<string | null>(null);
   const [productPhotoWillBeAttached, setProductPhotoWillBeAttached] = useState<boolean>(false);
+  /** UGC: canonical character — required before scenes (manual) or before generate (auto / script) */
+  const [ugcStartingFrameImage, setUgcStartingFrameImage] = useState<File | null>(null);
+  const [ugcStartingFramePreview, setUgcStartingFramePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInsufficientCredits, setIsInsufficientCredits] = useState<boolean>(false);
 
@@ -270,6 +273,23 @@ export default function VideoPromptGenerator() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleUgcStartingFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setUgcStartingFrameImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUgcStartingFramePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeUgcStartingFrame = () => {
+    setUgcStartingFrameImage(null);
+    setUgcStartingFramePreview(null);
   };
 
   const handleReferenceVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -468,7 +488,8 @@ export default function VideoPromptGenerator() {
     lipSync?: boolean,
     voiceover?: boolean,
     continuousAction?: boolean,
-    scriptAdaptation?: 'adapt' | 'keep'
+    scriptAdaptation?: 'adapt' | 'keep',
+    characterStartingFrameImage?: File | null
   ) => {
     // Validate inputs with detailed logging
     if (!actionText || !actionText.trim()) {
@@ -501,6 +522,11 @@ export default function VideoPromptGenerator() {
         productImageBase64 = await fileToBase64(productImage);
       }
 
+      let characterStartingFrameBase64 = null;
+      if (characterStartingFrameImage) {
+        characterStartingFrameBase64 = await fileToBase64(characterStartingFrameImage);
+      }
+
       // Convert reference image to base64 if provided
       let referenceImageBase64 = null;
       if (referenceImage) {
@@ -524,6 +550,7 @@ export default function VideoPromptGenerator() {
           allScenes: allScenes || scenes,
           currentSceneIndex: currentSceneIndex !== undefined ? currentSceneIndex : (sceneId ? sceneId - 1 : 0),
           productImage: productImageBase64,
+          characterStartingFrameImage: characterStartingFrameBase64,
           referenceImage: referenceImageBase64,
           copyLighting: copyLighting || false,
           copyCameraAngle: copyCameraAngle || false,
@@ -673,6 +700,11 @@ export default function VideoPromptGenerator() {
   };
 
   const generatePromptManual = async () => {
+    if (generatorType === 'ugc' && !ugcStartingFrameImage) {
+      alert('Sube el starting frame del personaje antes de generar el prompt.');
+      return;
+    }
+
     setIsGenerating(true);
     setGeneratedPrompt('');
     setError(null);
@@ -722,7 +754,8 @@ export default function VideoPromptGenerator() {
                 scene.lipSync,
                 scene.voiceover,
                 scene.continuousAction,
-                scene.scriptAdaptation
+                scene.scriptAdaptation,
+                ugcStartingFrameImage
               );
               
               // Verify that the enhanced text is actually different from the original
@@ -751,7 +784,8 @@ export default function VideoPromptGenerator() {
                     scene.lipSync,
                     scene.voiceover,
                     scene.continuousAction,
-                    scene.scriptAdaptation
+                    scene.scriptAdaptation,
+                    ugcStartingFrameImage
                   );
                   if (retryEnhanced && retryEnhanced.trim() && retryEnhanced !== finalAction) {
                     finalAction = retryEnhanced;
@@ -826,6 +860,10 @@ export default function VideoPromptGenerator() {
       alert('Please enter a description (or enable B-roll + add a voiceover script)');
       return;
     }
+    if (isUGC && !ugcStartingFrameImage) {
+      alert('Sube el starting frame del personaje antes de generar (modo UGC).');
+      return;
+    }
 
     setIsGenerating(true);
     setGeneratedPrompt('');
@@ -838,6 +876,10 @@ export default function VideoPromptGenerator() {
       if (productImage) {
         productImageBase64 = await fileToBase64(productImage);
       }
+      let startingFrameImageBase64 = null;
+      if (ugcStartingFrameImage) {
+        startingFrameImageBase64 = await fileToBase64(ugcStartingFrameImage);
+      }
 
       const response = await fetch('/api/generate-video-prompt-auto', {
         method: 'POST',
@@ -847,6 +889,7 @@ export default function VideoPromptGenerator() {
         body: JSON.stringify({
           description: autoDescription.trim(),
           productImage: productImageBase64,
+          startingFrameImage: startingFrameImageBase64,
           isUGC: isUGC,
           ugcCameraMode: isUGC ? ugcCameraMode : null,
           bRollAnimation: bRollAnimation,
@@ -948,6 +991,10 @@ export default function VideoPromptGenerator() {
       alert('Please enter a script');
       return;
     }
+    if (isUGC && !ugcStartingFrameImage) {
+      alert('Sube el starting frame del personaje antes de generar (modo UGC).');
+      return;
+    }
 
     setIsGenerating(true);
     setGeneratedPrompt('');
@@ -960,6 +1007,10 @@ export default function VideoPromptGenerator() {
       if (productImage) {
         productImageBase64 = await fileToBase64(productImage);
       }
+      let startingFrameImageBase64 = null;
+      if (ugcStartingFrameImage) {
+        startingFrameImageBase64 = await fileToBase64(ugcStartingFrameImage);
+      }
 
       const response = await fetch('/api/generate-video-prompt-from-script', {
         method: 'POST',
@@ -969,6 +1020,7 @@ export default function VideoPromptGenerator() {
         body: JSON.stringify({
           script: autoScript.trim(),
           productImage: productImageBase64,
+          startingFrameImage: startingFrameImageBase64,
           isUGC: isUGC,
           ugcCameraMode: isUGC ? ugcCameraMode : null,
           productPhotoWillBeAttached: productPhotoWillBeAttached
@@ -1026,7 +1078,10 @@ export default function VideoPromptGenerator() {
   };
 
   const nextStep = () => {
-    if (currentStep === 'sceneCount' && sceneCount > 0) {
+    if (currentStep === 'startingFrame') {
+      if (!ugcStartingFrameImage) return;
+      goToStep('sceneCount');
+    } else if (currentStep === 'sceneCount' && sceneCount > 0) {
       goToStep('scene1' as Step);
     } else if (currentStep.startsWith('scene')) {
       const sceneNum = parseInt(currentStep.replace('scene', ''));
@@ -1039,8 +1094,12 @@ export default function VideoPromptGenerator() {
   };
 
   const prevStep = () => {
+    if (currentStep === 'startingFrame') {
+      setMode(null);
+      return;
+    }
     if (currentStep === 'sceneCount') {
-      // No hay paso anterior al primero
+      goToStep('startingFrame');
       return;
     } else if (currentStep.startsWith('scene')) {
       const sceneNum = parseInt(currentStep.replace('scene', ''));
@@ -1066,6 +1125,8 @@ export default function VideoPromptGenerator() {
       return true; // Siempre se puede avanzar desde las escenas
     }
     switch (currentStep) {
+      case 'startingFrame':
+        return !!ugcStartingFrameImage;
       case 'sceneCount':
         return sceneCount > 0;
       case 'generate':
@@ -1076,7 +1137,10 @@ export default function VideoPromptGenerator() {
   };
 
   const canGoPrev = () => {
-    return currentStep !== 'sceneCount';
+    if (currentStep === 'sceneCount') {
+      return mode === 'manual' && generatorType === 'ugc';
+    }
+    return true;
   };
 
   // Helper to check mode without type narrowing issues
@@ -1351,7 +1415,9 @@ export default function VideoPromptGenerator() {
                   onClick={() => {
                     setGeneratorType('ugc');
                     setMode('manual');
-                    setCurrentStep('sceneCount');
+                    setUgcStartingFrameImage(null);
+                    setUgcStartingFramePreview(null);
+                    setCurrentStep('startingFrame');
                     setGeneratedPrompt('');
                   }}
                   className="group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 border-amber-500/80 bg-gradient-to-br from-amber-500/20 to-amber-500/10 text-amber-200 shadow-[0_0_25px_rgba(250,204,21,0.3)] ring-2 ring-amber-500/30 hover:shadow-[0_0_30px_rgba(250,204,21,0.4)]"
@@ -1397,7 +1463,7 @@ export default function VideoPromptGenerator() {
                 <button
                   onClick={() => {
                     setMode('manual');
-                    setCurrentStep('sceneCount');
+                    setCurrentStep('startingFrame');
                     setGeneratedPrompt(''); // Reset prompt when switching modes
                   }}
                   className={`group relative rounded-xl border-2 px-6 py-6 text-left transition-all duration-200 ${
@@ -1457,6 +1523,86 @@ export default function VideoPromptGenerator() {
           </div>
         )}
 
+        {/* Manual Mode: Step 0 — Character starting frame (required before scenes) */}
+        {mode === 'manual' && currentStep === 'startingFrame' && (
+          <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+            <div className="mb-6">
+              <label className="block text-lg font-bold uppercase tracking-widest text-amber-400/90">
+                Starting frame (personaje)
+              </label>
+              <p className="mt-2 text-sm text-zinc-500">
+                Sube una imagen del personaje que será el ancla visual. Todos los prompts de escena partirán de esta misma persona, con máximo hiperrealismo UGC.
+              </p>
+            </div>
+            <div className="space-y-4">
+              {!ugcStartingFramePreview ? (
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-amber-700/40 bg-zinc-800/30 px-6 py-10 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                  <svg
+                    className="mb-3 h-10 w-10 text-amber-500/60"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <span className="text-sm font-medium text-zinc-300">Sube el frame inicial del personaje</span>
+                  <span className="mt-1 text-xs text-zinc-500">PNG, JPG, WEBP · obligatorio</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={handleUgcStartingFrameUpload}
+                    className="hidden"
+                  />
+                </label>
+              ) : (
+                <div className="relative rounded-xl border-2 border-amber-500/30 bg-zinc-800/30 p-4">
+                  <div className="relative inline-block">
+                    <img
+                      src={ugcStartingFramePreview}
+                      alt="Starting frame del personaje"
+                      className="max-h-72 rounded-lg object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeUgcStartingFrame}
+                      className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500"
+                      title="Quitar imagen"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="mt-8 flex flex-wrap justify-between gap-4">
+              <button
+                type="button"
+                onClick={prevStep}
+                className="flex items-center gap-2 rounded-xl border-2 border-zinc-700/50 bg-zinc-800/40 px-6 py-3.5 text-sm font-semibold text-zinc-300 transition-all hover:border-zinc-600/50 hover:bg-zinc-800/60 hover:text-zinc-200"
+              >
+                <span>←</span>
+                <span>Modos</span>
+              </button>
+              <button
+                type="button"
+                onClick={nextStep}
+                disabled={!ugcStartingFrameImage}
+                className="flex items-center gap-2 rounded-xl border-2 border-amber-500/70 bg-gradient-to-r from-amber-500/20 to-amber-500/10 px-8 py-3.5 text-sm font-semibold text-amber-200 shadow-[0_0_20px_rgba(250,204,21,0.2)] transition-all hover:from-amber-500/30 hover:to-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span>Continuar a escenas</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Manual Mode: Step 1: Number of Scenes */}
         {mode === 'manual' && currentStep === 'sceneCount' && (
           <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-8 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
@@ -1487,6 +1633,16 @@ export default function VideoPromptGenerator() {
                   )}
                 </button>
               ))}
+            </div>
+            <div className="mt-6 flex justify-start">
+              <button
+                type="button"
+                onClick={prevStep}
+                className="flex items-center gap-2 rounded-xl border-2 border-zinc-700/50 bg-zinc-800/40 px-6 py-3 text-sm font-semibold text-zinc-300 transition-all hover:border-zinc-600/50 hover:bg-zinc-800/60 hover:text-zinc-200"
+              >
+                <span>←</span>
+                <span>Starting frame</span>
+              </button>
             </div>
           </div>
         )}
@@ -1952,7 +2108,7 @@ export default function VideoPromptGenerator() {
               <button
                 onClick={() => {
                   setMode('manual');
-                  setCurrentStep('sceneCount');
+                  setCurrentStep('startingFrame');
                   setGeneratedPrompt('');
                   setAutoDescription('');
                   setAutoScript('');
@@ -2006,6 +2162,67 @@ export default function VideoPromptGenerator() {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-400">✓</span>
                   )}
                 </button>
+              </div>
+            </div>
+
+            {/* Character starting frame — antes de describir o pegar script (UGC obligatorio) */}
+            <div className="rounded-2xl border border-zinc-800/50 bg-gradient-to-br from-zinc-900/80 to-zinc-900/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+              <h3 className="mb-2 text-lg font-bold text-amber-300">
+                Starting frame del personaje
+              </h3>
+              <p className="mb-4 text-sm text-zinc-400">
+                {isUGC
+                  ? 'Obligatorio con UGC activo: sube el retrato/frame del personaje; el prompt seguirá a esa misma identidad con hiperrealismo.'
+                  : 'Opcional si UGC está desactivado: puedes subir un ancla visual del personaje para mayor consistencia.'}
+              </p>
+              <div className="space-y-4">
+                {!ugcStartingFramePreview ? (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-amber-700/40 bg-zinc-800/30 px-6 py-8 text-center transition-all hover:border-amber-500/50 hover:bg-zinc-800/50">
+                    <svg
+                      className="mb-3 h-10 w-10 text-amber-500/60"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium text-zinc-300">Subir imagen del personaje</span>
+                    <span className="mt-1 text-xs text-zinc-500">PNG, JPG, WEBP</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      onChange={handleUgcStartingFrameUpload}
+                      className="hidden"
+                      disabled={isGenerating}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative rounded-xl border-2 border-amber-500/30 bg-zinc-800/30 p-4">
+                    <div className="relative inline-block">
+                      <img
+                        src={ugcStartingFramePreview}
+                        alt="Starting frame"
+                        className="max-h-56 rounded-lg object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={removeUgcStartingFrame}
+                        disabled={isGenerating}
+                        className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1.5 text-white transition-all hover:bg-red-500 disabled:opacity-50"
+                        title="Quitar"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2346,6 +2563,7 @@ export default function VideoPromptGenerator() {
               onClick={autoMode === 'describe' ? generatePromptAutomatic : generatePromptFromScript}
               disabled={
                 isGenerating ||
+                (isUGC && !ugcStartingFrameImage) ||
                 (autoMode === 'describe'
                   ? (!autoDescription.trim() && !(bRollAnimation && !!bRollVoiceoverScript.trim()))
                   : !autoScript.trim())
@@ -2375,7 +2593,7 @@ export default function VideoPromptGenerator() {
               <button
                 onClick={() => {
                   setMode('manual');
-                  setCurrentStep('sceneCount');
+                  setCurrentStep('startingFrame');
                   setGeneratedPrompt('');
                   setReferenceVideo(null);
                   setReferenceVideoPreview(null);

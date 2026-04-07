@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     const {
       description,
       productImage,
+      startingFrameImage,
       isUGC = true,
       ugcCameraMode = 'selfie',
       bRollAnimation = false,
@@ -52,6 +53,58 @@ export async function POST(request: NextRequest) {
 
     if (!descriptionTrimmed && !(bRollAnimation && voiceoverTrimmed)) {
       return NextResponse.json({ error: 'Description is required' }, { status: 400 });
+    }
+
+    if (isUGC && !startingFrameImage) {
+      return NextResponse.json(
+        { error: 'UGC mode requires a character starting frame image (upload the person first).' },
+        { status: 400 }
+      );
+    }
+
+    // Character starting frame (required for UGC) — uploaded first
+    let startingFrameImageFile = null;
+    if (startingFrameImage) {
+      try {
+        console.log('Uploading character starting frame to Gemini Files...');
+        const sfBuffer = Buffer.from(startingFrameImage.split(',')[1], 'base64');
+        let sfMime = startingFrameImage.split(';')[0].split(':')[1] || 'image/png';
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(sfMime.toLowerCase())) {
+          sfMime = 'image/png';
+        }
+        const sfUint8Array = new Uint8Array(sfBuffer);
+        const sfBlob = new Blob([sfUint8Array], { type: sfMime });
+        startingFrameImageFile = await ai.files.upload({
+          file: sfBlob,
+          config: { mimeType: sfMime }
+        });
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        while (startingFrameImageFile.state !== 'ACTIVE') {
+          if (Date.now() - startTime > maxWaitTime) {
+            throw new Error('Timeout waiting for starting frame image');
+          }
+          await new Promise((resolve) => setTimeout(resolve, checkInterval));
+          try {
+            const fileName = startingFrameImageFile.name || startingFrameImageFile.uri?.split('/').pop() || '';
+            if (fileName) {
+              const fileInfo = await ai.files.get({ name: fileName });
+              startingFrameImageFile = fileInfo;
+            }
+          } catch (err) {
+            console.error('Error checking starting frame file status:', err);
+          }
+        }
+        console.log('Starting frame image uploaded:', startingFrameImageFile.uri);
+      } catch (e: any) {
+        console.error('Error uploading starting frame:', e);
+        return NextResponse.json(
+          { error: 'Failed to upload character starting frame', details: e.message },
+          { status: 500 }
+        );
+      }
     }
 
     // Handle product image if provided
@@ -120,12 +173,19 @@ export async function POST(request: NextRequest) {
 - In action descriptions, explicitly mention selfie handheld capture and realistic human movement while filming.`)
       : '';
 
+    const characterStartingFrameBlock = isUGC && startingFrameImageFile
+      ? `
+**CHARACTER — STARTING FRAME (MANDATORY — FIRST ATTACHED IMAGE):**
+The **first** image in this request is the **starting frame** of the **character** (person). **Do NOT** invent a different person than the one in that image. Every scene must feature **the same character** — same face, hair, skin tone, body type, and styling — **maximum hyperrealistic continuity** with the internal UGC rules below. Anchor identity with phrases like **"the same character as in the starting frame image"** or **"the character from the starting frame"**. If a **second** image is attached, it is the **product** (not the character).
+`
+      : '';
+
     // Build UGC-specific instructions
     const ugcInstructions = isUGC ? `
 **CRITICAL - UGC HYPERREALISTIC MODE (ACTIVE):**
 The video MUST be generated as hyperrealistic UGC content, as if recorded by a real person on their iPhone. You MUST:
 
-1. **Decide characters/people**: Based on the description, determine who should appear (age, gender, appearance, role, demographics) and make them feel authentic and relatable. Consider the target audience and make characters that would resonate with them.
+1. **Character (from starting frame):** ${startingFrameImageFile ? 'The person is **fixed** by the **starting frame image** (first attachment). Do **not** change their identity across scenes — only actions, dialogue, and setting as the description requires.' : 'Based on the description, determine who should appear (age, gender, appearance, role, demographics) and make them feel authentic and relatable.'}
 
 2. **Decide camera compositions**: For each scene, intelligently choose from these UGC compositions based on what fits the narrative:
    - **UGC Close-up**: Use for extreme close-ups of product details, textures, intimate moments, or when showing specific product features
@@ -217,7 +277,7 @@ Deconstruct the user's description into structured scenes with ALL parameters au
    - **Voiceover**: true if voice should play over actions without visible speech, false otherwise
    - **No Dialogue**: true if scene should have no dialogue/speech at all, false otherwise
 
-3. **Decide characters/people**: Based on the description, determine who should appear, their characteristics, and maintain consistency across scenes
+3. **Character consistency**: ${startingFrameImageFile ? 'The **same character** as the starting frame in **every** scene — never a different person.' : 'Based on the description, determine who should appear and maintain consistency across scenes'}
 
 4. **Maintain narrative flow**: Ensure scenes connect logically and tell a cohesive story
 
@@ -276,9 +336,18 @@ ${bRollAnimation ? (voiceoverTrimmed
 - Maintain consistency in character, location, and style across scenes
 - Choose parameters that best fit each scene's narrative purpose`;
 
-    // Build parts array
+    // Build parts array — starting frame first (character), then product
     const parts: any[] = [];
-    
+
+    if (startingFrameImageFile) {
+      parts.push({
+        fileData: {
+          fileUri: startingFrameImageFile.uri,
+          mimeType: startingFrameImageFile.mimeType
+        }
+      });
+    }
+
     if (productImageFile) {
       parts.push({
         fileData: {
@@ -287,7 +356,7 @@ ${bRollAnimation ? (voiceoverTrimmed
         }
       });
     }
-    
+
     parts.push({
       text: generationPrompt
     });

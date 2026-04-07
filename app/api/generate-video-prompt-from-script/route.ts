@@ -39,13 +39,63 @@ export async function POST(request: NextRequest) {
     // Initialize AI client at runtime (uses user's API key if configured)
     const ai = await getGoogleGenAI(request);
     const body = await request.json();
-    const { script, productImage, isUGC = true, ugcCameraMode = 'selfie', productPhotoWillBeAttached = false } = body;
+    const { script, productImage, startingFrameImage, isUGC = true, ugcCameraMode = 'selfie', productPhotoWillBeAttached = false } = body;
 
     if (!script || !script.trim()) {
       return NextResponse.json(
         { error: 'Script is required' },
         { status: 400 }
       );
+    }
+
+    if (isUGC && !startingFrameImage) {
+      return NextResponse.json(
+        { error: 'UGC mode requires a character starting frame image (upload the person first).' },
+        { status: 400 }
+      );
+    }
+
+    let startingFrameImageFile = null;
+    if (startingFrameImage) {
+      try {
+        console.log('Uploading character starting frame to Gemini Files...');
+        const sfBuffer = Buffer.from(startingFrameImage.split(',')[1], 'base64');
+        let sfMime = startingFrameImage.split(';')[0].split(':')[1] || 'image/png';
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(sfMime.toLowerCase())) {
+          sfMime = 'image/png';
+        }
+        const sfUint8 = new Uint8Array(sfBuffer);
+        const sfBlob = new Blob([sfUint8], { type: sfMime });
+        startingFrameImageFile = await ai.files.upload({
+          file: sfBlob,
+          config: { mimeType: sfMime }
+        });
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        while (startingFrameImageFile.state !== 'ACTIVE') {
+          if (Date.now() - startTime > maxWaitTime) {
+            throw new Error('Timeout waiting for starting frame');
+          }
+          await new Promise((resolve) => setTimeout(resolve, checkInterval));
+          try {
+            const fileName = startingFrameImageFile.name || startingFrameImageFile.uri?.split('/').pop() || '';
+            if (fileName) {
+              startingFrameImageFile = await ai.files.get({ name: fileName });
+            }
+          } catch (err) {
+            console.error('Error checking starting frame status:', err);
+          }
+        }
+        console.log('Starting frame uploaded:', startingFrameImageFile.uri);
+      } catch (e: any) {
+        console.error('Error uploading starting frame:', e);
+        return NextResponse.json(
+          { error: 'Failed to upload character starting frame', details: e.message },
+          { status: 500 }
+        );
+      }
     }
 
     // Handle product image if provided
@@ -112,12 +162,19 @@ export async function POST(request: NextRequest) {
 - Prefer camera angle language equivalent to **Selfie Camera** in all scenes unless script explicitly demands POV/frontal for a specific moment.`)
       : '';
 
+    const characterStartingFrameBlock = isUGC && startingFrameImageFile
+      ? `
+**CHARACTER — STARTING FRAME (MANDATORY — FIRST ATTACHED IMAGE):**
+The **first** image is the **starting frame** of the **character**. Every scene must star **the same person** — **hyperrealistic continuity** with that frame. Use anchors like **"the same character as in the starting frame image"**. Do **not** invent a different age, gender, or face. If a **second** image is attached, it is the **product**, not a second person.
+`
+      : '';
+
     // Build UGC-specific instructions
     const ugcInstructions = isUGC ? `
 **CRITICAL - UGC HYPERREALISTIC MODE (ACTIVE):**
 The video MUST be generated as hyperrealistic UGC content, as if recorded by a real person on their iPhone. You MUST:
 
-1. **Decide characters/people**: Based on the script, determine who should appear (age, gender, appearance, role, demographics) and make them feel authentic and relatable. Consider the target audience and make characters that would resonate with them.
+1. **Character (from starting frame):** ${startingFrameImageFile ? 'The person is **fixed** by the **starting frame image** (first attachment). The script is performed by **this same character** in every scene — identity never changes.' : 'Based on the script, determine who should appear (age, gender, appearance, role, demographics) and make them feel authentic and relatable.'}
 
 2. **Decide camera compositions**: For each scene, intelligently choose from these UGC compositions based on what fits the narrative:
    - **UGC Close-up**: Use for extreme close-ups of product details, textures, intimate moments, or when showing specific product features
@@ -178,6 +235,7 @@ Generate a professional video prompt with high production quality. Focus on clea
 
     const generationPrompt = `You are an expert AI prompt engineer specializing in ${isUGC ? 'hyperrealistic UGC (User-Generated Content)' : 'professional'} video prompts. Your task is to analyze a script and create complete, ready-to-use video prompts formatted as scenes.
 
+${characterStartingFrameBlock}
 **User's Script:**
 ${script}
 
@@ -196,7 +254,7 @@ Analyze the script and break it down into logical scenes. For EACH scene, you MU
    - **Duration**: Estimate appropriate duration in seconds (1-15) based on script length for that scene
    - **Dialogue Mode**: Determine if it's lipSync, voiceover, or noDialogue based on the script content
 3. **Generate a detailed Action description** for each scene that includes:
-   - Character description (age, gender, appearance, clothing)
+   - ${startingFrameImageFile ? '**Same character as the starting frame image** in every scene (anchor with "the same character as in the starting frame image"); clothing/setting may change if the script implies it, but **not** a different person' : 'Character description (age, gender, appearance, clothing)'}
    - What's happening in the scene
    - Camera angle and composition details
    - Lighting details
@@ -237,9 +295,17 @@ Scene 3:
 - Maintain consistency in character, location, and style across scenes
 - Make each Action description extremely detailed and hyperrealistic`;
 
-    // Build parts array
     const parts: any[] = [];
-    
+
+    if (startingFrameImageFile) {
+      parts.push({
+        fileData: {
+          fileUri: startingFrameImageFile.uri,
+          mimeType: startingFrameImageFile.mimeType
+        }
+      });
+    }
+
     if (productImageFile) {
       parts.push({
         fileData: {
@@ -248,7 +314,7 @@ Scene 3:
         }
       });
     }
-    
+
     parts.push({
       text: generationPrompt
     });

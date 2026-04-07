@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const ai = await getGoogleGenAI(request);
     
     const body = await request.json();
-    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, copyLighting, copyCameraAngle, noDialogue, lipSync, voiceover, continuousAction, scriptAdaptation, productPhotoWillBeAttached } = body;
+    const { actionText, script, compositions, composition, cameraAngles, lighting, duration, mainStyle, productFocus, allScenes, currentSceneIndex, productImage, referenceImage, characterStartingFrameImage, copyLighting, copyCameraAngle, noDialogue, lipSync, voiceover, continuousAction, scriptAdaptation, productPhotoWillBeAttached } = body;
 
     // Support both old format (single composition) and new format (array of compositions)
     const compositionArray = compositions || (composition ? [composition] : []);
@@ -175,6 +175,62 @@ export async function POST(request: NextRequest) {
         console.error('Error uploading reference image:', uploadError);
         return NextResponse.json(
           { error: 'Error uploading reference image', details: uploadError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Character starting frame (UGC): canonical person for all scenes
+    let characterStartingFrameFile = null;
+    if (characterStartingFrameImage) {
+      try {
+        console.log('Uploading character starting frame image to Gemini Files...');
+        const csBuffer = Buffer.from(characterStartingFrameImage.split(',')[1], 'base64');
+        let csMime = characterStartingFrameImage.split(';')[0].split(':')[1] || 'image/png';
+        const supportedFormats = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+        if (!supportedFormats.includes(csMime.toLowerCase())) {
+          csMime = 'image/png';
+        }
+        const csUint8 = new Uint8Array(csBuffer);
+        const csBlob = new Blob([csUint8], { type: csMime });
+        characterStartingFrameFile = await ai.files.upload({
+          file: csBlob,
+          config: { mimeType: csMime }
+        });
+        console.log('Character starting frame uploaded:', characterStartingFrameFile.uri);
+        const maxWaitTime = 60000;
+        const checkInterval = 2000;
+        const startTime = Date.now();
+        const waitForFile = async (file: any, fileName: string) => {
+          if (file.state === 'ACTIVE') return file;
+          while (file.state !== 'ACTIVE') {
+            if (Date.now() - startTime > maxWaitTime) {
+              throw new Error('Timeout waiting for character starting frame');
+            }
+            await new Promise((resolve) => setTimeout(resolve, checkInterval));
+            try {
+              const fileInfo = await ai.files.get({ name: fileName });
+              file = fileInfo;
+            } catch (err) {
+              console.error(`Error checking file status for ${fileName}:`, err);
+            }
+          }
+          return file;
+        };
+        const csName = characterStartingFrameFile.name || characterStartingFrameFile.uri?.split('/').pop() || '';
+        if (csName) {
+          characterStartingFrameFile = await waitForFile(characterStartingFrameFile, csName);
+          if (!characterStartingFrameFile.uri) {
+            return NextResponse.json(
+              { error: 'Character starting frame file is missing required URI property' },
+              { status: 500 }
+            );
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('Error uploading character starting frame:', uploadError);
+        return NextResponse.json(
+          { error: 'Error uploading character starting frame', details: uploadError.message },
           { status: 500 }
         );
       }
@@ -763,6 +819,15 @@ The action text mentions "product", "el producto", "using the product", "showing
         })()
       : '';
 
+    const characterStartingFrameInstructions = characterStartingFrameFile
+      ? `\n\n**CRITICAL - CHARACTER STARTING FRAME (CANONICAL PERSON):**
+The **starting frame** image is the **canonical character** (the person) for this UGC video.
+- **Identity lock:** The enhanced Action must star the **same person** as in that image — consistent face, hair, skin tone, body type, and wardrobe feel — **maximum hyperrealistic continuity** with your existing UGC rules (iPhone grain, sharp background, no bokeh, etc.).
+- **Do NOT** invent a different age, gender, ethnicity, or face than the starting frame.
+- **Anchor phrases:** Use **"the same character as in the starting frame image"**, **"the character from the starting frame"**, or **"the same person as in the attached character reference"** so downstream models lock identity.
+- **If a product image is also attached** (separate): that attachment is **product**; the starting frame is **character** only.`
+      : '';
+
     // No dialogue instructions
     const noDialogueInstructions = noDialogue
       ? (isScene4Plus
@@ -862,7 +927,7 @@ ${criticalEnhancementSection}
 **Main Task:** Enhance, enrich, and condense the [ACTION TEXT TO ENHANCE] by fluently and professionally incorporating all [CAMERA AND LIGHTING DETAILS] along with the following information:
 - Main style: ${mainStyle || 'Hyperrealistic UGC, Mobile Aesthetic'}
 - Product Focus: ${productFocus || 'Authenticity and Emotional Connection'}
-${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${referenceImageInstructions}${noDialogueInstructions}${lipSyncInstructions}${voiceoverInstructions}${continuousActionInstruction}
+${consistencyRules}${compositionInstructions}${cameraAngleInstructions}${concisenessInstructions}${durationInstructions}${scriptInstructions}${ugcCloseUpInstructions}${lightingInstructions}${productImageInstructions}${characterStartingFrameInstructions}${referenceImageInstructions}${noDialogueInstructions}${lipSyncInstructions}${voiceoverInstructions}${continuousActionInstruction}
 
 **CRITICAL - PRODUCT REFERENCE IDENTIFICATION AND HANDLING (MANDATORY - NO INVENTING):**
 You MUST carefully identify when the action text refers to "the product" vs other items, and NEVER invent product details.
@@ -994,7 +1059,16 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
     try {
       // Build parts array - include images if provided
       const parts: any[] = [];
-      
+
+      if (characterStartingFrameFile) {
+        parts.push({
+          fileData: {
+            fileUri: characterStartingFrameFile.uri,
+            mimeType: characterStartingFrameFile.mimeType
+          }
+        });
+      }
+
       if (productImageFile) {
         parts.push({
           fileData: {
@@ -1020,6 +1094,7 @@ ${duration ? `- Scene Duration: ${duration} seconds` : ''}
       console.log('Sending request to Gemini for prompt enhancement...', {
         model: 'gemini-3-flash-preview',
         partsCount: parts.length,
+        hasCharacterStartingFrame: !!characterStartingFrameFile,
         hasProductImage: !!productImageFile,
         hasReferenceImage: !!referenceImageFile,
         environment: process.env.NODE_ENV || 'unknown'
